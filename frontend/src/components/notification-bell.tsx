@@ -10,6 +10,9 @@ type NotificationType =
   | 'FRIEND_REQUEST_ACCEPTED'
   | 'GROUP_JOIN_APPROVED'
   | 'GROUP_JOIN_REQUESTED'
+  | 'REQUEST_APPROVED'
+  | 'REQUEST_REJECTED'
+  | 'REQUEST_CHANGES_ASKED'
 
 type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP'
 
@@ -51,6 +54,12 @@ function copyFor(n: Notification): string {
       return 'Você foi aceito em um grupo'
     case 'GROUP_JOIN_REQUESTED':
       return `${name} pediu para entrar em um grupo que você administra`
+    case 'REQUEST_APPROVED':
+      return 'Seu pedido foi aprovado pela moderação'
+    case 'REQUEST_REJECTED':
+      return 'Seu pedido foi rejeitado pela moderação'
+    case 'REQUEST_CHANGES_ASKED':
+      return 'A moderação pediu ajustes no seu pedido'
     default:
       return 'Nova notificação'
   }

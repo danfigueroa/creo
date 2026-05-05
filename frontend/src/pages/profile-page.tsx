@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
@@ -6,6 +7,9 @@ import { api } from '@/lib/api'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
 import { Button } from '@/components/button'
+import { useToast } from '@/components/toaster'
+import { useConfirm } from '@/components/confirm-dialog'
+import { errorMessage } from '@/lib/api-error'
 import { Tradition, traditionOptions } from '@/lib/traditions'
 import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, uploadAvatar } from '@/lib/supabase'
 
@@ -319,6 +323,84 @@ export function ProfilePage() {
           <p className="mt-4 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{traditionStatus}</p>
         )}
       </section>
+
+      <BlockedUsersSection />
     </PageShell>
+  )
+}
+
+type BlockedUser = {
+  userId: string
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+  blockedAt: string
+}
+
+function BlockedUsersSection() {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const blocksQuery = useQuery({
+    queryKey: ['blocks'],
+    queryFn: async () => {
+      const res = await api.get<{ items: BlockedUser[] }>('/blocks')
+      return res.data.items
+    }
+  })
+
+  const unblock = useMutation({
+    mutationFn: async (userId: string) => {
+      await api.delete(`/blocks/${userId}`)
+    },
+    onSuccess: async () => {
+      toast.success('Usuário desbloqueado.')
+      await queryClient.invalidateQueries({ queryKey: ['blocks'] })
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  async function handleUnblock(user: BlockedUser) {
+    const ok = await confirm({
+      title: 'Desbloquear usuário',
+      description: `Desbloquear @${user.username}?`,
+      confirmLabel: 'Desbloquear'
+    })
+    if (ok) unblock.mutate(user.userId)
+  }
+
+  return (
+    <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
+      <h2 className="pv-title text-xl font-semibold text-secondary">Usuários bloqueados</h2>
+      <p className="pv-muted mt-1 text-sm">
+        Pessoas bloqueadas não veem seus pedidos e você não vê os delas. Amizades e solicitações são desfeitas ao bloquear.
+      </p>
+      <div className="mt-4 space-y-3">
+        {blocksQuery.isLoading && (
+          [0, 1].map((i) => <span key={i} className="pv-shimmer block h-12 rounded-2xl" />)
+        )}
+        {!blocksQuery.isLoading && (blocksQuery.data ?? []).length === 0 && (
+          <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">
+            Você não bloqueou ninguém.
+          </p>
+        )}
+        {(blocksQuery.data ?? []).map((user) => (
+          <article key={user.userId} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
+            <Avatar user={user} size="md" />
+            <div className="min-w-0 flex-1">
+              <Link to={`/u/${user.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">
+                {user.displayName}
+              </Link>
+              <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
+              <p className="pv-muted mt-1 text-xs">Bloqueado em {new Date(user.blockedAt).toLocaleDateString('pt-BR')}</p>
+            </div>
+            <Button variant="secondary" disabled={unblock.isPending} onClick={() => handleUnblock(user)}>
+              Desbloquear
+            </Button>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }

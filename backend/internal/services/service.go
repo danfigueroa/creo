@@ -32,6 +32,8 @@ var ErrLastAdmin = errors.New("cannot remove the last admin")
 var ErrCannotTargetSelf = errors.New("cannot target self for this action")
 var ErrInvalidGroupRole = errors.New("invalid group role")
 var ErrInvalidBio = errors.New("invalid bio")
+var ErrInvalidModerationAction = errors.New("invalid moderation action")
+var ErrModerationReasonRequired = errors.New("moderation reason required")
 
 func NewService(repo repositories.Repository) *Service {
 	return &Service{repo: repo}
@@ -83,7 +85,25 @@ func (s *Service) GetPublicProfile(ctx context.Context, viewerID, username strin
 	if err != nil {
 		return models.PublicProfile{}, err
 	}
-	state, incomingID, err := s.repo.GetFriendshipState(ctx, viewerID, owner.ID)
+	if viewerID != "" && owner.ID != viewerID {
+		dir, err := s.repo.BlockDirection(ctx, viewerID, owner.ID)
+		if err != nil {
+			return models.PublicProfile{}, err
+		}
+		switch dir {
+		case "BY_ME":
+			return models.PublicProfile{
+				User:             owner,
+				FriendshipStatus: models.PublicFriendshipBlockedByMe,
+			}, nil
+		case "BY_THEM":
+			return models.PublicProfile{
+				User:             owner,
+				FriendshipStatus: models.PublicFriendshipBlockedByThem,
+			}, nil
+		}
+	}
+	state, incomingID, outgoingID, err := s.repo.GetFriendshipState(ctx, viewerID, owner.ID)
 	if err != nil {
 		return models.PublicProfile{}, err
 	}
@@ -91,6 +111,7 @@ func (s *Service) GetPublicProfile(ctx context.Context, viewerID, username strin
 		User:                owner,
 		FriendshipStatus:    state,
 		IncomingFriendReqID: incomingID,
+		OutgoingFriendReqID: outgoingID,
 	}
 	if state == models.PublicFriendshipSelf || state == models.PublicFriendshipFriend {
 		stats, err := s.repo.GetUserStats(ctx, owner.ID)
@@ -494,6 +515,37 @@ func (s *Service) AcceptFriendRequest(ctx context.Context, userID, requestID str
 	return s.repo.AcceptFriendRequest(ctx, userID, requestID)
 }
 
+func (s *Service) RejectFriendRequest(ctx context.Context, userID, requestID string) error {
+	return s.repo.RejectFriendRequest(ctx, userID, requestID)
+}
+
+func (s *Service) CancelFriendRequest(ctx context.Context, userID, requestID string) error {
+	return s.repo.CancelFriendRequest(ctx, userID, requestID)
+}
+
+func (s *Service) RemoveFriendship(ctx context.Context, userID, targetUserID string) error {
+	if userID == targetUserID {
+		return ErrCannotTargetSelf
+	}
+	return s.repo.RemoveFriendship(ctx, userID, targetUserID)
+}
+
+func (s *Service) BlockUser(ctx context.Context, blockerID, targetUsername string) (models.BlockedUser, error) {
+	targetUsername = normalizeUsername(targetUsername)
+	if len(targetUsername) < 3 {
+		return models.BlockedUser{}, ErrInvalidUsername
+	}
+	return s.repo.BlockUser(ctx, blockerID, targetUsername)
+}
+
+func (s *Service) UnblockUser(ctx context.Context, blockerID, blockedUserID string) error {
+	return s.repo.UnblockUser(ctx, blockerID, blockedUserID)
+}
+
+func (s *Service) ListBlockedUsers(ctx context.Context, blockerID string) ([]models.BlockedUser, error) {
+	return s.repo.ListBlockedUsers(ctx, blockerID)
+}
+
 func (s *Service) SearchUsersForFriendship(ctx context.Context, userID, query string, limit int) ([]models.UserSummary, error) {
 	query = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(query), "@"))
 	if query == "" {
@@ -580,4 +632,26 @@ func (s *Service) MarkNotificationRead(ctx context.Context, userID, id string) e
 
 func (s *Service) MarkAllNotificationsRead(ctx context.Context, userID string) error {
 	return s.repo.MarkAllNotificationsRead(ctx, userID)
+}
+
+func (s *Service) ListModerationQueue(ctx context.Context, moderatorUserID string, limit, offset int) ([]models.ModerationQueueItem, error) {
+	return s.repo.ListModerationQueue(ctx, moderatorUserID, limit, offset)
+}
+
+func (s *Service) ApplyModerationAction(ctx context.Context, moderatorUserID, requestID string, action models.ModerationActionType, reason string) error {
+	switch action {
+	case models.ActionApprove, models.ActionReject, models.ActionRequestChanges, models.ActionRemove:
+	default:
+		return ErrInvalidModerationAction
+	}
+	if action == models.ActionReject || action == models.ActionRequestChanges {
+		if strings.TrimSpace(reason) == "" {
+			return ErrModerationReasonRequired
+		}
+	}
+	return s.repo.ApplyModerationAction(ctx, moderatorUserID, requestID, action, reason)
+}
+
+func (s *Service) ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error) {
+	return s.repo.ListModerationHistory(ctx, requestID)
 }

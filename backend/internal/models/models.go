@@ -99,6 +99,8 @@ const (
 	PublicFriendshipPendingOut PublicFriendshipState = "PENDING_OUT"
 	PublicFriendshipPendingIn  PublicFriendshipState = "PENDING_IN"
 	PublicFriendshipNone       PublicFriendshipState = "NONE"
+	PublicFriendshipBlockedByMe   PublicFriendshipState = "BLOCKED_BY_ME"
+	PublicFriendshipBlockedByThem PublicFriendshipState = "BLOCKED_BY_THEM"
 )
 
 type ProfileStats struct {
@@ -109,10 +111,11 @@ type ProfileStats struct {
 }
 
 type PublicProfile struct {
-	User                  User                  `json:"user"`
-	FriendshipStatus      PublicFriendshipState `json:"friendshipStatus"`
-	IncomingFriendReqID   *string               `json:"incomingFriendRequestId,omitempty"`
-	Stats                 *ProfileStats         `json:"stats,omitempty"`
+	User                User                  `json:"user"`
+	FriendshipStatus    PublicFriendshipState `json:"friendshipStatus"`
+	IncomingFriendReqID *string               `json:"incomingFriendRequestId,omitempty"`
+	OutgoingFriendReqID *string               `json:"outgoingFriendRequestId,omitempty"`
+	Stats               *ProfileStats         `json:"stats,omitempty"`
 }
 
 type PrayerRequest struct {
@@ -258,6 +261,14 @@ type UserSummary struct {
 	AvatarURL   *string `json:"avatarUrl,omitempty"`
 }
 
+type BlockedUser struct {
+	UserID      string    `json:"userId"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"displayName"`
+	AvatarURL   *string   `json:"avatarUrl,omitempty"`
+	BlockedAt   time.Time `json:"blockedAt"`
+}
+
 type NotificationType string
 
 const (
@@ -266,6 +277,9 @@ const (
 	NotificationTypeFriendRequestAccepted NotificationType = "FRIEND_REQUEST_ACCEPTED"
 	NotificationTypeGroupJoinApproved     NotificationType = "GROUP_JOIN_APPROVED"
 	NotificationTypeGroupJoinRequested    NotificationType = "GROUP_JOIN_REQUESTED"
+	NotificationTypeRequestApproved       NotificationType = "REQUEST_APPROVED"
+	NotificationTypeRequestRejected       NotificationType = "REQUEST_REJECTED"
+	NotificationTypeRequestChangesAsked   NotificationType = "REQUEST_CHANGES_ASKED"
 )
 
 type NotificationSubjectType string
@@ -292,6 +306,31 @@ type NotificationView struct {
 	Payload     map[string]any          `json:"payload"`
 	ReadAt      *time.Time              `json:"readAt,omitempty"`
 	CreatedAt   time.Time               `json:"createdAt"`
+}
+
+type ModerationQueueItem struct {
+	ID                string         `json:"id"`
+	GroupID           string         `json:"groupId"`
+	GroupName         string         `json:"groupName"`
+	AuthorID          string         `json:"authorId"`
+	AuthorUsername    string         `json:"authorUsername"`
+	AuthorDisplayName string         `json:"authorDisplayName"`
+	AuthorAvatarURL   *string        `json:"authorAvatarUrl,omitempty"`
+	Title             string         `json:"title"`
+	Body              string         `json:"body"`
+	Category          PrayerCategory `json:"category"`
+	Visibility        Visibility     `json:"visibility"`
+	CreatedAt         time.Time      `json:"createdAt"`
+}
+
+type ModerationActionRecord struct {
+	ID              string               `json:"id"`
+	PrayerRequestID string               `json:"prayerRequestId"`
+	GroupID         *string              `json:"groupId,omitempty"`
+	ActorUserID     string               `json:"actorUserId"`
+	Action          ModerationActionType `json:"action"`
+	Reason          *string              `json:"reason,omitempty"`
+	CreatedAt       time.Time            `json:"createdAt"`
 }
 
 type CreateNotificationInput struct {

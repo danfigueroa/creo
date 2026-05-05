@@ -1,11 +1,14 @@
 import { FormEvent, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageShell } from '@/components/page-shell'
 import { Input } from '@/components/input'
 import { Button } from '@/components/button'
 import { Avatar } from '@/components/avatar'
+import { useToast } from '@/components/toaster'
+import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/api-error'
 
 type UserSummary = {
   userId: string
@@ -32,6 +35,9 @@ type FriendRequest = {
 
 export function FriendsPage() {
   const [query, setQuery] = useState('')
+  const toast = useToast()
+  const confirm = useConfirm()
+  const queryClient = useQueryClient()
 
   const friendsQuery = useQuery({
     queryKey: ['friends'],
@@ -66,9 +72,11 @@ export function FriendsPage() {
       await api.post('/friends/requests', { targetUsername })
     },
     onSuccess: async () => {
+      toast.success('Solicitação enviada.')
       await searchQuery.refetch()
       await requestsQuery.refetch()
-    }
+    },
+    onError: (err) => toast.error(errorMessage(err))
   })
 
   const acceptRequest = useMutation({
@@ -76,14 +84,63 @@ export function FriendsPage() {
       await api.post(`/friends/requests/${requestId}/accept`)
     },
     onSuccess: async () => {
+      toast.success('Amizade aceita.')
       await requestsQuery.refetch()
       await friendsQuery.refetch()
-    }
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const rejectRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      await api.post(`/friends/requests/${requestId}/reject`)
+    },
+    onSuccess: async () => {
+      toast.info('Solicitação recusada.')
+      await requestsQuery.refetch()
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const removeFriend = useMutation({
+    mutationFn: async (userId: string) => {
+      await api.delete(`/friends/${userId}`)
+    },
+    onSuccess: async () => {
+      toast.info('Amizade desfeita.')
+      await friendsQuery.refetch()
+    },
+    onError: (err) => toast.error(errorMessage(err))
   })
 
   function onSearch(e: FormEvent) {
     e.preventDefault()
     searchQuery.refetch()
+  }
+
+  async function handleReject(request: FriendRequest) {
+    const ok = await confirm({
+      title: 'Recusar solicitação',
+      description: `Recusar a solicitação de @${request.username}?`,
+      confirmLabel: 'Recusar',
+      destructive: true
+    })
+    if (ok) {
+      rejectRequest.mutate(request.id)
+    }
+  }
+
+  async function handleRemoveFriend(friend: Friend) {
+    const ok = await confirm({
+      title: 'Desfazer amizade',
+      description: `Tem certeza que quer desfazer amizade com @${friend.username}? Vocês deixarão de ver pedidos restritos um do outro.`,
+      confirmLabel: 'Desfazer',
+      destructive: true
+    })
+    if (ok) {
+      removeFriend.mutate(friend.userId)
+    }
   }
 
   return (
@@ -132,9 +189,14 @@ export function FriendsPage() {
                   </Link>
                   <p className="pv-muted mt-1 truncate text-xs">@{request.username}</p>
                   <p className="pv-muted mt-1 text-xs">Recebida em {new Date(request.requestedAt).toLocaleString('pt-BR')}</p>
-                  <Button className="mt-3 w-full sm:w-auto" disabled={acceptRequest.isPending} onClick={() => acceptRequest.mutate(request.id)}>
-                    Aceitar amizade
-                  </Button>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Button disabled={acceptRequest.isPending} onClick={() => acceptRequest.mutate(request.id)}>
+                      Aceitar
+                    </Button>
+                    <Button variant="secondary" disabled={rejectRequest.isPending} onClick={() => handleReject(request)}>
+                      Recusar
+                    </Button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -156,6 +218,14 @@ export function FriendsPage() {
                   </Link>
                   <p className="pv-muted mt-1 truncate text-xs">@{friend.username}</p>
                   <p className="pv-muted mt-1 text-xs">Conectado em {new Date(friend.connectedAt).toLocaleDateString('pt-BR')}</p>
+                  <Button
+                    variant="secondary"
+                    className="mt-3 w-full sm:w-auto"
+                    disabled={removeFriend.isPending}
+                    onClick={() => handleRemoveFriend(friend)}
+                  >
+                    Desfazer amizade
+                  </Button>
                 </div>
               </article>
             ))}

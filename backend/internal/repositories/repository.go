@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"strings"
+	"time"
 
 	"parish-viva/backend/internal/models"
 
@@ -22,6 +23,7 @@ var ErrFriendUserNotFound = errors.New("friend user not found")
 var ErrCannotAddSelf = errors.New("cannot add self")
 var ErrFriendRequestAlreadyExists = errors.New("friend request already exists")
 var ErrFriendRequestNotFound = errors.New("friend request not found")
+var ErrFriendshipNotFound = errors.New("friendship not found")
 var ErrUsernameTaken = errors.New("username already in use")
 var ErrGroupAccessDenied = errors.New("group access denied")
 var ErrPrayerRequestNotFound = errors.New("prayer request not found")
@@ -29,12 +31,16 @@ var ErrPrayerRequestForbidden = errors.New("prayer request forbidden")
 var ErrGroupNotFound = errors.New("group not found")
 var ErrGroupMembershipNotFound = errors.New("group membership not found")
 var ErrUserNotFound = errors.New("user not found")
+var ErrAlreadyBlocked = errors.New("already blocked")
+var ErrBlockNotFound = errors.New("block not found")
+var ErrUserBlocked = errors.New("user blocked")
+var ErrModerationNotApplicable = errors.New("moderation not applicable")
 
 type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (models.User, error)
 	GetUserByUsername(ctx context.Context, username string) (models.User, error)
 	UpdateUserProfile(ctx context.Context, userID, displayName, username string, avatarURL *string, setAvatar bool, bio *string, setBio bool) (models.User, error)
-	GetFriendshipState(ctx context.Context, viewerID, ownerID string) (models.PublicFriendshipState, *string, error)
+	GetFriendshipState(ctx context.Context, viewerID, ownerID string) (models.PublicFriendshipState, *string, *string, error)
 	GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error)
 	UpsertAuthUser(ctx context.Context, userID, email, preferredUsername, preferredDisplayName, preferredTradition string) error
 	SetUserTradition(ctx context.Context, userID string, tradition models.Tradition) (models.User, error)
@@ -72,7 +78,18 @@ type Repository interface {
 	ListFriends(ctx context.Context, userID string) ([]models.Friend, error)
 	ListPendingFriendRequests(ctx context.Context, userID string) ([]models.FriendRequest, error)
 	AcceptFriendRequest(ctx context.Context, userID, requestID string) error
+	RejectFriendRequest(ctx context.Context, userID, requestID string) error
+	CancelFriendRequest(ctx context.Context, userID, requestID string) error
+	RemoveFriendship(ctx context.Context, userID, targetUserID string) error
 	SearchUsersForFriendship(ctx context.Context, userID, query string, limit int) ([]models.UserSummary, error)
+	BlockUser(ctx context.Context, blockerID, blockedUsername string) (models.BlockedUser, error)
+	UnblockUser(ctx context.Context, blockerID, blockedUserID string) error
+	ListBlockedUsers(ctx context.Context, blockerID string) ([]models.BlockedUser, error)
+	IsBlockedEitherWay(ctx context.Context, viewerID, otherID string) (bool, error)
+	BlockDirection(ctx context.Context, viewerID, otherID string) (string, error)
+	ListModerationQueue(ctx context.Context, moderatorUserID string, limit, offset int) ([]models.ModerationQueueItem, error)
+	ApplyModerationAction(ctx context.Context, moderatorUserID, requestID string, action models.ModerationActionType, reason string) error
+	ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error)
 	CreateNotification(ctx context.Context, in models.CreateNotificationInput) error
 	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error)
 	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
@@ -146,9 +163,9 @@ func (r *PostgresRepository) SetUserTradition(ctx context.Context, userID string
 	return u, err
 }
 
-func (r *PostgresRepository) GetFriendshipState(ctx context.Context, viewerID, ownerID string) (models.PublicFriendshipState, *string, error) {
+func (r *PostgresRepository) GetFriendshipState(ctx context.Context, viewerID, ownerID string) (models.PublicFriendshipState, *string, *string, error) {
 	if viewerID == ownerID {
-		return models.PublicFriendshipSelf, nil, nil
+		return models.PublicFriendshipSelf, nil, nil, nil
 	}
 	var (
 		id       string
@@ -165,21 +182,21 @@ func (r *PostgresRepository) GetFriendshipState(ctx context.Context, viewerID, o
 	`, viewerID, ownerID).Scan(&id, &userID, &friendID, &status)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return models.PublicFriendshipNone, nil, nil
+			return models.PublicFriendshipNone, nil, nil, nil
 		}
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	switch status {
 	case "ACCEPTED":
-		return models.PublicFriendshipFriend, nil, nil
+		return models.PublicFriendshipFriend, nil, nil, nil
 	case "PENDING":
-		if userID == viewerID {
-			return models.PublicFriendshipPendingOut, nil, nil
-		}
 		idCopy := id
-		return models.PublicFriendshipPendingIn, &idCopy, nil
+		if userID == viewerID {
+			return models.PublicFriendshipPendingOut, nil, &idCopy, nil
+		}
+		return models.PublicFriendshipPendingIn, &idCopy, nil, nil
 	default:
-		return models.PublicFriendshipNone, nil, nil
+		return models.PublicFriendshipNone, nil, nil, nil
 	}
 }
 
@@ -297,12 +314,31 @@ func (r *PostgresRepository) CreatePrayerRequest(ctx context.Context, in models.
 	}
 	defer tx.Rollback(ctx)
 
+	requiresModeration := false
+	if in.Visibility == models.VisibilityGroupOnly && len(in.GroupIDs) > 0 {
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM groups
+				WHERE id = ANY($1::uuid[])
+				  AND requires_moderation = true
+				  AND deleted_at IS NULL
+			)
+		`, in.GroupIDs).Scan(&requiresModeration)
+		if err != nil {
+			return models.PrayerRequest{}, err
+		}
+	}
+	initialStatus := "ACTIVE"
+	if requiresModeration {
+		initialStatus = "PENDING_REVIEW"
+	}
+
 	var pr models.PrayerRequest
 	err = tx.QueryRow(ctx, `
 		INSERT INTO prayer_requests (author_id, title, body, category, visibility, allow_anonymous, status, tradition)
-		VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', COALESCE((SELECT tradition FROM users WHERE id = $1), 'CATHOLIC'))
+		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE((SELECT tradition FROM users WHERE id = $1), 'CATHOLIC'))
 		RETURNING id::text, author_id::text, title, body, category, visibility, tradition, allow_anonymous, status, prayed_count, created_at, updated_at
-	`, in.AuthorID, in.Title, in.Body, in.Category, in.Visibility, in.AllowAnonymous).
+	`, in.AuthorID, in.Title, in.Body, in.Category, in.Visibility, in.AllowAnonymous, initialStatus).
 		Scan(&pr.ID, &pr.AuthorID, &pr.Title, &pr.Body, &pr.Category, &pr.Visibility, &pr.Tradition, &pr.AllowAnonymous, &pr.Status, &pr.PrayedCount, &pr.CreatedAt, &pr.UpdatedAt)
 	if err != nil {
 		return models.PrayerRequest{}, err
@@ -484,6 +520,12 @@ func (r *PostgresRepository) ListPublicPrayerRequests(ctx context.Context, viewe
 			(SELECT tradition FROM users WHERE id = NULLIF($3, '')::uuid AND deleted_at IS NULL),
 			prayer_requests.tradition
 		  )
+		  AND NOT EXISTS (
+			SELECT 1 FROM user_blocks ub
+			WHERE NULLIF($3, '')::uuid IS NOT NULL
+			  AND ((ub.blocker_user_id = NULLIF($3, '')::uuid AND ub.blocked_user_id = prayer_requests.author_id)
+				OR (ub.blocked_user_id = NULLIF($3, '')::uuid AND ub.blocker_user_id = prayer_requests.author_id))
+		  )
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2
 	`, limit, offset, viewerUserID)
@@ -511,6 +553,12 @@ func (r *PostgresRepository) CountPublicPrayerRequests(ctx context.Context, view
 		  AND tradition = COALESCE(
 			(SELECT tradition FROM users WHERE id = NULLIF($1, '')::uuid AND deleted_at IS NULL),
 			prayer_requests.tradition
+		  )
+		  AND NOT EXISTS (
+			SELECT 1 FROM user_blocks ub
+			WHERE NULLIF($1, '')::uuid IS NOT NULL
+			  AND ((ub.blocker_user_id = NULLIF($1, '')::uuid AND ub.blocked_user_id = prayer_requests.author_id)
+				OR (ub.blocked_user_id = NULLIF($1, '')::uuid AND ub.blocker_user_id = prayer_requests.author_id))
 		  )
 	`, viewerUserID).Scan(&total)
 	return total, err
@@ -574,6 +622,11 @@ func (r *PostgresRepository) ListGroupsPrayerRequests(ctx context.Context, userI
 			AND pr.status = 'ACTIVE'
 			AND pr.deleted_at IS NULL
 			AND pr.tradition = (SELECT tradition FROM users WHERE id = $1 AND deleted_at IS NULL)
+			AND NOT EXISTS (
+				SELECT 1 FROM user_blocks ub
+				WHERE (ub.blocker_user_id = $1 AND ub.blocked_user_id = pr.author_id)
+				   OR (ub.blocked_user_id = $1 AND ub.blocker_user_id = pr.author_id)
+			)
 		ORDER BY pr.created_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
@@ -605,6 +658,11 @@ func (r *PostgresRepository) CountGroupsPrayerRequests(ctx context.Context, user
 			  AND pr.status = 'ACTIVE'
 			  AND pr.deleted_at IS NULL
 			  AND pr.tradition = (SELECT tradition FROM users WHERE id = $1 AND deleted_at IS NULL)
+			  AND NOT EXISTS (
+				SELECT 1 FROM user_blocks ub
+				WHERE (ub.blocker_user_id = $1 AND ub.blocked_user_id = pr.author_id)
+				   OR (ub.blocked_user_id = $1 AND ub.blocker_user_id = pr.author_id)
+			  )
 		) AS group_requests
 	`, userID).Scan(&total)
 	return total, err
@@ -670,6 +728,11 @@ func (r *PostgresRepository) ListHomePrayerRequests(ctx context.Context, userID 
 			FROM friendships
 			WHERE status = 'ACCEPTED' AND (user_id = $1 OR friend_user_id = $1)
 		),
+		blocked_ids AS (
+			SELECT blocked_user_id AS uid FROM user_blocks WHERE blocker_user_id = $1
+			UNION
+			SELECT blocker_user_id AS uid FROM user_blocks WHERE blocked_user_id = $1
+		),
 		home_requests AS (
 			SELECT pr.id, pr.author_id, pr.title, pr.body, pr.category, pr.visibility, pr.tradition, pr.allow_anonymous, pr.status, pr.prayed_count, pr.created_at, pr.updated_at
 			FROM prayer_requests pr
@@ -682,6 +745,7 @@ func (r *PostgresRepository) ListHomePrayerRequests(ctx context.Context, userID 
 			INNER JOIN friend_ids f ON f.friend_id = pr.author_id
 			WHERE pr.visibility = 'PUBLIC' AND pr.status = 'ACTIVE' AND pr.deleted_at IS NULL
 			  AND pr.tradition = (SELECT tradition FROM viewer)
+			  AND pr.author_id NOT IN (SELECT uid FROM blocked_ids)
 			UNION
 			SELECT pr.id, pr.author_id, pr.title, pr.body, pr.category, pr.visibility, pr.tradition, pr.allow_anonymous, pr.status, pr.prayed_count, pr.created_at, pr.updated_at
 			FROM prayer_requests pr
@@ -689,6 +753,7 @@ func (r *PostgresRepository) ListHomePrayerRequests(ctx context.Context, userID 
 			INNER JOIN group_memberships gm ON gm.group_id = prg.group_id
 			WHERE gm.user_id = $1 AND gm.deleted_at IS NULL AND pr.status = 'ACTIVE' AND pr.deleted_at IS NULL
 			  AND pr.tradition = (SELECT tradition FROM viewer)
+			  AND pr.author_id NOT IN (SELECT uid FROM blocked_ids)
 		)
 		SELECT id::text, author_id::text, title, body, category, visibility, tradition, allow_anonymous, status, prayed_count, created_at, updated_at
 		FROM home_requests
@@ -720,6 +785,11 @@ func (r *PostgresRepository) CountHomePrayerRequests(ctx context.Context, userID
 			FROM friendships
 			WHERE status = 'ACCEPTED' AND (user_id = $1 OR friend_user_id = $1)
 		),
+		blocked_ids AS (
+			SELECT blocked_user_id AS uid FROM user_blocks WHERE blocker_user_id = $1
+			UNION
+			SELECT blocker_user_id AS uid FROM user_blocks WHERE blocked_user_id = $1
+		),
 		home_requests AS (
 			SELECT pr.id
 			FROM prayer_requests pr
@@ -732,6 +802,7 @@ func (r *PostgresRepository) CountHomePrayerRequests(ctx context.Context, userID
 			INNER JOIN friend_ids f ON f.friend_id = pr.author_id
 			WHERE pr.visibility = 'PUBLIC' AND pr.status = 'ACTIVE' AND pr.deleted_at IS NULL
 			  AND pr.tradition = (SELECT tradition FROM viewer)
+			  AND pr.author_id NOT IN (SELECT uid FROM blocked_ids)
 			UNION
 			SELECT pr.id
 			FROM prayer_requests pr
@@ -739,6 +810,7 @@ func (r *PostgresRepository) CountHomePrayerRequests(ctx context.Context, userID
 			INNER JOIN group_memberships gm ON gm.group_id = prg.group_id
 			WHERE gm.user_id = $1 AND gm.deleted_at IS NULL AND pr.status = 'ACTIVE' AND pr.deleted_at IS NULL
 			  AND pr.tradition = (SELECT tradition FROM viewer)
+			  AND pr.author_id NOT IN (SELECT uid FROM blocked_ids)
 		)
 		SELECT COUNT(*)::bigint
 		FROM home_requests
@@ -1186,6 +1258,21 @@ func (r *PostgresRepository) SendFriendRequest(ctx context.Context, fromUserID, 
 		return ErrCannotAddSelf
 	}
 
+	var blockExists bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM user_blocks
+			WHERE (blocker_user_id = $1 AND blocked_user_id = $2)
+			   OR (blocker_user_id = $2 AND blocked_user_id = $1)
+		)
+	`, fromUserID, targetUserID).Scan(&blockExists)
+	if err != nil {
+		return err
+	}
+	if blockExists {
+		return ErrUserBlocked
+	}
+
 	var existingStatus string
 	err = tx.QueryRow(ctx, `
 		SELECT status
@@ -1313,6 +1400,56 @@ func (r *PostgresRepository) AcceptFriendRequest(ctx context.Context, userID, re
 	return nil
 }
 
+func (r *PostgresRepository) RejectFriendRequest(ctx context.Context, userID, requestID string) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM friendships
+		WHERE id = $1
+		  AND friend_user_id = $2
+		  AND status = 'PENDING'
+	`, requestID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFriendRequestNotFound
+	}
+	return nil
+}
+
+func (r *PostgresRepository) CancelFriendRequest(ctx context.Context, userID, requestID string) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM friendships
+		WHERE id = $1
+		  AND user_id = $2
+		  AND status = 'PENDING'
+	`, requestID, userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFriendRequestNotFound
+	}
+	return nil
+}
+
+func (r *PostgresRepository) RemoveFriendship(ctx context.Context, userID, targetUserID string) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM friendships
+		WHERE status = 'ACCEPTED'
+		  AND (
+		    (user_id = $1 AND friend_user_id = $2)
+		    OR (user_id = $2 AND friend_user_id = $1)
+		  )
+	`, userID, targetUserID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFriendshipNotFound
+	}
+	return nil
+}
+
 func (r *PostgresRepository) SearchUsersForFriendship(ctx context.Context, userID, query string, limit int) ([]models.UserSummary, error) {
 	if limit <= 0 || limit > 30 {
 		limit = 20
@@ -1331,6 +1468,11 @@ func (r *PostgresRepository) SearchUsersForFriendship(ctx context.Context, userI
 			  FROM friendships f
 			  WHERE (f.user_id = $1 AND f.friend_user_id = u.id)
 			     OR (f.user_id = u.id AND f.friend_user_id = $1)
+		  )
+		  AND NOT EXISTS (
+			  SELECT 1 FROM user_blocks ub
+			  WHERE (ub.blocker_user_id = $1 AND ub.blocked_user_id = u.id)
+			     OR (ub.blocked_user_id = $1 AND ub.blocker_user_id = u.id)
 		  )
 		ORDER BY u.display_name ASC
 		LIMIT $3
@@ -1750,6 +1892,338 @@ func (r *PostgresRepository) MarkAllNotificationsRead(ctx context.Context, userI
 		WHERE user_id = $1 AND read_at IS NULL
 	`, userID)
 	return err
+}
+
+func (r *PostgresRepository) BlockUser(ctx context.Context, blockerID, blockedUsername string) (models.BlockedUser, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return models.BlockedUser{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var blockedID string
+	var displayName, username string
+	var avatarURL *string
+	err = tx.QueryRow(ctx, `
+		SELECT id::text, username, display_name, avatar_url
+		FROM users
+		WHERE LOWER(username) = LOWER($1) AND deleted_at IS NULL
+	`, blockedUsername).Scan(&blockedID, &username, &displayName, &avatarURL)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.BlockedUser{}, ErrUserNotFound
+		}
+		return models.BlockedUser{}, err
+	}
+	if blockedID == blockerID {
+		return models.BlockedUser{}, ErrCannotAddSelf
+	}
+
+	var blockedAt time.Time
+	err = tx.QueryRow(ctx, `
+		INSERT INTO user_blocks (blocker_user_id, blocked_user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (blocker_user_id, blocked_user_id) DO NOTHING
+		RETURNING created_at
+	`, blockerID, blockedID).Scan(&blockedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.BlockedUser{}, ErrAlreadyBlocked
+		}
+		return models.BlockedUser{}, err
+	}
+
+	// Tear down friendship/pending requests both directions.
+	_, err = tx.Exec(ctx, `
+		DELETE FROM friendships
+		WHERE (user_id = $1 AND friend_user_id = $2)
+		   OR (user_id = $2 AND friend_user_id = $1)
+	`, blockerID, blockedID)
+	if err != nil {
+		return models.BlockedUser{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.BlockedUser{}, err
+	}
+
+	return models.BlockedUser{
+		UserID:      blockedID,
+		Username:    username,
+		DisplayName: displayName,
+		AvatarURL:   avatarURL,
+		BlockedAt:   blockedAt,
+	}, nil
+}
+
+func (r *PostgresRepository) UnblockUser(ctx context.Context, blockerID, blockedUserID string) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM user_blocks
+		WHERE blocker_user_id = $1 AND blocked_user_id = $2
+	`, blockerID, blockedUserID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrBlockNotFound
+	}
+	return nil
+}
+
+func (r *PostgresRepository) ListBlockedUsers(ctx context.Context, blockerID string) ([]models.BlockedUser, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id::text, u.username, u.display_name, u.avatar_url, b.created_at
+		FROM user_blocks b
+		INNER JOIN users u ON u.id = b.blocked_user_id
+		WHERE b.blocker_user_id = $1 AND u.deleted_at IS NULL
+		ORDER BY b.created_at DESC
+	`, blockerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.BlockedUser, 0)
+	for rows.Next() {
+		var item models.BlockedUser
+		if err := rows.Scan(&item.UserID, &item.Username, &item.DisplayName, &item.AvatarURL, &item.BlockedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) IsBlockedEitherWay(ctx context.Context, viewerID, otherID string) (bool, error) {
+	dir, err := r.BlockDirection(ctx, viewerID, otherID)
+	return dir != "NONE", err
+}
+
+func (r *PostgresRepository) BlockDirection(ctx context.Context, viewerID, otherID string) (string, error) {
+	if viewerID == "" || otherID == "" || viewerID == otherID {
+		return "NONE", nil
+	}
+	var byMe, byThem bool
+	err := r.db.QueryRow(ctx, `
+		SELECT
+			EXISTS (SELECT 1 FROM user_blocks WHERE blocker_user_id = $1 AND blocked_user_id = $2),
+			EXISTS (SELECT 1 FROM user_blocks WHERE blocker_user_id = $2 AND blocked_user_id = $1)
+	`, viewerID, otherID).Scan(&byMe, &byThem)
+	if err != nil {
+		return "NONE", err
+	}
+	if byMe {
+		return "BY_ME", nil
+	}
+	if byThem {
+		return "BY_THEM", nil
+	}
+	return "NONE", nil
+}
+
+func (r *PostgresRepository) ListModerationQueue(ctx context.Context, moderatorUserID string, limit, offset int) ([]models.ModerationQueueItem, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT
+			pr.id::text,
+			g.id::text AS group_id,
+			g.name AS group_name,
+			u.id::text AS author_id,
+			u.username,
+			u.display_name,
+			u.avatar_url,
+			pr.title,
+			pr.body,
+			pr.category,
+			pr.visibility,
+			pr.created_at
+		FROM prayer_requests pr
+		INNER JOIN prayer_request_groups prg ON prg.prayer_request_id = pr.id
+		INNER JOIN groups g ON g.id = prg.group_id AND g.deleted_at IS NULL
+		INNER JOIN group_memberships gm
+		    ON gm.group_id = g.id
+		   AND gm.user_id = $1
+		   AND gm.deleted_at IS NULL
+		   AND gm.role IN ('ADMIN','MODERATOR')
+		INNER JOIN users u ON u.id = pr.author_id AND u.deleted_at IS NULL
+		WHERE pr.status = 'PENDING_REVIEW'
+		  AND pr.deleted_at IS NULL
+		ORDER BY pr.created_at ASC
+		LIMIT $2 OFFSET $3
+	`, moderatorUserID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.ModerationQueueItem, 0)
+	for rows.Next() {
+		var it models.ModerationQueueItem
+		if err := rows.Scan(
+			&it.ID, &it.GroupID, &it.GroupName,
+			&it.AuthorID, &it.AuthorUsername, &it.AuthorDisplayName, &it.AuthorAvatarURL,
+			&it.Title, &it.Body, &it.Category, &it.Visibility, &it.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) ApplyModerationAction(ctx context.Context, moderatorUserID, requestID string, action models.ModerationActionType, reason string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var (
+		authorID  string
+		status    string
+		groupID   *string
+		groupName *string
+	)
+	err = tx.QueryRow(ctx, `
+		SELECT
+			pr.author_id::text,
+			pr.status,
+			(SELECT g.id::text FROM groups g
+				INNER JOIN prayer_request_groups prg ON prg.group_id = g.id
+				WHERE prg.prayer_request_id = pr.id
+				LIMIT 1) AS group_id,
+			(SELECT g.name FROM groups g
+				INNER JOIN prayer_request_groups prg ON prg.group_id = g.id
+				WHERE prg.prayer_request_id = pr.id
+				LIMIT 1) AS group_name
+		FROM prayer_requests pr
+		WHERE pr.id = $1 AND pr.deleted_at IS NULL
+	`, requestID).Scan(&authorID, &status, &groupID, &groupName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrPrayerRequestNotFound
+		}
+		return err
+	}
+
+	if groupID == nil {
+		return ErrModerationNotApplicable
+	}
+
+	var canModerate bool
+	err = tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM group_memberships
+			WHERE group_id = $1
+			  AND user_id = $2
+			  AND deleted_at IS NULL
+			  AND role IN ('ADMIN','MODERATOR')
+		)
+	`, *groupID, moderatorUserID).Scan(&canModerate)
+	if err != nil {
+		return err
+	}
+	if !canModerate {
+		return ErrPrayerRequestForbidden
+	}
+
+	var newStatus string
+	var notifType models.NotificationType
+	switch action {
+	case models.ActionApprove:
+		if status != "PENDING_REVIEW" {
+			return ErrModerationNotApplicable
+		}
+		newStatus = "ACTIVE"
+		notifType = models.NotificationTypeRequestApproved
+	case models.ActionReject:
+		newStatus = "REMOVED"
+		notifType = models.NotificationTypeRequestRejected
+	case models.ActionRequestChanges:
+		if status != "PENDING_REVIEW" {
+			return ErrModerationNotApplicable
+		}
+		newStatus = "ARCHIVED"
+		notifType = models.NotificationTypeRequestChangesAsked
+	case models.ActionRemove:
+		newStatus = "REMOVED"
+		notifType = models.NotificationTypeRequestRejected
+	default:
+		return ErrModerationNotApplicable
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE prayer_requests
+		SET status = $2, updated_at = NOW()
+		WHERE id = $1
+	`, requestID, newStatus)
+	if err != nil {
+		return err
+	}
+
+	var reasonPtr any
+	if strings.TrimSpace(reason) == "" {
+		reasonPtr = nil
+	} else {
+		reasonPtr = strings.TrimSpace(reason)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO moderation_actions (prayer_request_id, group_id, actor_user_id, action, reason)
+		VALUES ($1, $2, $3, $4, $5)
+	`, requestID, *groupID, moderatorUserID, string(action), reasonPtr)
+	if err != nil {
+		return err
+	}
+
+	if authorID != moderatorUserID {
+		actor := moderatorUserID
+		payload := map[string]any{}
+		if groupName != nil {
+			payload["groupName"] = *groupName
+		}
+		if reasonPtr != nil {
+			payload["reason"] = reasonPtr
+		}
+		_ = insertNotificationInTx(ctx, tx, models.CreateNotificationInput{
+			UserID:      authorID,
+			Type:        notifType,
+			ActorUserID: &actor,
+			SubjectType: models.NotificationSubjectPrayerRequest,
+			SubjectID:   requestID,
+			Payload:     payload,
+		})
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *PostgresRepository) ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id::text, prayer_request_id::text, group_id::text, actor_user_id::text, action, reason, created_at
+		FROM moderation_actions
+		WHERE prayer_request_id = $1
+		ORDER BY created_at DESC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]models.ModerationActionRecord, 0)
+	for rows.Next() {
+		var it models.ModerationActionRecord
+		var groupID *string
+		if err := rows.Scan(&it.ID, &it.PrayerRequestID, &groupID, &it.ActorUserID, &it.Action, &it.Reason, &it.CreatedAt); err != nil {
+			return nil, err
+		}
+		it.GroupID = groupID
+		items = append(items, it)
+	}
+	return items, rows.Err()
 }
 
 var _ Repository = (*PostgresRepository)(nil)

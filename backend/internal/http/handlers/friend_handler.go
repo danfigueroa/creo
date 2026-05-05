@@ -83,6 +83,10 @@ func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, http.StatusConflict, "FRIEND_REQUEST_EXISTS", "Friend request already exists", nil)
 			return
 		}
+		if errors.Is(err, repositories.ErrUserBlocked) {
+			shared.WriteError(w, http.StatusForbidden, "USER_BLOCKED", "User is blocked", nil)
+			return
+		}
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
@@ -107,6 +111,67 @@ func (h *FriendHandler) AcceptRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "accepted"})
+}
+
+func (h *FriendHandler) RejectRequest(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	requestID := chi.URLParam(r, "requestId")
+	err := h.service.RejectFriendRequest(r.Context(), userID, requestID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrFriendRequestNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "FRIEND_REQUEST_NOT_FOUND", "Friend request not found", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "rejected"})
+}
+
+func (h *FriendHandler) CancelRequest(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	requestID := chi.URLParam(r, "requestId")
+	err := h.service.CancelFriendRequest(r.Context(), userID, requestID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrFriendRequestNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "FRIEND_REQUEST_NOT_FOUND", "Friend request not found", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "cancelled"})
+}
+
+func (h *FriendHandler) RemoveFriend(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	targetUserID := chi.URLParam(r, "userId")
+	err := h.service.RemoveFriendship(r.Context(), userID, targetUserID)
+	if err != nil {
+		if errors.Is(err, services.ErrCannotTargetSelf) {
+			shared.WriteError(w, http.StatusBadRequest, "CANNOT_TARGET_SELF", "You cannot remove yourself", nil)
+			return
+		}
+		if errors.Is(err, repositories.ErrFriendshipNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "FRIENDSHIP_NOT_FOUND", "Friendship not found", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "removed"})
 }
 
 func (h *FriendHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {

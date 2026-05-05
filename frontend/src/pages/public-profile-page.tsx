@@ -4,11 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
 import { Button } from '@/components/button'
+import { useToast } from '@/components/toaster'
+import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
+import { errorMessage } from '@/lib/api-error'
 import { prayerActionsFor, traditionLabel, type Tradition } from '@/lib/traditions'
 import { categoryEmoji, categoryLabel, prayerCategoryOptions } from '@/lib/categories'
 
-type FriendshipState = 'SELF' | 'FRIEND' | 'PENDING_OUT' | 'PENDING_IN' | 'NONE'
+type FriendshipState = 'SELF' | 'FRIEND' | 'PENDING_OUT' | 'PENDING_IN' | 'NONE' | 'BLOCKED_BY_ME' | 'BLOCKED_BY_THEM'
 
 type PublicProfile = {
   user: {
@@ -21,6 +24,7 @@ type PublicProfile = {
   }
   friendshipStatus: FriendshipState
   incomingFriendRequestId?: string | null
+  outgoingFriendRequestId?: string | null
   stats?: {
     requestsCreated: number
     prayerActionsTotal: number
@@ -33,9 +37,13 @@ export function PublicProfilePage() {
   const { username = '' } = useParams<{ username: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const toast = useToast()
+  const confirm = useConfirm()
+
+  const profileKey = ['profile', 'public', username.toLowerCase()]
 
   const profileQuery = useQuery({
-    queryKey: ['profile', 'public', username.toLowerCase()],
+    queryKey: profileKey,
     enabled: username.length > 0,
     queryFn: async () => {
       const res = await api.get<PublicProfile>(`/users/${username}`)
@@ -44,13 +52,23 @@ export function PublicProfilePage() {
     retry: false
   })
 
+  async function invalidateFriendsAreas() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: profileKey }),
+      queryClient.invalidateQueries({ queryKey: ['friends'] }),
+      queryClient.invalidateQueries({ queryKey: ['friend-requests'] })
+    ])
+  }
+
   const sendFriendRequest = useMutation({
     mutationFn: async () => {
       await api.post('/friends/requests', { targetUsername: username })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['profile', 'public', username.toLowerCase()] })
-    }
+      toast.success('Solicitação enviada.')
+      await invalidateFriendsAreas()
+    },
+    onError: (err) => toast.error(errorMessage(err))
   })
 
   const acceptFriendRequest = useMutation({
@@ -58,12 +76,71 @@ export function PublicProfilePage() {
       await api.post(`/friends/requests/${requestId}/accept`)
     },
     onSuccess: async () => {
+      toast.success('Amizade aceita.')
+      await invalidateFriendsAreas()
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const cancelFriendRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      await api.delete(`/friends/requests/${requestId}`)
+    },
+    onSuccess: async () => {
+      toast.info('Solicitação cancelada.')
+      await invalidateFriendsAreas()
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const rejectFriendRequest = useMutation({
+    mutationFn: async (requestId: string) => {
+      await api.post(`/friends/requests/${requestId}/reject`)
+    },
+    onSuccess: async () => {
+      toast.info('Solicitação recusada.')
+      await invalidateFriendsAreas()
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const removeFriend = useMutation({
+    mutationFn: async (userId: string) => {
+      await api.delete(`/friends/${userId}`)
+    },
+    onSuccess: async () => {
+      toast.info('Amizade desfeita.')
+      await invalidateFriendsAreas()
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const blockUser = useMutation({
+    mutationFn: async () => {
+      await api.post('/blocks', { targetUsername: username })
+    },
+    onSuccess: async () => {
+      toast.info('Usuário bloqueado.')
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['profile', 'public', username.toLowerCase()] }),
-        queryClient.invalidateQueries({ queryKey: ['friends'] }),
-        queryClient.invalidateQueries({ queryKey: ['friend-requests'] })
+        invalidateFriendsAreas(),
+        queryClient.invalidateQueries({ queryKey: ['blocks'] })
       ])
-    }
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
+  const unblockUser = useMutation({
+    mutationFn: async (userId: string) => {
+      await api.delete(`/blocks/${userId}`)
+    },
+    onSuccess: async () => {
+      toast.success('Usuário desbloqueado.')
+      await Promise.all([
+        invalidateFriendsAreas(),
+        queryClient.invalidateQueries({ queryKey: ['blocks'] })
+      ])
+    },
+    onError: (err) => toast.error(errorMessage(err))
   })
 
   const status = profileQuery.data?.friendshipStatus
@@ -125,11 +202,64 @@ export function PublicProfilePage() {
           </div>
           <ProfileActionButton
             status={status}
+            displayName={owner.displayName}
+            ownerId={owner.id}
             incomingId={profileQuery.data?.incomingFriendRequestId ?? null}
+            outgoingId={profileQuery.data?.outgoingFriendRequestId ?? null}
             onSendFriendRequest={() => sendFriendRequest.mutate()}
             onAcceptFriendRequest={(id) => acceptFriendRequest.mutate(id)}
+            onRejectFriendRequest={async (id) => {
+              const ok = await confirm({
+                title: 'Recusar solicitação',
+                description: `Recusar solicitação de @${username}?`,
+                confirmLabel: 'Recusar',
+                destructive: true
+              })
+              if (ok) rejectFriendRequest.mutate(id)
+            }}
+            onCancelFriendRequest={async (id) => {
+              const ok = await confirm({
+                title: 'Cancelar solicitação',
+                description: `Cancelar solicitação enviada para @${username}?`,
+                confirmLabel: 'Cancelar solicitação',
+                cancelLabel: 'Voltar',
+                destructive: true
+              })
+              if (ok) cancelFriendRequest.mutate(id)
+            }}
+            onRemoveFriend={async (id) => {
+              const ok = await confirm({
+                title: 'Desfazer amizade',
+                description: `Tem certeza que quer desfazer amizade com ${owner.displayName}?`,
+                confirmLabel: 'Desfazer',
+                destructive: true
+              })
+              if (ok) removeFriend.mutate(id)
+            }}
+            onBlock={async () => {
+              const ok = await confirm({
+                title: 'Bloquear usuário',
+                description: `Bloquear ${owner.displayName}? Vocês não verão mais pedidos um do outro e qualquer amizade ou solicitação será desfeita.`,
+                confirmLabel: 'Bloquear',
+                destructive: true
+              })
+              if (ok) blockUser.mutate()
+            }}
+            onUnblock={async () => {
+              const ok = await confirm({
+                title: 'Desbloquear usuário',
+                description: `Desbloquear ${owner.displayName}?`,
+                confirmLabel: 'Desbloquear'
+              })
+              if (ok) unblockUser.mutate(owner.id)
+            }}
             sendBusy={sendFriendRequest.isPending}
             acceptBusy={acceptFriendRequest.isPending}
+            rejectBusy={rejectFriendRequest.isPending}
+            cancelBusy={cancelFriendRequest.isPending}
+            removeBusy={removeFriend.isPending}
+            blockBusy={blockUser.isPending}
+            unblockBusy={unblockUser.isPending}
           />
         </div>
         {owner.bio && (
@@ -239,14 +369,46 @@ function UnknownCategoriesList({ byCategory }: { byCategory: Record<string, numb
 
 type ProfileActionButtonProps = {
   status: FriendshipState | undefined
+  displayName: string
+  ownerId: string
   incomingId: string | null
+  outgoingId: string | null
   onSendFriendRequest: () => void
   onAcceptFriendRequest: (id: string) => void
+  onRejectFriendRequest: (id: string) => void
+  onCancelFriendRequest: (id: string) => void
+  onRemoveFriend: (id: string) => void
+  onBlock: () => void
+  onUnblock: () => void
   sendBusy: boolean
   acceptBusy: boolean
+  rejectBusy: boolean
+  cancelBusy: boolean
+  removeBusy: boolean
+  blockBusy: boolean
+  unblockBusy: boolean
 }
 
-function ProfileActionButton({ status, incomingId, onSendFriendRequest, onAcceptFriendRequest, sendBusy, acceptBusy }: ProfileActionButtonProps) {
+function ProfileActionButton({
+  status,
+  ownerId,
+  incomingId,
+  outgoingId,
+  onSendFriendRequest,
+  onAcceptFriendRequest,
+  onRejectFriendRequest,
+  onCancelFriendRequest,
+  onRemoveFriend,
+  onBlock,
+  onUnblock,
+  sendBusy,
+  acceptBusy,
+  rejectBusy,
+  cancelBusy,
+  removeBusy,
+  blockBusy,
+  unblockBusy
+}: ProfileActionButtonProps) {
   if (!status) return null
   if (status === 'SELF') {
     return (
@@ -255,28 +417,72 @@ function ProfileActionButton({ status, incomingId, onSendFriendRequest, onAccept
       </Link>
     )
   }
+  if (status === 'BLOCKED_BY_ME') {
+    return (
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <span className="rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
+          Você bloqueou este usuário
+        </span>
+        <Button type="button" variant="secondary" disabled={unblockBusy} onClick={onUnblock}>
+          {unblockBusy ? 'Desbloqueando…' : 'Desbloquear'}
+        </Button>
+      </div>
+    )
+  }
+  if (status === 'BLOCKED_BY_THEM') {
+    return (
+      <span className="shrink-0 rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
+        Indisponível
+      </span>
+    )
+  }
   if (status === 'FRIEND') {
     return (
-      <span className="shrink-0 rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary">
-        ✓ Amigos
-      </span>
+      <div className="flex shrink-0 flex-col items-end gap-2">
+        <span className="rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary">
+          ✓ Amigos
+        </span>
+        <Button type="button" variant="secondary" disabled={removeBusy} onClick={() => onRemoveFriend(ownerId)}>
+          {removeBusy ? 'Removendo…' : 'Desfazer amizade'}
+        </Button>
+        <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
+          {blockBusy ? 'Bloqueando…' : 'Bloquear'}
+        </Button>
+      </div>
     )
   }
   if (status === 'PENDING_OUT') {
     return (
-      <Button type="button" variant="secondary" disabled className="shrink-0">Solicitação enviada</Button>
+      <div className="flex shrink-0 flex-col gap-2">
+        <Button type="button" variant="secondary" disabled className="cursor-default">Solicitação enviada</Button>
+        {outgoingId && (
+          <Button type="button" variant="secondary" disabled={cancelBusy} onClick={() => onCancelFriendRequest(outgoingId)}>
+            {cancelBusy ? 'Cancelando…' : 'Cancelar solicitação'}
+          </Button>
+        )}
+      </div>
     )
   }
   if (status === 'PENDING_IN' && incomingId) {
     return (
-      <Button type="button" disabled={acceptBusy} onClick={() => onAcceptFriendRequest(incomingId)} className="shrink-0">
-        {acceptBusy ? 'Aceitando…' : 'Aceitar solicitação'}
-      </Button>
+      <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+        <Button type="button" disabled={acceptBusy} onClick={() => onAcceptFriendRequest(incomingId)}>
+          {acceptBusy ? 'Aceitando…' : 'Aceitar'}
+        </Button>
+        <Button type="button" variant="secondary" disabled={rejectBusy} onClick={() => onRejectFriendRequest(incomingId)}>
+          {rejectBusy ? 'Recusando…' : 'Recusar'}
+        </Button>
+      </div>
     )
   }
   return (
-    <Button type="button" disabled={sendBusy} onClick={onSendFriendRequest} className="shrink-0">
-      {sendBusy ? 'Enviando…' : 'Adicionar como amigo'}
-    </Button>
+    <div className="flex shrink-0 flex-col gap-2">
+      <Button type="button" disabled={sendBusy} onClick={onSendFriendRequest}>
+        {sendBusy ? 'Enviando…' : 'Adicionar como amigo'}
+      </Button>
+      <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
+        {blockBusy ? 'Bloqueando…' : 'Bloquear'}
+      </Button>
+    </div>
   )
 }
