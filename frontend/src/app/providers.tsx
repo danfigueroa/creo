@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PropsWithChildren, useEffect, useState } from 'react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
+import { ToasterProvider } from '@/components/toaster'
+import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 
 export function AppProviders({ children }: PropsWithChildren) {
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
@@ -41,5 +43,11 @@ export function AppProviders({ children }: PropsWithChildren) {
     }
   }, [setAccessToken])
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <ToasterProvider>
+        <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+      </ToasterProvider>
+    </QueryClientProvider>
+  )
 }
