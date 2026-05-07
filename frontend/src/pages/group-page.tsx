@@ -206,9 +206,13 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
 
   if (loading || !details) {
     return (
-      <section className="pv-panel rounded-3xl p-6 sm:p-7">
-        <span className="pv-shimmer block h-7 w-1/2 rounded" />
-        <span className="pv-shimmer mt-3 block h-4 w-3/4 rounded" />
+      <section className="pv-panel overflow-hidden rounded-3xl">
+        <div className="pv-shimmer aspect-[16/5] w-full" />
+        <div className="px-5 pb-5 sm:px-7 sm:pb-7">
+          <span className="pv-shimmer -mt-10 block h-20 w-20 rounded-2xl border-4 border-[var(--panel-surface)]" />
+          <span className="pv-shimmer mt-3 block h-6 w-1/2 rounded" />
+          <span className="pv-shimmer mt-2 block h-4 w-3/4 rounded" />
+        </div>
       </section>
     )
   }
@@ -219,43 +223,58 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
     : null
 
   return (
-    <section className="pv-panel rounded-3xl p-6 sm:p-7">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
+    <section className="pv-panel overflow-hidden rounded-3xl">
+      {details.imageUrl ? (
+        <img
+          src={details.imageUrl}
+          alt=""
+          className="aspect-[16/5] w-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div
+          aria-hidden
+          className="aspect-[16/5] w-full bg-gradient-to-br from-primary/35 via-primary/15 to-primary/5"
+        />
+      )}
+      <div className="px-5 pb-5 sm:px-7 sm:pb-7">
+        <div className="-mt-10 flex items-end gap-4">
           {details.imageUrl ? (
             <img
               src={details.imageUrl}
               alt=""
-              className="h-14 w-14 shrink-0 rounded-2xl border-2 border-primary object-cover"
+              className="h-20 w-20 shrink-0 rounded-2xl border-4 border-[var(--panel-surface)] bg-bg object-cover shadow-[0_8px_24px_-12px_rgba(var(--shadow-rgb),0.5)]"
               referrerPolicy="no-referrer"
             />
           ) : (
-            <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-base font-bold text-primary">
+            <span className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border-4 border-[var(--panel-surface)] bg-bg text-lg font-bold text-primary shadow-[0_8px_24px_-12px_rgba(var(--shadow-rgb),0.5)]">
               {initials}
             </span>
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1 pb-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Grupo</p>
-            <h1 className="pv-title mt-1 text-2xl font-bold text-secondary sm:text-3xl">{details.name}</h1>
-            <div className="pv-muted mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <span>{details.memberCount} {details.memberCount === 1 ? 'membro' : 'membros'}</span>
-              <span aria-hidden>·</span>
-              <span>{policyLabel[details.joinPolicy]}</span>
-              {details.myRole && (
-                <>
-                  <span aria-hidden>·</span>
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] text-primary">
-                    Você é {roleLabel[details.myRole]}
-                  </span>
-                </>
-              )}
-            </div>
-            {details.description && (
-              <p className="pv-muted mt-3 max-w-2xl text-sm leading-relaxed">{details.description}</p>
-            )}
+            <h1 className="pv-title mt-0.5 text-2xl font-bold leading-tight text-secondary sm:text-3xl">
+              {details.name}
+            </h1>
           </div>
         </div>
-        <div className="shrink-0">
+
+        <div className="pv-muted mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span>{details.memberCount} {details.memberCount === 1 ? 'membro' : 'membros'}</span>
+          <span aria-hidden>·</span>
+          <span>{policyLabel[details.joinPolicy]}</span>
+          {details.myRole && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] text-primary">
+              Você é {roleLabel[details.myRole]}
+            </span>
+          )}
+        </div>
+
+        {details.description && (
+          <p className="pv-muted mt-3 max-w-2xl text-sm leading-relaxed">{details.description}</p>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-2">
           {!details.isMember && !details.hasPendingJoin && details.joinPolicy !== 'INVITE_ONLY' && (
             <Button onClick={() => requestJoin.mutate()} disabled={requestJoin.isPending}>
               {details.joinPolicy === 'OPEN' ? 'Entrar' : 'Solicitar entrada'}
@@ -272,10 +291,11 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
             </Button>
           )}
         </div>
+
+        {actionLabel && (
+          <p className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{actionLabel}</p>
+        )}
       </div>
-      {actionLabel && (
-        <p className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{actionLabel}</p>
-      )}
     </section>
   )
 }
