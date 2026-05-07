@@ -428,7 +428,7 @@ function ManageMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-9 z-20 w-36 overflow-hidden rounded-xl border border-primary/20 bg-panel shadow-[0_18px_44px_-22px_rgba(var(--shadow-rgb),0.6)]"
+          className="absolute bottom-full right-0 z-20 mb-1 w-36 overflow-hidden rounded-xl border border-primary/20 bg-panel shadow-[0_18px_44px_-22px_rgba(var(--shadow-rgb),0.6)]"
         >
           <button
             type="button"
