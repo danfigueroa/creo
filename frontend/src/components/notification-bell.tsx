@@ -10,6 +10,7 @@ type NotificationType =
   | 'FRIEND_REQUEST_ACCEPTED'
   | 'GROUP_JOIN_APPROVED'
   | 'GROUP_JOIN_REQUESTED'
+  | 'GROUP_ANNOUNCEMENT_POSTED'
   | 'REQUEST_APPROVED'
   | 'REQUEST_REJECTED'
   | 'REQUEST_CHANGES_ASKED'
@@ -54,6 +55,10 @@ function copyFor(n: Notification): string {
       return 'Você foi aceito em um grupo'
     case 'GROUP_JOIN_REQUESTED':
       return `${name} pediu para entrar em um grupo que você administra`
+    case 'GROUP_ANNOUNCEMENT_POSTED': {
+      const title = typeof n.payload?.title === 'string' ? (n.payload.title as string) : ''
+      return title ? `${name} publicou: ${title}` : `${name} publicou um anúncio em um grupo`
+    }
     case 'REQUEST_APPROVED':
       return 'Seu pedido foi aprovado pela moderação'
     case 'REQUEST_REJECTED':

@@ -3,19 +3,18 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useSearchParams } from 'react-router-dom'
 import { PageShell } from '@/components/page-shell'
 import { api } from '@/lib/api'
-import { FeedCard, type FeedCardItem } from '@/components/feed-card'
+import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
 
-type FeedItem = FeedCardItem
-
 type FeedScope = 'home' | 'public' | 'groups' | 'friends'
 type ProfileMini = { id: string; displayName?: string; username?: string; avatarUrl?: string | null; tradition?: Tradition }
 type GroupLite = { id: string; name: string }
 type FeedPagination = { page: number; pageSize: number; total: number; totalPages: number }
-type FeedResponse = { items: FeedItem[]; pagination: FeedPagination }
+type RawFeedResponse = { items: Parameters<typeof flattenFeedItem>[0][]; pagination: FeedPagination }
+type FeedResponse = { items: FeedCardItem[]; pagination: FeedPagination }
 
 const tabs: Array<{ scope: FeedScope; label: string; endpoint: string; requiresAuth: boolean }> = [
   { scope: 'home', label: 'Principal', endpoint: '/feed/home', requiresAuth: true },
@@ -60,13 +59,16 @@ export function FeedPage() {
   const page = Number.isNaN(rawPage) || rawPage < 1 ? 1 : rawPage
   const activeTab = tabs.find((tab) => tab.scope === scope) ?? tabs[0]
 
-  const fetchFeed = async (targetScope: FeedScope, targetPage: number) => {
+  const fetchFeed = async (targetScope: FeedScope, targetPage: number): Promise<FeedResponse> => {
     const targetTab = tabs.find((tab) => tab.scope === targetScope) ?? tabs[0]
     const targetOffset = (targetPage - 1) * feedPageSize
-    const res = await api.get<FeedResponse>(targetTab.endpoint, {
+    const res = await api.get<RawFeedResponse>(targetTab.endpoint, {
       params: { limit: feedPageSize, offset: targetOffset }
     })
-    return res.data
+    return {
+      items: res.data.items.map(flattenFeedItem),
+      pagination: res.data.pagination
+    }
   }
 
   const query = useQuery({
@@ -94,7 +96,7 @@ export function FeedPage() {
         queryClient.setQueryData<FeedResponse>(['feed', scope, page], {
           ...previous,
           items: previous.items.map((it) =>
-            it.id === requestID
+            it.kind === 'PRAYER_REQUEST' && it.id === requestID
               ? {
                   ...it,
                   prayedCount: it.prayedCount + 1,

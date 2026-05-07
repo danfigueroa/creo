@@ -10,6 +10,7 @@ type Group = {
   id: string
   name: string
   description: string
+  imageUrl?: string | null
   joinPolicy: JoinPolicy
 }
 
@@ -94,9 +95,18 @@ export function GroupsPage() {
                   className="pv-panel group flex h-full flex-col gap-3 rounded-2xl p-5 transition hover:border-primary"
                 >
                   <div className="flex items-start gap-3">
-                    <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-sm font-bold text-primary">
-                      {initials}
-                    </span>
+                    {group.imageUrl ? (
+                      <img
+                        src={group.imageUrl}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-2xl border-2 border-primary object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-sm font-bold text-primary">
+                        {initials}
+                      </span>
+                    )}
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate text-base font-semibold text-secondary">{group.name}</h3>
                       <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">

@@ -1,16 +1,22 @@
-import { FormEvent, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
-import { FeedCard, type FeedCardItem } from '@/components/feed-card'
+import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { api } from '@/lib/api'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
+import {
+  ImageUploadError,
+  IMAGE_ACCEPTED_MIMES,
+  IMAGE_MAX_BYTES,
+  uploadGroupCover
+} from '@/lib/supabase'
 
 type Role = 'MEMBER' | 'MODERATOR' | 'ADMIN'
 type JoinPolicy = 'OPEN' | 'REQUEST' | 'INVITE_ONLY'
@@ -50,6 +56,11 @@ type JoinRequest = {
 }
 
 type ProfileMini = { id: string; tradition?: Tradition }
+
+type RawGroupFeedResponse = {
+  items: Parameters<typeof flattenFeedItem>[0][]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
 
 type GroupFeedResponse = {
   items: FeedCardItem[]
@@ -145,7 +156,13 @@ export function GroupPage() {
         </nav>
 
         {tab === 'mural' && (
-          <GroupMural groupId={id} viewerId={profileQuery.data?.id} tradition={profileQuery.data?.tradition} queryClient={queryClient} />
+          <GroupMural
+            groupId={id}
+            viewerId={profileQuery.data?.id}
+            tradition={profileQuery.data?.tradition}
+            queryClient={queryClient}
+            myRole={myRole}
+          />
         )}
         {tab === 'members' && (
           <MembersTab groupId={id} myRole={myRole} viewerId={profileQuery.data?.id} />
@@ -205,9 +222,18 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
     <section className="pv-panel rounded-3xl p-6 sm:p-7">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-base font-bold text-primary">
-            {initials}
-          </span>
+          {details.imageUrl ? (
+            <img
+              src={details.imageUrl}
+              alt=""
+              className="h-14 w-14 shrink-0 rounded-2xl border-2 border-primary object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-base font-bold text-primary">
+              {initials}
+            </span>
+          )}
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Grupo</p>
             <h1 className="pv-title mt-1 text-2xl font-bold text-secondary sm:text-3xl">{details.name}</h1>
@@ -258,13 +284,17 @@ function GroupMural({
   groupId,
   viewerId,
   tradition,
-  queryClient
+  queryClient,
+  myRole
 }: {
   groupId: string
   viewerId?: string
   tradition?: Tradition
   queryClient: ReturnType<typeof useQueryClient>
+  myRole: Role | null
 }) {
+  const navigate = useNavigate()
+  const canPostAnnouncement = !!myRole && ROLE_RANK[myRole] >= ROLE_RANK.MODERATOR
   const [page, setPage] = useState(1)
   const [lastHit, setLastHit] = useState<{ requestID: string; actionType: string; fxID: number } | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
@@ -274,11 +304,14 @@ function GroupMural({
     queryKey: ['group', groupId, 'feed', page],
     enabled: !!groupId,
     placeholderData: keepPreviousData,
-    queryFn: async () => {
-      const res = await api.get<GroupFeedResponse>(`/groups/${groupId}/feed`, {
+    queryFn: async (): Promise<GroupFeedResponse> => {
+      const res = await api.get<RawGroupFeedResponse>(`/groups/${groupId}/feed`, {
         params: { limit: pageSize, offset: (page - 1) * pageSize }
       })
-      return res.data
+      return {
+        items: res.data.items.map(flattenFeedItem),
+        pagination: res.data.pagination
+      }
     }
   })
 
@@ -295,7 +328,7 @@ function GroupMural({
         queryClient.setQueryData<GroupFeedResponse>(['group', groupId, 'feed', page], {
           ...previous,
           items: previous.items.map((it) =>
-            it.id === requestID
+            it.kind === 'PRAYER_REQUEST' && it.id === requestID
               ? {
                   ...it,
                   prayedCount: it.prayedCount + 1,
@@ -326,11 +359,31 @@ function GroupMural({
 
   return (
     <div className="divide-y divide-primary/20">
+      {canPostAnnouncement && (
+        <div className="flex flex-wrap items-center gap-2 px-5 py-3">
+          <button
+            type="button"
+            onClick={() => navigate(`/groups/${groupId}/announcements/new`)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-onPrimary"
+          >
+            <span aria-hidden>📣</span>
+            <span>Criar anúncio</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposerOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary"
+          >
+            <span aria-hidden>🙏</span>
+            <span>Criar pedido</span>
+          </button>
+        </div>
+      )}
       {showSkeleton && <FeedSkeleton count={3} />}
       {!feedQuery.isLoading && items.length === 0 && (
         <div className="px-5 py-10 text-center">
           <p className="text-3xl" aria-hidden>🕊️</p>
-          <p className="mt-2 text-sm font-semibold text-secondary">Ainda não há pedidos neste grupo.</p>
+          <p className="mt-2 text-sm font-semibold text-secondary">Ainda não há posts neste grupo.</p>
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
@@ -559,30 +612,83 @@ function SettingsTab({ details }: { details: GroupDetails }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState(details.name)
   const [description, setDescription] = useState(details.description)
-  const [imageUrl, setImageUrl] = useState(details.imageUrl ?? '')
+  const [imageUrl, setImageUrl] = useState<string | null>(details.imageUrl ?? null)
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(details.joinPolicy)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [photoStatus, setPhotoStatus] = useState('')
+  const [photoError, setPhotoError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const update = useMutation({
-    mutationFn: async () => {
+  const persistGroup = useMutation({
+    mutationFn: async (overrides: { imageUrl?: string | null }) => {
       await api.patch(`/groups/${details.id}`, {
         name,
         description,
-        imageUrl: imageUrl || null,
+        imageUrl: overrides.imageUrl !== undefined ? overrides.imageUrl : imageUrl,
         joinPolicy
       })
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['group', details.id, 'details'] })
+      await queryClient.invalidateQueries({ queryKey: ['groups', 'mine'] })
+    }
+  })
+
+  const update = useMutation({
+    mutationFn: async () => persistGroup.mutateAsync({}),
+    onSuccess: async () => {
       setStatus('Grupo atualizado.')
       setError('')
-      await queryClient.invalidateQueries({ queryKey: ['group', details.id, 'details'] })
     },
     onError: (err: any) => {
       setStatus('')
       setError(err?.response?.data?.error?.message || 'Não foi possível atualizar.')
     }
   })
+
+  const uploadPhoto = useMutation({
+    mutationFn: async (file: File) => {
+      const url = await uploadGroupCover(file, details.id)
+      await persistGroup.mutateAsync({ imageUrl: url })
+      return url
+    },
+    onSuccess: (url) => {
+      setImageUrl(url)
+      setPhotoError('')
+      setPhotoStatus('Foto atualizada.')
+    },
+    onError: (err: unknown) => {
+      setPhotoStatus('')
+      if (err instanceof ImageUploadError) {
+        setPhotoError(err.message)
+      } else {
+        setPhotoError('Não foi possível salvar a foto.')
+      }
+    }
+  })
+
+  const removePhoto = useMutation({
+    mutationFn: async () => persistGroup.mutateAsync({ imageUrl: null }),
+    onSuccess: () => {
+      setImageUrl(null)
+      setPhotoError('')
+      setPhotoStatus('Foto removida.')
+    },
+    onError: () => {
+      setPhotoStatus('')
+      setPhotoError('Não foi possível remover a foto.')
+    }
+  })
+
+  function onFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setPhotoError('')
+    setPhotoStatus('')
+    uploadPhoto.mutate(file)
+  }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -591,8 +697,58 @@ function SettingsTab({ details }: { details: GroupDetails }) {
     update.mutate()
   }
 
+  const photoBusy = uploadPhoto.isPending || removePhoto.isPending
+  const acceptAttr = IMAGE_ACCEPTED_MIMES.join(',')
+  const maxMb = Math.round(IMAGE_MAX_BYTES / (1024 * 1024))
+
   return (
-    <form onSubmit={onSubmit} className="space-y-4 px-5 py-5">
+    <form onSubmit={onSubmit} className="space-y-5 px-5 py-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Foto do grupo</p>
+        <p className="pv-muted mt-1 text-[11px]">JPG, PNG ou WEBP até {maxMb} MB. Aparece no header do grupo e na lista.</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt=""
+              className="h-16 w-16 rounded-2xl border-2 border-primary object-cover"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-lg font-bold text-primary">
+              {details.name.slice(0, 2).toUpperCase()}
+            </span>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={acceptAttr}
+            className="hidden"
+            onChange={onFileChange}
+            aria-label="Selecionar foto do grupo"
+          />
+          <Button
+            type="button"
+            disabled={photoBusy}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploadPhoto.isPending ? 'Enviando…' : imageUrl ? 'Trocar foto' : 'Enviar foto'}
+          </Button>
+          {imageUrl && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={photoBusy}
+              onClick={() => removePhoto.mutate()}
+            >
+              Remover foto
+            </Button>
+          )}
+        </div>
+        {photoStatus && <p role="status" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{photoStatus}</p>}
+        {photoError && <p role="alert" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{photoError}</p>}
+      </div>
+
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
         Nome
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do grupo" />
@@ -600,10 +756,6 @@ function SettingsTab({ details }: { details: GroupDetails }) {
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
         Descrição
         <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição do grupo" />
-      </label>
-      <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        URL da imagem (opcional)
-        <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." />
       </label>
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
         Política de entrada
