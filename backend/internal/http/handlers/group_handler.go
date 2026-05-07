@@ -317,7 +317,7 @@ func (h *GroupHandler) ListGroupFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	groupID := chi.URLParam(r, "id")
 	limit, offset, page := parseFeedPagination(r)
-	items, err := h.service.ListPrayerRequestsByGroup(r.Context(), viewerID, groupID, limit, offset)
+	items, total, err := h.service.ListGroupFeed(r.Context(), viewerID, groupID, limit, offset)
 	if err != nil {
 		if errors.Is(err, services.ErrPermissionDenied) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You must be a member to view this group's feed", nil)
@@ -325,15 +325,6 @@ func (h *GroupHandler) ListGroupFeed(w http.ResponseWriter, r *http.Request) {
 		}
 		if errors.Is(err, repositories.ErrGroupNotFound) {
 			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
-			return
-		}
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	total, err := h.service.CountPrayerRequestsByGroup(r.Context(), viewerID, groupID)
-	if err != nil {
-		if errors.Is(err, services.ErrPermissionDenied) {
-			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You must be a member to view this group's feed", nil)
 			return
 		}
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)

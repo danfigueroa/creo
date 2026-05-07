@@ -35,6 +35,7 @@ var ErrAlreadyBlocked = errors.New("already blocked")
 var ErrBlockNotFound = errors.New("block not found")
 var ErrUserBlocked = errors.New("user blocked")
 var ErrModerationNotApplicable = errors.New("moderation not applicable")
+var ErrAnnouncementNotFound = errors.New("announcement not found")
 
 type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (models.User, error)
@@ -95,6 +96,14 @@ type Repository interface {
 	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
 	MarkNotificationRead(ctx context.Context, userID, id string) error
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
+	CreateAnnouncement(ctx context.Context, in models.CreateAnnouncementInput) (models.GroupAnnouncement, error)
+	GetAnnouncementByID(ctx context.Context, announcementID string) (models.GroupAnnouncement, error)
+	ListAnnouncementsByGroup(ctx context.Context, groupID string, limit, offset int) ([]models.GroupAnnouncement, error)
+	CountAnnouncementsByGroup(ctx context.Context, groupID string) (int64, error)
+	ListAnnouncementsForUser(ctx context.Context, userID string, limit, offset int) ([]models.GroupAnnouncement, error)
+	CountAnnouncementsForUser(ctx context.Context, userID string) (int64, error)
+	UpdateAnnouncement(ctx context.Context, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error)
+	SoftDeleteAnnouncement(ctx context.Context, announcementID string) error
 }
 
 type PostgresRepository struct {
@@ -2224,6 +2233,236 @@ func (r *PostgresRepository) ListModerationHistory(ctx context.Context, requestI
 		items = append(items, it)
 	}
 	return items, rows.Err()
+}
+
+// announcementSelectClause returns the columns + joins shared by every
+// announcement read query so SELECT shape stays consistent with scanAnnouncementRow.
+const announcementSelectClause = `
+	SELECT a.id::text, a.group_id::text, g.name, a.author_id::text,
+	       u.username, u.display_name, u.avatar_url,
+	       a.title, a.body, a.event_at, a.image_url,
+	       a.created_at, a.updated_at
+	FROM group_announcements a
+	INNER JOIN groups g ON g.id = a.group_id
+	INNER JOIN users u ON u.id = a.author_id
+`
+
+func scanAnnouncementRow(row pgx.Row) (models.GroupAnnouncement, error) {
+	var a models.GroupAnnouncement
+	err := row.Scan(
+		&a.ID, &a.GroupID, &a.GroupName, &a.AuthorID,
+		&a.AuthorUsername, &a.AuthorDisplayName, &a.AuthorAvatarURL,
+		&a.Title, &a.Body, &a.EventAt, &a.ImageURL,
+		&a.CreatedAt, &a.UpdatedAt,
+	)
+	return a, err
+}
+
+func scanAnnouncementRows(rows pgx.Rows) ([]models.GroupAnnouncement, error) {
+	items := make([]models.GroupAnnouncement, 0)
+	for rows.Next() {
+		var a models.GroupAnnouncement
+		if err := rows.Scan(
+			&a.ID, &a.GroupID, &a.GroupName, &a.AuthorID,
+			&a.AuthorUsername, &a.AuthorDisplayName, &a.AuthorAvatarURL,
+			&a.Title, &a.Body, &a.EventAt, &a.ImageURL,
+			&a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, a)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) CreateAnnouncement(ctx context.Context, in models.CreateAnnouncementInput) (models.GroupAnnouncement, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var id string
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO group_announcements (group_id, author_id, title, body, event_at, image_url)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+		RETURNING id::text
+	`, in.GroupID, in.AuthorID, in.Title, in.Body, in.EventAt, in.ImageURL).Scan(&id); err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+
+	r.notifyGroupMembersOfAnnouncement(ctx, tx, in.GroupID, id, in.AuthorID, in.Title)
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+
+	return r.GetAnnouncementByID(ctx, id)
+}
+
+func (r *PostgresRepository) GetAnnouncementByID(ctx context.Context, announcementID string) (models.GroupAnnouncement, error) {
+	row := r.db.QueryRow(ctx, announcementSelectClause+`
+		WHERE a.id = $1::uuid AND a.deleted_at IS NULL
+	`, announcementID)
+	a, err := scanAnnouncementRow(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.GroupAnnouncement{}, ErrAnnouncementNotFound
+	}
+	return a, err
+}
+
+func (r *PostgresRepository) ListAnnouncementsByGroup(ctx context.Context, groupID string, limit, offset int) ([]models.GroupAnnouncement, error) {
+	rows, err := r.db.Query(ctx, announcementSelectClause+`
+		WHERE a.group_id = $1::uuid AND a.deleted_at IS NULL
+		ORDER BY a.created_at DESC
+		LIMIT $2 OFFSET $3
+	`, groupID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAnnouncementRows(rows)
+}
+
+func (r *PostgresRepository) CountAnnouncementsByGroup(ctx context.Context, groupID string) (int64, error) {
+	var n int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::bigint
+		FROM group_announcements
+		WHERE group_id = $1::uuid AND deleted_at IS NULL
+	`, groupID).Scan(&n)
+	return n, err
+}
+
+func (r *PostgresRepository) ListAnnouncementsForUser(ctx context.Context, userID string, limit, offset int) ([]models.GroupAnnouncement, error) {
+	rows, err := r.db.Query(ctx, announcementSelectClause+`
+		INNER JOIN group_memberships gm ON gm.group_id = a.group_id
+		WHERE gm.user_id = $1::uuid AND gm.deleted_at IS NULL AND a.deleted_at IS NULL
+		ORDER BY a.created_at DESC
+		LIMIT $2 OFFSET $3
+	`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanAnnouncementRows(rows)
+}
+
+func (r *PostgresRepository) CountAnnouncementsForUser(ctx context.Context, userID string) (int64, error) {
+	var n int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::bigint
+		FROM group_announcements a
+		INNER JOIN group_memberships gm ON gm.group_id = a.group_id
+		WHERE gm.user_id = $1::uuid AND gm.deleted_at IS NULL AND a.deleted_at IS NULL
+	`, userID).Scan(&n)
+	return n, err
+}
+
+func (r *PostgresRepository) UpdateAnnouncement(ctx context.Context, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error) {
+	sets := make([]string, 0, 5)
+	args := make([]any, 0, 6)
+	pos := 1
+	if in.Title != nil {
+		sets = append(sets, "title = $"+itoa(pos))
+		args = append(args, *in.Title)
+		pos++
+	}
+	if in.Body != nil {
+		sets = append(sets, "body = $"+itoa(pos))
+		args = append(args, *in.Body)
+		pos++
+	}
+	if in.EventAt != nil {
+		sets = append(sets, "event_at = $"+itoa(pos))
+		args = append(args, *in.EventAt)
+		pos++
+	}
+	if in.ImageURL != nil {
+		// Empty string clears the image; non-empty sets it.
+		if *in.ImageURL == "" {
+			sets = append(sets, "image_url = NULL")
+		} else {
+			sets = append(sets, "image_url = $"+itoa(pos))
+			args = append(args, *in.ImageURL)
+			pos++
+		}
+	}
+	if len(sets) == 0 {
+		return r.GetAnnouncementByID(ctx, announcementID)
+	}
+	sets = append(sets, "updated_at = NOW()")
+	query := "UPDATE group_announcements SET " + strings.Join(sets, ", ") + " WHERE id = $" + itoa(pos) + "::uuid AND deleted_at IS NULL"
+	args = append(args, announcementID)
+	tag, err := r.db.Exec(ctx, query, args...)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return models.GroupAnnouncement{}, ErrAnnouncementNotFound
+	}
+	return r.GetAnnouncementByID(ctx, announcementID)
+}
+
+func (r *PostgresRepository) SoftDeleteAnnouncement(ctx context.Context, announcementID string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE group_announcements
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1::uuid AND deleted_at IS NULL
+	`, announcementID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAnnouncementNotFound
+	}
+	return nil
+}
+
+func (r *PostgresRepository) notifyGroupMembersOfAnnouncement(ctx context.Context, exec notifyExec, groupID, announcementID, authorID, title string) {
+	// Best-effort: failure to notify must not fail the announcement create.
+	rows, err := r.db.Query(ctx, `
+		SELECT user_id::text
+		FROM group_memberships
+		WHERE group_id = $1::uuid AND deleted_at IS NULL AND user_id <> $2::uuid
+	`, groupID, authorID)
+	if err != nil {
+		return
+	}
+	memberIDs := make([]string, 0)
+	for rows.Next() {
+		var mid string
+		if err := rows.Scan(&mid); err != nil {
+			rows.Close()
+			return
+		}
+		memberIDs = append(memberIDs, mid)
+	}
+	rows.Close()
+
+	actor := authorID
+	for _, mid := range memberIDs {
+		_ = insertNotificationOn(ctx, exec, models.CreateNotificationInput{
+			UserID:      mid,
+			Type:        models.NotificationTypeGroupAnnouncementPosted,
+			ActorUserID: &actor,
+			SubjectType: models.NotificationSubjectGroup,
+			SubjectID:   groupID,
+			Payload: map[string]any{
+				"announcementId": announcementID,
+				"title":          title,
+			},
+		})
+	}
+}
+
+// itoa is a tiny helper to build $N placeholders without importing strconv at every call site.
+func itoa(n int) string {
+	if n < 10 {
+		return string(rune('0' + n))
+	}
+	// supports up to $99 which is more than enough for any builder here
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
 }
 
 var _ Repository = (*PostgresRepository)(nil)

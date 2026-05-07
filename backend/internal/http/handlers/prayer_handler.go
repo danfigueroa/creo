@@ -72,7 +72,7 @@ func (h *PrayerHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
-	writeFeedResponse(w, items, page, limit, total)
+	writeFeedResponse(w, models.WrapPrayerRequests(items), page, limit, total)
 }
 
 func (h *PrayerHandler) ListHome(w http.ResponseWriter, r *http.Request) {
@@ -82,12 +82,7 @@ func (h *PrayerHandler) ListHome(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 		return
 	}
-	items, err := h.service.ListHomePrayerRequests(r.Context(), userID, limit, offset)
-	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	total, err := h.service.CountHomePrayerRequests(r.Context(), userID)
+	items, total, err := h.service.ListHomeFeed(r.Context(), userID, limit, offset)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
@@ -102,12 +97,7 @@ func (h *PrayerHandler) ListGroupsFeed(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 		return
 	}
-	items, err := h.service.ListGroupsPrayerRequests(r.Context(), userID, limit, offset)
-	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	total, err := h.service.CountGroupsPrayerRequests(r.Context(), userID)
+	items, total, err := h.service.ListGroupsFeed(r.Context(), userID, limit, offset)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
@@ -132,7 +122,7 @@ func (h *PrayerHandler) ListFriendsFeed(w http.ResponseWriter, r *http.Request) 
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
-	writeFeedResponse(w, items, page, limit, total)
+	writeFeedResponse(w, models.WrapPrayerRequests(items), page, limit, total)
 }
 
 func parseFeedPagination(r *http.Request) (int, int, int) {
@@ -148,7 +138,7 @@ func parseFeedPagination(r *http.Request) (int, int, int) {
 	return limit, offset, page
 }
 
-func writeFeedResponse(w http.ResponseWriter, items []models.PrayerRequest, page, pageSize int, total int64) {
+func writeFeedResponse(w http.ResponseWriter, items []models.FeedItem, page, pageSize int, total int64) {
 	totalPages := int((total + int64(pageSize) - 1) / int64(pageSize))
 	if totalPages == 0 {
 		totalPages = 1

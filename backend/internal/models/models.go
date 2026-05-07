@@ -280,6 +280,7 @@ const (
 	NotificationTypeRequestApproved       NotificationType = "REQUEST_APPROVED"
 	NotificationTypeRequestRejected       NotificationType = "REQUEST_REJECTED"
 	NotificationTypeRequestChangesAsked   NotificationType = "REQUEST_CHANGES_ASKED"
+	NotificationTypeGroupAnnouncementPosted NotificationType = "GROUP_ANNOUNCEMENT_POSTED"
 )
 
 type NotificationSubjectType string
@@ -340,4 +341,76 @@ type CreateNotificationInput struct {
 	SubjectType NotificationSubjectType
 	SubjectID   string
 	Payload     map[string]any
+}
+
+type GroupAnnouncement struct {
+	ID                string    `json:"id"`
+	GroupID           string    `json:"groupId"`
+	GroupName         string    `json:"groupName,omitempty"`
+	AuthorID          string    `json:"authorId"`
+	AuthorUsername    string    `json:"authorUsername,omitempty"`
+	AuthorDisplayName string    `json:"authorDisplayName,omitempty"`
+	AuthorAvatarURL   *string   `json:"authorAvatarUrl,omitempty"`
+	Title             string    `json:"title"`
+	Body              string    `json:"body"`
+	EventAt           time.Time `json:"eventAt"`
+	ImageURL          *string   `json:"imageUrl,omitempty"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+type CreateAnnouncementInput struct {
+	GroupID  string
+	AuthorID string
+	Title    string
+	Body     string
+	EventAt  time.Time
+	ImageURL *string
+}
+
+type UpdateAnnouncementInput struct {
+	Title    *string
+	Body     *string
+	EventAt  *time.Time
+	ImageURL *string
+}
+
+type FeedItemKind string
+
+const (
+	FeedItemKindPrayerRequest FeedItemKind = "PRAYER_REQUEST"
+	FeedItemKindAnnouncement  FeedItemKind = "ANNOUNCEMENT"
+)
+
+type FeedItem struct {
+	Kind          FeedItemKind       `json:"kind"`
+	CreatedAt     time.Time          `json:"createdAt"`
+	PrayerRequest *PrayerRequest     `json:"prayerRequest,omitempty"`
+	Announcement  *GroupAnnouncement `json:"announcement,omitempty"`
+}
+
+func WrapPrayerRequests(items []PrayerRequest) []FeedItem {
+	out := make([]FeedItem, 0, len(items))
+	for i := range items {
+		pr := items[i]
+		out = append(out, FeedItem{
+			Kind:          FeedItemKindPrayerRequest,
+			CreatedAt:     pr.CreatedAt,
+			PrayerRequest: &pr,
+		})
+	}
+	return out
+}
+
+func WrapAnnouncements(items []GroupAnnouncement) []FeedItem {
+	out := make([]FeedItem, 0, len(items))
+	for i := range items {
+		a := items[i]
+		out = append(out, FeedItem{
+			Kind:         FeedItemKindAnnouncement,
+			CreatedAt:    a.CreatedAt,
+			Announcement: &a,
+		})
+	}
+	return out
 }

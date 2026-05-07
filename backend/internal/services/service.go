@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"parish-viva/backend/internal/models"
 	"parish-viva/backend/internal/repositories"
@@ -34,6 +36,9 @@ var ErrInvalidGroupRole = errors.New("invalid group role")
 var ErrInvalidBio = errors.New("invalid bio")
 var ErrInvalidModerationAction = errors.New("invalid moderation action")
 var ErrModerationReasonRequired = errors.New("moderation reason required")
+var ErrAnnouncementInvalidTitle = errors.New("invalid announcement title")
+var ErrAnnouncementInvalidBody = errors.New("invalid announcement body")
+var ErrAnnouncementInvalidEventAt = errors.New("invalid announcement event date")
 
 func NewService(repo repositories.Repository) *Service {
 	return &Service{repo: repo}
@@ -241,34 +246,6 @@ func (s *Service) DefaultPrayerActionFor(ctx context.Context, userID string) mod
 	return models.PrayerActionHailMary
 }
 
-func (s *Service) ListHomePrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return s.repo.ListHomePrayerRequests(ctx, userID, limit, offset)
-}
-
-func (s *Service) CountHomePrayerRequests(ctx context.Context, userID string) (int64, error) {
-	return s.repo.CountHomePrayerRequests(ctx, userID)
-}
-
-func (s *Service) ListGroupsPrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return s.repo.ListGroupsPrayerRequests(ctx, userID, limit, offset)
-}
-
-func (s *Service) CountGroupsPrayerRequests(ctx context.Context, userID string) (int64, error) {
-	return s.repo.CountGroupsPrayerRequests(ctx, userID)
-}
-
 func (s *Service) ListFriendsPrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
@@ -464,26 +441,6 @@ func (s *Service) UpdateGroup(ctx context.Context, actorUserID, groupID string, 
 	return s.repo.UpdateGroup(ctx, groupID, in)
 }
 
-func (s *Service) ListPrayerRequestsByGroup(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.PrayerRequest, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	if err := s.ensureGroupFeedAccess(ctx, viewerUserID, groupID); err != nil {
-		return nil, err
-	}
-	return s.repo.ListPrayerRequestsByGroup(ctx, viewerUserID, groupID, limit, offset)
-}
-
-func (s *Service) CountPrayerRequestsByGroup(ctx context.Context, viewerUserID, groupID string) (int64, error) {
-	if err := s.ensureGroupFeedAccess(ctx, viewerUserID, groupID); err != nil {
-		return 0, err
-	}
-	return s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
-}
-
 func (s *Service) ensureGroupFeedAccess(ctx context.Context, viewerUserID, groupID string) error {
 	details, err := s.repo.GetGroupDetails(ctx, viewerUserID, groupID)
 	if err != nil {
@@ -610,6 +567,278 @@ func isValidTradition(tradition models.Tradition) bool {
 	default:
 		return false
 	}
+}
+
+// announcementEventAtBounds keeps event_at sane: not absurdly old, not absurdly far in the future.
+const (
+	announcementMinPastYears   = 5
+	announcementMaxFutureYears = 10
+)
+
+func (s *Service) validateAnnouncementFields(title, body string, eventAt time.Time) (string, string, error) {
+	title = strings.TrimSpace(title)
+	body = strings.TrimSpace(body)
+	if l := len([]rune(title)); l < 3 || l > 120 {
+		return "", "", ErrAnnouncementInvalidTitle
+	}
+	if l := len([]rune(body)); l < 10 || l > 2000 {
+		return "", "", ErrAnnouncementInvalidBody
+	}
+	if eventAt.IsZero() {
+		return "", "", ErrAnnouncementInvalidEventAt
+	}
+	now := time.Now()
+	if eventAt.Before(now.AddDate(-announcementMinPastYears, 0, 0)) || eventAt.After(now.AddDate(announcementMaxFutureYears, 0, 0)) {
+		return "", "", ErrAnnouncementInvalidEventAt
+	}
+	return title, body, nil
+}
+
+func (s *Service) requireGroupRoleAtLeast(ctx context.Context, userID, groupID string, minRole models.GroupRole) error {
+	role, isMember, err := s.repo.GetGroupRoleOf(ctx, userID, groupID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrPermissionDenied
+	}
+	if models.RoleRank(role) < models.RoleRank(minRole) {
+		return ErrPermissionDenied
+	}
+	return nil
+}
+
+func (s *Service) CreateAnnouncement(ctx context.Context, actorUserID, groupID, title, body string, eventAt time.Time, imageURL *string) (models.GroupAnnouncement, error) {
+	if err := s.requireGroupRoleAtLeast(ctx, actorUserID, groupID, models.RoleModerator); err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	cleanTitle, cleanBody, err := s.validateAnnouncementFields(title, body, eventAt)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	if imageURL != nil {
+		trimmed := strings.TrimSpace(*imageURL)
+		if trimmed == "" {
+			imageURL = nil
+		} else {
+			imageURL = &trimmed
+		}
+	}
+	return s.repo.CreateAnnouncement(ctx, models.CreateAnnouncementInput{
+		GroupID:  groupID,
+		AuthorID: actorUserID,
+		Title:    cleanTitle,
+		Body:     cleanBody,
+		EventAt:  eventAt,
+		ImageURL: imageURL,
+	})
+}
+
+// canManageAnnouncement returns nil if the actor can edit/delete the given announcement.
+// Author can always; admin/moderator of the group can; everyone else is forbidden.
+func (s *Service) canManageAnnouncement(ctx context.Context, actorUserID string, announcement models.GroupAnnouncement) error {
+	if announcement.AuthorID == actorUserID {
+		return nil
+	}
+	role, isMember, err := s.repo.GetGroupRoleOf(ctx, actorUserID, announcement.GroupID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrPermissionDenied
+	}
+	if models.RoleRank(role) < models.RoleRank(models.RoleModerator) {
+		return ErrPermissionDenied
+	}
+	return nil
+}
+
+func (s *Service) UpdateAnnouncement(ctx context.Context, actorUserID, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error) {
+	existing, err := s.repo.GetAnnouncementByID(ctx, announcementID)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	if err := s.canManageAnnouncement(ctx, actorUserID, existing); err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	// Validate the would-be final values: any unchanged field falls back to existing.
+	finalTitle := existing.Title
+	if in.Title != nil {
+		finalTitle = *in.Title
+	}
+	finalBody := existing.Body
+	if in.Body != nil {
+		finalBody = *in.Body
+	}
+	finalEventAt := existing.EventAt
+	if in.EventAt != nil {
+		finalEventAt = *in.EventAt
+	}
+	cleanTitle, cleanBody, err := s.validateAnnouncementFields(finalTitle, finalBody, finalEventAt)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	if in.Title != nil {
+		in.Title = &cleanTitle
+	}
+	if in.Body != nil {
+		in.Body = &cleanBody
+	}
+	if in.ImageURL != nil {
+		trimmed := strings.TrimSpace(*in.ImageURL)
+		in.ImageURL = &trimmed
+	}
+	return s.repo.UpdateAnnouncement(ctx, announcementID, in)
+}
+
+func (s *Service) DeleteAnnouncement(ctx context.Context, actorUserID, announcementID string) error {
+	existing, err := s.repo.GetAnnouncementByID(ctx, announcementID)
+	if err != nil {
+		return err
+	}
+	if err := s.canManageAnnouncement(ctx, actorUserID, existing); err != nil {
+		return err
+	}
+	return s.repo.SoftDeleteAnnouncement(ctx, announcementID)
+}
+
+func (s *Service) ListAnnouncementsByGroup(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.GroupAnnouncement, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if err := s.ensureGroupFeedAccess(ctx, viewerUserID, groupID); err != nil {
+		return nil, 0, err
+	}
+	items, err := s.repo.ListAnnouncementsByGroup(ctx, groupID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountAnnouncementsByGroup(ctx, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// mergeFeedItems merges two pre-sorted (created_at DESC) lists into one,
+// preserving DESC order. Used to overlay announcements onto prayer-request feeds.
+// Note: assumes inputs already include enough rows to satisfy the requested page
+// (callers fetch limit+offset from each side and slice afterwards).
+func mergeFeedItems(prayers, announcements []models.FeedItem) []models.FeedItem {
+	out := make([]models.FeedItem, 0, len(prayers)+len(announcements))
+	out = append(out, prayers...)
+	out = append(out, announcements...)
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out
+}
+
+func sliceFeed(items []models.FeedItem, offset, limit int) []models.FeedItem {
+	if offset >= len(items) {
+		return []models.FeedItem{}
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end]
+}
+
+// ListGroupFeed returns the merged feed (prayer requests + announcements) for a group's mural.
+// Pagination strategy: fetch limit+offset from each stream, merge, slice. OK for small offsets.
+func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.FeedItem, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if err := s.ensureGroupFeedAccess(ctx, viewerUserID, groupID); err != nil {
+		return nil, 0, err
+	}
+	fetch := limit + offset
+	prayers, err := s.repo.ListPrayerRequestsByGroup(ctx, viewerUserID, groupID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcements, err := s.repo.ListAnnouncementsByGroup(ctx, groupID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	prayerCount, err := s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcementCount, err := s.repo.CountAnnouncementsByGroup(ctx, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
+}
+
+// ListHomeFeed returns the merged home feed (prayer requests from self/friends/groups + announcements
+// from groups the user belongs to).
+func (s *Service) ListHomeFeed(ctx context.Context, userID string, limit, offset int) ([]models.FeedItem, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	fetch := limit + offset
+	prayers, err := s.repo.ListHomePrayerRequests(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcements, err := s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	prayerCount, err := s.repo.CountHomePrayerRequests(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcementCount, err := s.repo.CountAnnouncementsForUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
+}
+
+// ListGroupsFeed returns the merged "all groups" feed (all prayer requests from groups
+// the user belongs to + all announcements from those same groups).
+func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offset int) ([]models.FeedItem, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	fetch := limit + offset
+	prayers, err := s.repo.ListGroupsPrayerRequests(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcements, err := s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	prayerCount, err := s.repo.CountGroupsPrayerRequests(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	announcementCount, err := s.repo.CountAnnouncementsForUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
 }
 
 func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
