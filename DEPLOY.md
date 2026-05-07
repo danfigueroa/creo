@@ -64,6 +64,43 @@ Pegue a URL Vercel final (ou um palpite, ex: `https://paroquiaviva.vercel.app`) 
      ```
    - Convenção de path: `avatars/{user_id}/avatar-{timestamp}.{ext}`. O timestamp evita CDN cache stale após troca de imagem.
 
+5. **Storage — bucket `group-photos`** (one-time, necessário pra foto do grupo e imagens de anúncio):
+   - Supabase Dashboard → Storage → **New bucket** → nome `group-photos`, **Public** = ON.
+   - Em SQL Editor, criar a função helper + policies (escrita restrita a admin/moderator do grupo):
+     ```sql
+     create or replace function public.is_group_admin_or_moderator(gid uuid)
+     returns boolean
+     language sql
+     stable
+     as $$
+       select exists (
+         select 1 from public.group_memberships
+         where group_id = gid
+           and user_id = auth.uid()
+           and role in ('ADMIN','MODERATOR')
+           and deleted_at is null
+       );
+     $$;
+
+     create policy "group-photos publicly readable"
+       on storage.objects for select to public
+       using ( bucket_id = 'group-photos' );
+
+     create policy "group admins/moderators manage group photos"
+       on storage.objects for all to authenticated
+       using (
+         bucket_id = 'group-photos'
+         and public.is_group_admin_or_moderator(((storage.foldername(name))[1])::uuid)
+       )
+       with check (
+         bucket_id = 'group-photos'
+         and public.is_group_admin_or_moderator(((storage.foldername(name))[1])::uuid)
+       );
+     ```
+   - Convenção de path:
+     - capa do grupo: `group-photos/{group_id}/cover-{timestamp}.{ext}`
+     - imagem de anúncio: `group-photos/{group_id}/announcements/{timestamp}-{rand}.{ext}`
+
 ---
 
 ## 2. Vercel — deploy do monorepo
