@@ -1,8 +1,9 @@
-import { memo, useState } from 'react'
+import { ReactNode, memo, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { PrayerAction } from '@/lib/traditions'
 import { Avatar } from '@/components/avatar'
+import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
 
 export type PrayerFeedItem = {
@@ -89,21 +90,93 @@ function relativeTime(iso: string): string {
   return `${y}a`
 }
 
-function formatEventAt(iso: string): string {
+function shortMonth(d: Date): string {
+  // pt-BR `month: 'short'` returns "mai." — drop the trailing period and uppercase.
+  const raw = new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(d)
+  return raw.replace(/\.$/, '').toUpperCase()
+}
+
+function shortWeekday(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(d).replace(/\.$/, '')
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+// relativeFromNow: human-friendly distance from now to a target date.
+// Future: "em 15 min", "em 2 h", "amanhã", "daqui a 3 dias", "em 2 semanas".
+// Today: "hoje".
+// Past: "ontem", "há 2 dias", "há 3 semanas".
+// Very far (>1 ano): empty string (caller hides the line).
+function relativeFromNow(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat('pt-BR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(d)
+  const now = new Date()
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const dayDiff = Math.round((startOf(d) - startOf(now)) / 86400000)
+
+  if (dayDiff === 0) {
+    const minDiff = Math.round((d.getTime() - now.getTime()) / 60000)
+    if (minDiff > 0 && minDiff < 60) return `em ${minDiff} min`
+    if (minDiff < 0 && minDiff > -60) return `há ${Math.abs(minDiff)} min`
+    const hourDiff = Math.round(minDiff / 60)
+    if (hourDiff > 0) return `em ${hourDiff} h`
+    if (hourDiff < 0) return `há ${Math.abs(hourDiff)} h`
+    return 'hoje'
+  }
+  if (dayDiff === 1) return 'amanhã'
+  if (dayDiff === -1) return 'ontem'
+  if (dayDiff > 0) {
+    if (dayDiff < 7) return `daqui a ${dayDiff} dias`
+    if (dayDiff < 30) {
+      const w = Math.round(dayDiff / 7)
+      return w === 1 ? 'em 1 semana' : `em ${w} semanas`
+    }
+    if (dayDiff < 365) {
+      const m = Math.round(dayDiff / 30)
+      return m === 1 ? 'em 1 mês' : `em ${m} meses`
+    }
+    return ''
+  }
+  const past = Math.abs(dayDiff)
+  if (past < 7) return `há ${past} dias`
+  if (past < 30) {
+    const w = Math.round(past / 7)
+    return w === 1 ? 'há 1 semana' : `há ${w} semanas`
+  }
+  if (past < 365) {
+    const m = Math.round(past / 30)
+    return m === 1 ? 'há 1 mês' : `há ${m} meses`
+  }
+  return ''
+}
+
+export function EventDateBadge({ eventAt }: { eventAt: string }) {
+  const d = new Date(eventAt)
+  if (Number.isNaN(d.getTime())) return null
+  const relative = relativeFromNow(eventAt)
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex shrink-0 flex-col overflow-hidden rounded-xl border border-primary/30 text-center leading-none">
+        <span className="bg-primary px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-onPrimary">
+          {shortMonth(d)}
+        </span>
+        <span className="px-3 py-1.5 text-2xl font-bold tabular-nums text-secondary">{pad2(d.getDate())}</span>
+      </div>
+      <div className="text-sm leading-tight">
+        <div className="font-semibold text-secondary">
+          {shortWeekday(d)}, {pad2(d.getHours())}:{pad2(d.getMinutes())}
+        </div>
+        {relative && <div className="pv-muted text-xs">{relative}</div>}
+      </div>
+    </div>
+  )
 }
 
 function FeedCardComponent(props: FeedCardProps) {
   if (props.item.kind === 'ANNOUNCEMENT') {
-    return <AnnouncementCard item={props.item} viewerId={props.viewerId} formatDate={props.formatDate} />
+    return <AnnouncementCard item={props.item} viewerId={props.viewerId} />
   }
   return <PrayerCard {...props} item={props.item} />
 }
@@ -220,32 +293,182 @@ function PrayerCard({
   )
 }
 
-function AnnouncementCard({
-  item,
-  viewerId,
-  formatDate
+function MaybeLink({
+  to,
+  interactive,
+  className,
+  children
 }: {
-  item: AnnouncementFeedItem
-  viewerId?: string
-  formatDate: (value: string) => string
+  to: string
+  interactive: boolean
+  className?: string
+  children: ReactNode
 }) {
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const isAuthor = viewerId === item.authorId
-  const fullDate = formatDate(item.createdAt)
+  if (!interactive) return <div className={className}>{children}</div>
+  return (
+    <Link to={to} className={className}>
+      {children}
+    </Link>
+  )
+}
+
+type AnnouncementCardLayoutProps = {
+  item: AnnouncementFeedItem
+  interactive?: boolean
+  manageMenu?: ReactNode
+}
+
+// Pure presentational card. Used by AnnouncementCard (live, in feeds) and by the
+// announcement form preview. When `interactive` is false, links collapse to <div>
+// and the manage menu is hidden.
+export function AnnouncementCardLayout({ item, interactive = true, manageMenu }: AnnouncementCardLayoutProps) {
   const authorUser = {
     displayName: item.authorDisplayName,
     username: item.authorUsername,
     avatarUrl: item.authorAvatarUrl
   }
+  const groupHref = `/groups/${item.groupId}`
+  const profileHref = item.authorUsername ? `/u/${item.authorUsername}` : '#'
+
+  return (
+    <article className="pv-announcement-card my-3 overflow-hidden rounded-2xl border border-primary/20 bg-bg shadow-[0_10px_28px_-22px_rgba(var(--shadow-rgb),0.45)]">
+      {item.imageUrl && (
+        <div className="aspect-[16/9] w-full overflow-hidden bg-primary/5">
+          <img
+            src={item.imageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+      )}
+      <div className="space-y-3 p-5 sm:p-6">
+        <header className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]">
+          <span className="rounded-full bg-primary px-2.5 py-1 text-onPrimary">Anúncio</span>
+          {item.groupName && (
+            <MaybeLink to={groupHref} interactive={interactive} className="text-primary hover:underline">
+              #{item.groupName}
+            </MaybeLink>
+          )}
+        </header>
+
+        <MaybeLink to={groupHref} interactive={interactive} className="block">
+          <h3 className="pv-title text-xl font-bold leading-tight text-secondary sm:text-2xl">{item.title}</h3>
+        </MaybeLink>
+
+        <EventDateBadge eventAt={item.eventAt} />
+
+        <p className="pv-muted whitespace-pre-line text-[15px] leading-relaxed">{item.body}</p>
+
+        <div className="flex items-center justify-between gap-3 border-t border-primary/15 pt-3">
+          <MaybeLink to={profileHref} interactive={interactive && !!item.authorUsername} className="flex min-w-0 items-center gap-2.5">
+            <Avatar user={authorUser} size="sm" />
+            <div className="min-w-0 text-xs leading-tight">
+              <span className="block truncate font-semibold text-secondary">
+                {item.authorDisplayName || 'Membro'}
+              </span>
+              <span className="pv-muted block truncate">
+                @{item.authorUsername || 'usuario'} · {relativeTime(item.createdAt)}
+              </span>
+            </div>
+          </MaybeLink>
+          {manageMenu}
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function ManageMenu({
+  onEdit,
+  onDelete,
+  busy
+}: {
+  onEdit: () => void
+  onDelete: () => void
+  busy: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        aria-label="Mais opções"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-primary/70 transition hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden>
+          <circle cx="12" cy="5" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="12" cy="19" r="1.6" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-9 z-20 w-36 overflow-hidden rounded-xl border border-primary/20 bg-panel shadow-[0_18px_44px_-22px_rgba(var(--shadow-rgb),0.6)]"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onEdit()
+            }}
+            className="block w-full px-3 py-2 text-left text-xs font-semibold text-secondary hover:bg-primary/10"
+          >
+            Editar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false)
+              onDelete()
+            }}
+            className="block w-full px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-primary/10"
+          >
+            Excluir
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AnnouncementCard({ item, viewerId }: { item: AnnouncementFeedItem; viewerId?: string }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const confirm = useConfirm()
+  const isAuthor = viewerId === item.authorId
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
       await api.delete(`/groups/${item.groupId}/announcements/${item.id}`)
     },
     onSuccess: async () => {
-      setConfirmOpen(false)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['feed'] }),
         queryClient.invalidateQueries({ queryKey: ['group', item.groupId, 'feed'] })
@@ -253,106 +476,29 @@ function AnnouncementCard({
     }
   })
 
+  async function handleDelete() {
+    const ok = await confirm({
+      title: 'Excluir anúncio?',
+      description: 'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      destructive: true
+    })
+    if (ok) deleteMutation.mutate()
+  }
+
   return (
-    <article className="pv-feed-row group relative flex gap-3 py-4">
-      <Avatar user={authorUser} size="md" linkToProfile={!!item.authorUsername} />
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
-          {item.authorUsername ? (
-            <Link to={`/u/${item.authorUsername}`} className="max-w-[55%] truncate font-semibold text-secondary hover:text-primary">
-              {item.authorDisplayName || 'Membro'}
-            </Link>
-          ) : (
-            <span className="max-w-[55%] truncate font-semibold text-secondary">
-              {item.authorDisplayName || 'Membro'}
-            </span>
-          )}
-          <span className="truncate text-xs text-primary/80">@{item.authorUsername || 'usuario'}</span>
-          <span className="text-xs text-primary/50" aria-hidden>·</span>
-          <time className="text-xs text-primary/70" dateTime={item.createdAt} title={fullDate}>
-            {relativeTime(item.createdAt)}
-          </time>
-          <span className="text-xs text-primary/50" aria-hidden>·</span>
-          <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-onPrimary">
-            Anúncio
-          </span>
-          {item.groupName && (
-            <Link
-              to={`/groups/${item.groupId}`}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-panel px-2 py-0.5 text-[10px] font-semibold text-primary"
-            >
-              <span aria-hidden>👥</span>
-              <span className="max-w-[10rem] truncate">{item.groupName}</span>
-            </Link>
-          )}
-          {isAuthor && (
-            <span className="ml-auto inline-flex items-center gap-2 text-[11px]">
-              <button
-                type="button"
-                onClick={() => navigate(`/groups/${item.groupId}/announcements/${item.id}/edit`)}
-                className="text-primary/70 hover:text-primary"
-              >
-                Editar
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(true)}
-                className="text-primary/70 hover:text-primary"
-              >
-                Excluir
-              </button>
-            </span>
-          )}
-        </div>
-
-        <Link to={`/groups/${item.groupId}`} className="mt-1 block">
-          <h3 className="text-[15px] font-semibold leading-snug text-secondary group-hover:text-primary">
-            {item.title}
-          </h3>
-          <p className="pv-muted mt-1 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.04em] text-primary">
-            <span aria-hidden>📅</span>
-            <span>{formatEventAt(item.eventAt)}</span>
-          </p>
-          {item.imageUrl && (
-            <img
-              src={item.imageUrl}
-              alt=""
-              className="mt-3 aspect-video w-full rounded-xl border border-primary/20 object-cover"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          )}
-          <p className="pv-feed-body pv-muted mt-3 whitespace-pre-line text-[15px] leading-relaxed">{item.body}</p>
-        </Link>
-      </div>
-
-      {confirmOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="pv-panel w-full max-w-sm rounded-2xl p-5">
-            <h4 className="text-base font-bold text-secondary">Excluir anúncio?</h4>
-            <p className="pv-muted mt-2 text-sm">Esta ação não pode ser desfeita.</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmOpen(false)}
-                disabled={deleteMutation.isPending}
-                className="rounded-full border border-primary/40 px-3 py-1.5 text-xs font-semibold text-primary"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-                className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-onPrimary"
-              >
-                {deleteMutation.isPending ? 'Excluindo…' : 'Excluir'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </article>
+    <AnnouncementCardLayout
+      item={item}
+      manageMenu={
+        isAuthor ? (
+          <ManageMenu
+            onEdit={() => navigate(`/groups/${item.groupId}/announcements/${item.id}/edit`)}
+            onDelete={handleDelete}
+            busy={deleteMutation.isPending}
+          />
+        ) : undefined
+      }
+    />
   )
 }
 
