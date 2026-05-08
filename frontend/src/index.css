@@ -703,7 +703,16 @@ textarea::placeholder {
   box-sizing: content-box;
 }
 
-/* ---------- Feed --------------------------------------------------------- */
+/* ---------- Stage main: shared canvas for non-feed pages ----------------- */
+
+.stage > main {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 36px 80px;
+}
+
+/* The .feed canvas is narrower (720px) for an editorial reading column. */
 
 .feed {
   width: 100%;
@@ -711,6 +720,10 @@ textarea::placeholder {
   margin: 0 auto;
   padding: 40px 36px 80px;
 }
+
+/* Avoid double padding when a page uses .feed inside .stage > main. */
+.stage > main > .feed:only-child { padding: 0; }
+.stage > main:has(> .feed) { padding: 8px 36px 60px; }
 
 .feed__head { margin-bottom: 28px; }
 
@@ -1188,4 +1201,6 @@ textarea::placeholder {
   .side { display: none; }
   .feed { padding: 28px 20px 60px; }
   .top { padding: 14px 20px; }
+  .stage > main { padding: 22px 20px 60px; }
+  .stage > main:has(> .feed) { padding: 4px 20px 40px; }
 }
