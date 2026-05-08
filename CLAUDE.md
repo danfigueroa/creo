@@ -236,16 +236,33 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 
 ### Estilo
 
-- **Tokens** em `index.css`: variáveis CSS `--bg`, `--panel-surface`, `--primary`, `--text-muted`, `--fx-ring`, `--shadow-rgb`, etc. Trocadas por `data-theme="dark"|"light"`.
-- **Classes utilitárias do projeto**:
-  - `pv-panel` — fundo de card com sombra
-  - `pv-title` — letter-spacing apertado pra headlines
-  - `pv-muted` — cor de texto secundário
-  - `pv-chip` / `pv-chip-active` — pill clicável
-  - `pv-shimmer` — skeleton loading
-  - `pv-tab-underline` / `pv-tab-underline-active` — navegação por abas
-- **Tailwind** complementa, usar tokens semânticos (`text-primary`, `bg-panel`, `border-primary`) em vez de cores diretas.
-- **Sem emojis em texto narrativo**. Emojis OK como **ícones de UI** (categorias de pedido, tradições) — alinhado com o que `traditionOptions.emoji` já faz.
+**Identidade editorial**: cream warm (`#F0E6D0`) + ink teal (`#0E4A53`) single-color. Sem accent laranja, sem dark theme. Tipografia: **Source Serif 4** (italic em placeholders, regular em headlines/títulos de post) + **Geist** sans pra UI + **Geist Mono** pra hints (⌘K).
+
+- **Tokens** em `index.css`:
+  - Surfaces: `--bg`, `--bg-soft`, `--card`, `--card-2`
+  - Ink scale: `--ink`, `--ink-2`, `--ink-3`, `--muted`, `--muted-2`
+  - Linhas: `--line` (8% ink), `--line-2` (14% ink)
+  - Type stack: `--serif`, `--sans`, `--mono`
+  - Radii: `--r-1`/`--r-2`/`--r-3`/`--r-4`/`--r-pill`
+  - Sombras: `--shadow-1`, `--shadow-2`
+  - Aliases pros nomes antigos (`--primary`, `--panel`, `--secondary`, etc.) apontam pra novos valores — Tailwind utilities (`bg-primary`, `text-onPrimary`, `border-primary/40`) continuam funcionando.
+- **Sem `data-theme`**: dark theme foi dropado. Não use `:root[data-theme=...]`.
+- **Layout shell** (`components/page-shell.tsx`): `.app` grid (sidebar 248px + stage). Sidebar tem brand mark + `.navitem` por rota + "Em oração agora" (top friends do `/friends`) + `.side__me` no rodapé. Topbar (`.top`) com `.top__search` pill + `.iconbtn` do sino.
+- **Classes do design** (em `index.css`, ported verbatim):
+  - `.feed` — canvas central 720px com headline serif
+  - `.tabs` + `.tabs__ink` — abas com underline animado via `--idx`
+  - `.composer` — card de compose com expand state
+  - `.post`, `.post__head`, `.post__title`, `.post__text`, `.post__foot`, `.post__total` — card de pedido
+  - `.rx`, `.rx--on`, `.rx--pop`, `.rx__glyph`, `.rx__count`, `.rx__burst` — pílulas de reação com animação. CSS vars `--rx-bg`, `--rx-border`, `--rx-fg`, `--rx-dot` setadas inline.
+  - `.cat-pill` — badge de categoria com bg/fg oklch tinted
+  - `.btn`, `.btn--primary`, `.btn--ghost`
+  - `.iconbtn` + `.iconbtn__pip`
+  - `.pager`, `.pager__btn`, `.pager__num`
+- **Reações** (`lib/traditions.ts`): cada `PrayerAction` tem `glyph` (rose/sun/diamond/beads/ring) + 4 valores oklch. Católico mapeia 1:1 com o design; evangélico reusa os mesmos glyphs com labels próprios. Componente `<Glyph kind="..." />` em `components/glyph.tsx`.
+- **Avatar** (`components/avatar.tsx`): monogram com hue oklch derivado por hash determinístico do `username`. Quando há `avatarUrl`, mostra a foto.
+- **Classes legacy ainda existem** (`pv-panel`, `pv-title`, `pv-muted`, `pv-chip`, `pv-shimmer`, `pv-tab-underline*`) e foram remapeadas pros novos valores — `pv-title` agora aplica serif. Não criar novas — preferir as do design (`.post`, `.cat-pill`, `.btn`, etc.) em código novo.
+- **Tailwind**: complementa via tokens semânticos. Quando precisa de cor explícita do novo token (ink/card/line), usa `style={{ color: 'var(--ink)' }}` ou class Tailwind arbitrary `text-[var(--ink)]`.
+- **Sem emojis em texto narrativo**. Emojis OK como **ícones de UI**.
 
 ### Padrões de form
 
@@ -264,10 +281,6 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 ### Skeletons
 
 Usar `<span className="pv-shimmer h-X w-Y rounded">` em loops `[0,1,2,3].map()` antes de `data` chegar. Ver `pages/groups-page.tsx`.
-
-### Tema
-
-`data-theme` no `<html>` controla tokens. Persistido em `localStorage` (`pv-theme`). Toggle no menu de perfil em `PageShell`.
 
 ### Validação client espelha backend
 
