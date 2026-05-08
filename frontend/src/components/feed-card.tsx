@@ -3,8 +3,24 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { PrayerAction } from '@/lib/traditions'
 import { Avatar } from '@/components/avatar'
+import { Glyph } from '@/components/glyph'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
+
+// Category palette — tinted oklch pills for each prayer category badge.
+const CATEGORY_PALETTE: Record<string, { bg: string; fg: string }> = {
+  HEALTH: { bg: 'oklch(0.93 0.03 145)', fg: 'oklch(0.38 0.08 145)' },
+  FAMILY: { bg: 'oklch(0.94 0.03 25)', fg: 'oklch(0.42 0.10 25)' },
+  WORK: { bg: 'oklch(0.93 0.03 175)', fg: 'oklch(0.38 0.08 190)' },
+  GRIEF: { bg: 'oklch(0.93 0.02 250)', fg: 'oklch(0.40 0.06 250)' },
+  THANKSGIVING: { bg: 'oklch(0.93 0.04 95)', fg: 'oklch(0.40 0.10 80)' },
+  OTHER: { bg: 'oklch(0.93 0.03 220)', fg: 'oklch(0.38 0.08 220)' }
+}
+
+function categoryStyle(category: string) {
+  const palette = CATEGORY_PALETTE[category] || CATEGORY_PALETTE.OTHER
+  return { background: palette.bg, color: palette.fg }
+}
 
 export type PrayerFeedItem = {
   kind: 'PRAYER_REQUEST'
@@ -190,14 +206,9 @@ function PrayerCard({
   onPray,
   isPrayPending,
   lastPrayerHit,
-  groupNameById,
   categoryLabel,
   formatDate
 }: PrayerCardProps) {
-  const primaryGroupName =
-    item.groupNames?.[0] || (item.groupIds?.[0] ? groupNameById.get(item.groupIds[0]) : undefined)
-  const extraGroupsCount = Math.max((item.groupNames?.length ?? 0) - 1, 0)
-  const isHit = lastPrayerHit?.requestID === item.id
   const isOwner = viewerId === item.authorId
   const fullDate = formatDate(item.createdAt)
   const authorUser = {
@@ -205,91 +216,132 @@ function PrayerCard({
     username: item.authorUsername,
     avatarUrl: item.authorAvatarUrl
   }
+  const total = prayerActions.reduce(
+    (sum, action) => sum + (item.prayerTypeCounts?.[action.type] ?? 0),
+    0
+  )
 
   return (
-    <article className={`pv-feed-row group relative flex gap-3 py-4 ${isHit ? 'pv-card-hit' : ''}`}>
-      <Avatar user={authorUser} size="md" linkToProfile={!!item.authorUsername} />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
-          {item.authorUsername ? (
-            <Link to={`/u/${item.authorUsername}`} className="max-w-[55%] truncate font-semibold text-secondary hover:text-primary">
-              {item.authorDisplayName || 'Membro'}
-            </Link>
-          ) : (
-            <span className="max-w-[55%] truncate font-semibold text-secondary">
-              {item.authorDisplayName || 'Membro'}
+    <article className="post">
+      <header className="post__head">
+        <Avatar user={authorUser} size="md" linkToProfile={!!item.authorUsername} />
+        <div className="post__id">
+          <div className="post__line">
+            {item.authorUsername ? (
+              <Link to={`/u/${item.authorUsername}`} className="post__name">
+                {item.authorDisplayName || 'Membro'}
+              </Link>
+            ) : (
+              <span className="post__name">{item.authorDisplayName || 'Membro'}</span>
+            )}
+            <span className="post__handle">@{item.authorUsername || 'usuario'}</span>
+            <span className="post__sep">·</span>
+            <time className="post__when" dateTime={item.createdAt} title={fullDate}>
+              {relativeTime(item.createdAt)}
+            </time>
+          </div>
+          <div className="post__line post__line--meta">
+            <span className="cat-pill" style={categoryStyle(item.category)}>
+              {categoryLabel[item.category] || item.category}
             </span>
-          )}
-          <span className="truncate text-xs text-primary/80">@{item.authorUsername || 'usuario'}</span>
-          <span className="text-xs text-primary/50" aria-hidden>·</span>
-          <time className="text-xs text-primary/70" dateTime={item.createdAt} title={fullDate}>
-            {relativeTime(item.createdAt)}
-          </time>
-          <span className="text-xs text-primary/50" aria-hidden>·</span>
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] text-primary">
-            {categoryLabel[item.category] || item.category}
-          </span>
-          {item.visibility === 'GROUP_ONLY' && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-panel px-2 py-0.5 text-[10px] font-semibold text-primary">
-              <span aria-hidden>👥</span>
-              <span className="max-w-[10rem] truncate">{primaryGroupName || 'Grupo'}</span>
-              {extraGroupsCount > 0 && <span className="text-primary/70">+{extraGroupsCount}</span>}
-            </span>
-          )}
-          {isOwner && (
-            <Link
-              to={`/requests/${item.id}`}
-              className="ml-auto text-[11px] text-primary/70 hover:text-primary"
-              aria-label="Editar pedido"
-            >
-              Editar
-            </Link>
-          )}
+          </div>
         </div>
+        {isOwner && (
+          <Link to={`/requests/${item.id}`} className="post__edit" aria-label="Editar pedido">
+            Editar
+          </Link>
+        )}
+      </header>
 
-        <Link to={`/requests/${item.id}`} className="mt-1 block">
-          <h3 className="text-[15px] font-semibold leading-snug text-secondary group-hover:text-primary">
-            {item.title}
-          </h3>
-          <p className="pv-feed-body pv-muted mt-1 text-[15px] leading-relaxed">{item.body}</p>
-        </Link>
+      <Link to={`/requests/${item.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <h3 className="post__title">{item.title}</h3>
+        <p className="post__text">{item.body}</p>
+      </Link>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {prayerActions.map((action) => {
-            const count = item.prayerTypeCounts?.[action.type] ?? 0
-            const activeFx = isHit && lastPrayerHit?.actionType === action.type
-            return (
-              <span
-                key={`${item.id}-${action.type}`}
-                className={`relative inline-flex ${activeFx ? 'pv-prayer-chip-hit' : ''}`}
-              >
-                {activeFx && (
-                  <span className="pv-prayer-fx" aria-hidden>
-                    <span className="pv-prayer-fx-ring" />
-                    <span className="pv-prayer-fx-emoji">{action.emoji}</span>
-                    <span className="pv-prayer-fx-spark pv-prayer-fx-spark-a" />
-                    <span className="pv-prayer-fx-spark pv-prayer-fx-spark-b" />
-                    <span className="pv-prayer-fx-spark pv-prayer-fx-spark-c" />
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={isPrayPending}
-                  onClick={() => onPray(item.id, action.type)}
-                  aria-label={`${action.label} (${count})`}
-                  className="pv-action-btn inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-panel/50 px-2.5 py-1 text-xs font-medium text-muted transition hover:border-primary hover:bg-primary/10 hover:text-primary disabled:opacity-60"
-                >
-                  <span aria-hidden>{action.emoji}</span>
-                  <span>{action.label}</span>
-                  {count > 0 && <span className="tabular-nums text-primary">{count}</span>}
-                </button>
-              </span>
-            )
-          })}
+      <footer className="post__foot">
+        <div className="post__reactions">
+          {prayerActions.map((action) => (
+            <ReactionPill
+              key={`${item.id}-${action.type}`}
+              action={action}
+              count={item.prayerTypeCounts?.[action.type] ?? 0}
+              triggered={lastPrayerHit?.requestID === item.id && lastPrayerHit?.actionType === action.type}
+              triggerKey={lastPrayerHit?.fxID}
+              disabled={isPrayPending}
+              onPress={() => onPray(item.id, action.type)}
+            />
+          ))}
         </div>
-      </div>
+        {total > 0 && (
+          <div className="post__total" aria-label={`${total} orações ao todo`}>
+            <span className="post__total-num">{total}</span>
+            <span className="post__total-label">em oração</span>
+          </div>
+        )}
+      </footer>
     </article>
+  )
+}
+
+type ReactionPillProps = {
+  action: PrayerAction
+  count: number
+  triggered: boolean
+  triggerKey?: number
+  disabled: boolean
+  onPress: () => void
+}
+
+function ReactionPill({ action, count, triggered, triggerKey, disabled, onPress }: ReactionPillProps) {
+  const [bursts, setBursts] = useState<number[]>([])
+  const [pop, setPop] = useState(false)
+  const seenTrigger = useRef<number | undefined>(undefined)
+
+  // External trigger: when an optimistic prayer happens (parent set lastPrayerHit
+  // with a fresh fxID for this action), play the burst once for that key.
+  useEffect(() => {
+    if (!triggered || !triggerKey || seenTrigger.current === triggerKey) return
+    seenTrigger.current = triggerKey
+    setPop(true)
+    const popTimer = window.setTimeout(() => setPop(false), 380)
+    setBursts((b) => [...b, triggerKey])
+    const burstTimer = window.setTimeout(
+      () => setBursts((b) => b.filter((x) => x !== triggerKey)),
+      900
+    )
+    return () => {
+      window.clearTimeout(popTimer)
+      window.clearTimeout(burstTimer)
+    }
+  }, [triggered, triggerKey])
+
+  const styleVars = {
+    ['--rx-bg' as any]: action.bg,
+    ['--rx-border' as any]: action.border,
+    ['--rx-fg' as any]: action.fg,
+    ['--rx-dot' as any]: action.dot
+  } as Record<string, string>
+
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      disabled={disabled}
+      className={`rx ${count > 0 ? 'rx--on' : ''} ${pop ? 'rx--pop' : ''}`}
+      style={styleVars}
+      aria-label={`${action.label}${count ? `, ${count}` : ''}`}
+    >
+      <span className="rx__glyph">
+        <Glyph kind={action.glyph} size={11} color="var(--rx-dot)" />
+      </span>
+      <span className="rx__label">{action.label}</span>
+      {count > 0 && <span className="rx__count">{count}</span>}
+      {bursts.map((id) => (
+        <span key={id} className="rx__burst" aria-hidden>
+          <Glyph kind={action.glyph} size={14} color="var(--rx-dot)" />
+        </span>
+      ))}
+    </button>
   )
 }
 

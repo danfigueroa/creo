@@ -212,88 +212,94 @@ export function FeedPage() {
     [prayMutation]
   )
 
+  const activeTabIdx = Math.max(
+    tabs.findIndex((t) => t.scope === scope),
+    0
+  )
+
   return (
     <PageShell>
-      <div>
-        <header className="border-b border-primary/20">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Feed social</p>
-              <h1 className="pv-title mt-1 text-xl font-bold text-secondary sm:text-2xl">Intenções e pedidos de oração</h1>
-            </div>
-            {query.isFetching && !query.isLoading && (
-              <span className="mb-1 text-[11px] text-primary/70">Atualizando…</span>
-            )}
-          </div>
-          <nav className="mt-3 flex overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" aria-label="Escopo do feed">
-            {tabs.map((tab) => {
-              const active = tab.scope === scope
-              return (
-                <button
-                  key={tab.scope}
-                  type="button"
-                  onClick={() => changeScope(tab.scope)}
-                  className={`pv-tab-underline ${active ? 'pv-tab-underline-active' : ''}`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </nav>
-        </header>
+      <div className="feed">
+        <div className="feed__head">
+          <div className="feed__eyebrow">Feed social</div>
+          <h1 className="feed__title">Intenções e pedidos de oração</h1>
+          <p className="feed__sub">
+            Um espaço sereno para acompanhar quem reza com você — e por você.
+          </p>
+        </div>
+
+        <div className="tabs" role="tablist" aria-label="Escopo do feed">
+          {tabs.map((tab) => (
+            <button
+              key={tab.scope}
+              role="tab"
+              type="button"
+              aria-selected={tab.scope === scope}
+              className={`tab ${tab.scope === scope ? 'is-on' : ''}`}
+              onClick={() => changeScope(tab.scope)}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <div
+            className="tabs__ink"
+            style={{ ['--idx' as any]: activeTabIdx } as Record<string, string | number>}
+          />
+        </div>
 
         {profileQuery.data?.id && (
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
-            className="pv-compose-box group flex w-full items-start gap-3 border-b border-primary/20 py-5 text-left sm:gap-4 sm:py-6"
+            className="composer"
+            style={{ width: '100%', textAlign: 'left' }}
           >
-            <Avatar
-              user={{
-                displayName: profileQuery.data.displayName,
-                username: profileQuery.data.username,
-                avatarUrl: profileQuery.data.avatarUrl
-              }}
-              size="lg"
-              className="shadow-sm"
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block text-lg font-medium text-secondary/80 transition group-hover:text-primary sm:text-xl">
-                Compartilhe uma intenção…
-              </span>
-              <span className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-primary/15 pt-3">
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-primary/70">
-                  <span aria-hidden>🙏</span>
-                  <span>Pedido de oração</span>
-                </span>
-                <span className="pv-compose-cta inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-5 py-2 text-sm font-bold text-onPrimary">
-                  <span aria-hidden>✍️</span>
-                  <span>Postar pedido</span>
-                </span>
-              </span>
-            </span>
+            <div className="composer__row">
+              <Avatar
+                user={{
+                  displayName: profileQuery.data.displayName,
+                  username: profileQuery.data.username,
+                  avatarUrl: profileQuery.data.avatarUrl
+                }}
+                size="md"
+              />
+              <div className="composer__field">
+                <span className="composer__placeholder">Compartilhe uma intenção…</span>
+              </div>
+            </div>
+            <div className="composer__foot">
+              <div className="composer__cats">
+                <span className="composer__hint">Pedido de oração</span>
+              </div>
+              <div className="composer__actions">
+                <span className="btn btn--primary">Postar pedido</span>
+              </div>
+            </div>
           </button>
         )}
 
-        <div className="divide-y divide-primary/20">
+        <div className="posts">
           {showSkeleton && <FeedSkeleton count={4} />}
 
           {isUnauthorized && activeTab.requiresAuth && (
-            <div className="py-6 text-sm text-secondary">
+            <div className="py-6 text-sm" style={{ color: 'var(--muted)' }}>
               Você precisa entrar para visualizar o feed de {activeTab.label.toLowerCase()}.
             </div>
           )}
 
           {!query.isLoading && !isUnauthorized && items.length === 0 && (
             <div className="py-10 text-center">
-              <p className="text-3xl" aria-hidden>🕊️</p>
-              <p className="mt-2 text-sm font-semibold text-secondary">Ainda não há pedidos neste feed.</p>
-              <p className="pv-muted mt-1 text-xs">Seja o primeiro a compartilhar uma intenção.</p>
+              <p className="feed__title" style={{ fontSize: 24 }}>
+                Ainda não há pedidos neste feed.
+              </p>
+              <p className="feed__sub mt-2" style={{ margin: '8px auto 0' }}>
+                Seja o primeiro a compartilhar uma intenção.
+              </p>
               <button
                 type="button"
                 onClick={() => setComposerOpen(true)}
-                className="mt-4 inline-flex items-center rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-onPrimary"
+                className="btn btn--primary"
+                style={{ marginTop: 16 }}
               >
                 Criar pedido
               </button>
@@ -316,40 +322,37 @@ export function FeedPage() {
           ))}
         </div>
 
-        {!isUnauthorized && !query.isLoading && items.length > 0 && (
-          <div className="flex flex-col gap-3 border-t border-primary/20 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-primary">Página {page} de {totalPages}</p>
-            <div className="overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex min-w-max items-center gap-1.5">
+        {!isUnauthorized && !query.isLoading && items.length > 0 && totalPages > 1 && (
+          <div className="pager">
+            <button
+              type="button"
+              className="pager__btn"
+              disabled={page <= 1 || query.isFetching}
+              onClick={() => goToPage(page - 1)}
+            >
+              <span aria-hidden>←</span> Anterior
+            </button>
+            <div className="pager__nums">
+              {pageNumbers.map((pageNumber) => (
                 <button
-                  className="rounded-full border border-primary/40 px-3 py-1 text-xs text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={page <= 1 || query.isFetching}
-                  onClick={() => goToPage(page - 1)}
                   type="button"
+                  key={pageNumber}
+                  disabled={query.isFetching}
+                  onClick={() => goToPage(pageNumber)}
+                  className={`pager__num ${pageNumber === page ? 'is-on' : ''}`}
                 >
-                  ← Anterior
+                  {pageNumber}
                 </button>
-                {pageNumbers.map((pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${pageNumber === page ? 'bg-primary text-onPrimary' : 'border border-primary/40 text-primary hover:bg-primary/10'}`}
-                    disabled={query.isFetching}
-                    onClick={() => goToPage(pageNumber)}
-                    type="button"
-                  >
-                    {pageNumber}
-                  </button>
-                ))}
-                <button
-                  className="rounded-full border border-primary/40 px-3 py-1 text-xs text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={page >= totalPages || query.isFetching}
-                  onClick={() => goToPage(page + 1)}
-                  type="button"
-                >
-                  Próxima →
-                </button>
-              </div>
+              ))}
             </div>
+            <button
+              type="button"
+              className="pager__btn"
+              disabled={page >= totalPages || query.isFetching}
+              onClick={() => goToPage(page + 1)}
+            >
+              Próxima <span aria-hidden>→</span>
+            </button>
           </div>
         )}
       </div>
