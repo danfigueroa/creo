@@ -16,12 +16,12 @@ type AvatarProps = {
   ariaLabel?: string
 }
 
-const sizeClasses: Record<AvatarSize, string> = {
-  xs: 'h-7 w-7 text-xs',
-  sm: 'h-9 w-9 text-xs',
-  md: 'h-10 w-10 text-sm',
-  lg: 'h-14 w-14 text-base',
-  xl: 'h-20 w-20 text-2xl'
+const sizePx: Record<AvatarSize, number> = {
+  xs: 28,
+  sm: 32,
+  md: 40,
+  lg: 56,
+  xl: 80
 }
 
 function initialOf(user: AvatarUser): string {
@@ -29,21 +29,40 @@ function initialOf(user: AvatarUser): string {
   return (source[0] || 'U').toUpperCase()
 }
 
+// toneFor: deterministic 0–360 hue from a stable seed (username or displayName)
+// so each user has a consistent oklch tint across renders without storing it.
+function toneFor(user: AvatarUser): number {
+  const seed = user.username || user.displayName || ''
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0
+  }
+  return ((hash % 360) + 360) % 360
+}
+
 export function Avatar({ user, size = 'sm', className, linkToProfile = false, ariaLabel }: AvatarProps) {
-  const sizing = sizeClasses[size]
-  const base = `inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary ${sizing}`
-  const merged = className ? `${base} ${className}` : base
+  const px = sizePx[size]
+  const tone = toneFor(user)
+  const bg = `oklch(0.92 0.03 ${tone})`
+  const fg = `oklch(0.38 0.08 ${tone})`
+  const styleVars = {
+    width: px,
+    height: px,
+    fontSize: Math.round(px * 0.4),
+    background: user.avatarUrl ? undefined : bg,
+    color: user.avatarUrl ? undefined : fg
+  } as const
+
+  const merged = className ? `avatar ${className}` : 'avatar'
+
   const content = user.avatarUrl ? (
     <img
       src={user.avatarUrl}
       alt={user.displayName || user.username || ''}
-      className="h-full w-full object-cover"
       referrerPolicy="no-referrer"
     />
   ) : (
-    <span className="flex h-full w-full items-center justify-center bg-bg font-bold text-primary">
-      {initialOf(user)}
-    </span>
+    <span>{initialOf(user)}</span>
   )
 
   if (linkToProfile && user.username) {
@@ -51,11 +70,16 @@ export function Avatar({ user, size = 'sm', className, linkToProfile = false, ar
       <Link
         to={`/u/${user.username}`}
         className={merged}
+        style={styleVars}
         aria-label={ariaLabel || `Ver perfil de ${user.displayName || user.username}`}
       >
         {content}
       </Link>
     )
   }
-  return <span className={merged}>{content}</span>
+  return (
+    <span className={merged} style={styleVars} aria-label={ariaLabel}>
+      {content}
+    </span>
+  )
 }
