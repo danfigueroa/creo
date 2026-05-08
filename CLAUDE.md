@@ -129,10 +129,16 @@ Crie commits limpos, com o autor do git (`dan figueroa <danielmfigueroa@gmail.co
 
 ### Quando juntar / quando separar
 
+**Default: dividir o máximo possível.** Cada concern, cada motivação, cada bug fix incidental descoberto durante o trabalho deve ser commit próprio. O objetivo é que cada commit possa ser revertido isoladamente sem arrastar coisa não relacionada — facilita `git bisect`, `git revert`, code review e leitura do histórico.
+
+Heurísticas:
 - Migration de schema fica em commit próprio (`feat(db): ...`).
-- Nova rota backend + UI que a consome → 1 commit por feature coerente.
-- Pequenas correções/cleanups separadas se não dependerem de mudança principal.
-- 5-7 commits para um chunk grande de trabalho é razoável.
+- Nova rota backend + UI que a consome → 1 commit por camada se forem revisáveis sozinhas (back primeiro, front depois). Se não fizerem sentido sem o outro lado (ex: shape de payload entrelaçado), 1 commit coeso.
+- Bug fix incidental descoberto durante uma feature → commit separado (`fix:`), não enfia no `feat:`.
+- Refactor preparatório (mover código, renomear sem mudar comportamento) → commit antes da mudança de comportamento.
+- Polish/cleanup independentes da feature → commits próprios mesmo que pequenos.
+- Mudança de docs (`CLAUDE.md`, `README.md`, `DEPLOY.md`) → `docs:` separado da mudança de código que motivou.
+- Em dúvida entre 1 commit grande ou 2 menores: **2 menores**. Para um chunk grande de trabalho, 5-10+ commits é o esperado.
 
 ---
 
