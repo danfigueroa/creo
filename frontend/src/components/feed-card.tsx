@@ -383,9 +383,17 @@ export function AnnouncementCardLayout({ item, interactive = true, manageMenu }:
   const profileHref = item.authorUsername ? `/u/${item.authorUsername}` : '#'
 
   return (
-    <article className="pv-announcement-card my-3 overflow-hidden rounded-2xl border border-primary/20 bg-bg shadow-[0_10px_28px_-22px_rgba(var(--shadow-rgb),0.45)]">
+    <article
+      className="pv-announcement-card overflow-hidden"
+      style={{
+        background: 'var(--card)',
+        border: '1px solid var(--line)',
+        borderRadius: 'var(--r-3)',
+        margin: '14px 0'
+      }}
+    >
       {item.imageUrl && (
-        <div className="aspect-[16/9] w-full overflow-hidden bg-primary/5">
+        <div className="aspect-[16/9] w-full overflow-hidden" style={{ background: 'rgba(14, 74, 83, 0.04)' }}>
           <img
             src={item.imageUrl}
             alt=""
@@ -397,30 +405,60 @@ export function AnnouncementCardLayout({ item, interactive = true, manageMenu }:
       )}
       <div className="space-y-3 p-5 sm:p-6">
         <header className="flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]">
-          <span className="rounded-full bg-primary px-2.5 py-1 text-onPrimary">Anúncio</span>
+          <span
+            className="cat-pill"
+            style={{ background: 'oklch(0.93 0.03 220)', color: 'oklch(0.38 0.08 220)' }}
+          >
+            Anúncio
+          </span>
           {item.groupName && (
-            <MaybeLink to={groupHref} interactive={interactive} className="text-primary hover:underline">
+            <MaybeLink
+              to={groupHref}
+              interactive={interactive}
+              className="hover:underline"
+              {...({ style: { color: 'var(--ink-3)' } } as any)}
+            >
               #{item.groupName}
             </MaybeLink>
           )}
         </header>
 
         <MaybeLink to={groupHref} interactive={interactive} className="block">
-          <h3 className="pv-title text-xl font-bold leading-tight text-secondary sm:text-2xl">{item.title}</h3>
+          <h3
+            style={{
+              fontFamily: 'var(--serif)',
+              fontWeight: 500,
+              fontSize: 22,
+              lineHeight: 1.18,
+              letterSpacing: '-0.015em',
+              color: 'var(--ink)',
+              margin: 0
+            }}
+          >
+            {item.title}
+          </h3>
         </MaybeLink>
 
         <EventDateBadge eventAt={item.eventAt} />
 
-        <p className="pv-muted whitespace-pre-line text-[15px] leading-relaxed">{item.body}</p>
+        <p
+          className="whitespace-pre-line"
+          style={{ fontSize: 15, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 }}
+        >
+          {item.body}
+        </p>
 
-        <div className="flex items-center justify-between gap-3 border-t border-primary/15 pt-3">
+        <div
+          className="flex items-center justify-between gap-3 pt-3"
+          style={{ borderTop: '1px solid var(--line)' }}
+        >
           <MaybeLink to={profileHref} interactive={interactive && !!item.authorUsername} className="flex min-w-0 items-center gap-2.5">
             <Avatar user={authorUser} size="sm" />
             <div className="min-w-0 text-xs leading-tight">
-              <span className="block truncate font-semibold text-secondary">
+              <span className="block truncate font-semibold" style={{ color: 'var(--ink)' }}>
                 {item.authorDisplayName || 'Membro'}
               </span>
-              <span className="pv-muted block truncate">
+              <span className="block truncate" style={{ color: 'var(--muted)' }}>
                 @{item.authorUsername || 'usuario'} · {relativeTime(item.createdAt)}
               </span>
             </div>
