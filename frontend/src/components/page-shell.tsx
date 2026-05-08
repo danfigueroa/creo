@@ -36,6 +36,63 @@ type MyGroup = {
   joinPolicy: 'OPEN' | 'REQUEST' | 'INVITE_ONLY'
 }
 
+type Friend = {
+  userId: string
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+}
+
+type NavKind = 'mural' | 'amigos' | 'grupos' | 'criar'
+
+const NAV: Array<{ id: NavKind; label: string; to: string }> = [
+  { id: 'mural', label: 'Mural', to: '/feed' },
+  { id: 'amigos', label: 'Amigos', to: '/friends' },
+  { id: 'grupos', label: 'Grupos', to: '/groups' },
+  { id: 'criar', label: 'Criar grupo', to: '/groups/new' }
+]
+
+function NavIcon({ kind }: { kind: NavKind }) {
+  switch (kind) {
+    case 'mural':
+      return (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <rect x="2.5" y="3" width="13" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="2.5" y="8" width="13" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
+          <rect x="2.5" y="13" width="13" height="2" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      )
+    case 'amigos':
+      return (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <circle cx="9" cy="6.5" r="2.6" stroke="currentColor" strokeWidth="1.4" />
+          <path d="M3.5 14.5C4.5 12 6.6 11 9 11s4.5 1 5.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )
+    case 'grupos':
+      return (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <circle cx="6" cy="7" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+          <circle cx="12.5" cy="7" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+          <path
+            d="M2.5 14.5c.7-2 2-2.8 3.5-2.8s2.8.8 3.5 2.8M9 14.5c.7-2 2-2.8 3.5-2.8s2.8.8 3.5 2.8"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    case 'criar':
+      return (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.4" />
+          <line x1="9" y1="6" x2="9" y2="12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )
+  }
+}
+
 export function PageShell({ children }: PropsWithChildren) {
   const navigate = useNavigate()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
@@ -48,18 +105,20 @@ export function PageShell({ children }: PropsWithChildren) {
   const [requestedGroups, setRequestedGroups] = useState<Record<string, boolean>>({})
   const menuRef = useRef<HTMLDivElement | null>(null)
   const searchRef = useRef<HTMLDivElement | null>(null)
+
   const profileQuery = useQuery({
     queryKey: ['profile', 'shell'],
-    queryFn: async () => {
-      const res = await api.get<ProfileMini>('/profile')
-      return res.data
-    }
+    queryFn: async () => (await api.get<ProfileMini>('/profile')).data
+  })
+
+  const friendsQuery = useQuery({
+    queryKey: ['friends', 'shell'],
+    enabled: !!profileQuery.data,
+    queryFn: async () => (await api.get<{ items: Friend[] }>('/friends')).data.items ?? []
   })
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm)
-    }, 250)
+    const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 250)
     return () => window.clearTimeout(timer)
   }, [searchTerm])
 
@@ -93,9 +152,11 @@ export function PageShell({ children }: PropsWithChildren) {
         const res = await api.get<{ items: MyGroup[] }>('/groups')
         const normalized = normalizedGroupSearch.toLowerCase()
         return (res.data.items ?? [])
-          .filter((group) => {
-            return group.name.toLowerCase().includes(normalized) || (group.description || '').toLowerCase().includes(normalized)
-          })
+          .filter(
+            (group) =>
+              group.name.toLowerCase().includes(normalized) ||
+              (group.description || '').toLowerCase().includes(normalized)
+          )
           .map((group) => ({
             id: group.id,
             name: group.name,
@@ -147,24 +208,15 @@ export function PageShell({ children }: PropsWithChildren) {
 
   const displayName = useMemo(() => {
     const profile = profileQuery.data
-    if (!profile) {
-      return 'Minha conta'
-    }
+    if (!profile) return 'Minha conta'
     return profile.displayName || profile.email.split('@')[0] || 'Minha conta'
   }, [profileQuery.data])
 
-  const username = profileQuery.data?.username ? `@${profileQuery.data.username}` : ''
+  const handle = profileQuery.data?.username ? `@${profileQuery.data.username}` : ''
   const profileForAvatar = {
     displayName,
     username: profileQuery.data?.username,
     avatarUrl: profileQuery.data?.avatarUrl
-  }
-
-  function navClass(baseClass: string, isActive: boolean) {
-    if (isActive) {
-      return `${baseClass} pv-chip-active`
-    }
-    return baseClass
   }
 
   async function onLogout() {
@@ -185,19 +237,16 @@ export function PageShell({ children }: PropsWithChildren) {
         setSearchOpen(false)
       }
     }
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setMenuOpen(false)
         setSearchOpen(false)
       }
     }
-
     if (menuOpen || searchOpen) {
       document.addEventListener('mousedown', onClickOutside)
       document.addEventListener('keydown', onKeyDown)
     }
-
     return () => {
       document.removeEventListener('mousedown', onClickOutside)
       document.removeEventListener('keydown', onKeyDown)
@@ -205,108 +254,138 @@ export function PageShell({ children }: PropsWithChildren) {
   }, [menuOpen, searchOpen])
 
   useEffect(() => {
-    if (!searchNotice) {
-      return
-    }
+    if (!searchNotice) return
     const timer = window.setTimeout(() => setSearchNotice(''), 2500)
     return () => window.clearTimeout(timer)
   }, [searchNotice])
 
+  const friendsTop = (friendsQuery.data ?? []).slice(0, 4)
+
   return (
-    <div className="pv-shell-column mx-auto flex min-h-screen w-full max-w-5xl flex-col">
-      <header className="pv-shell-header sticky top-0 z-40 px-4 pt-4 sm:px-6">
-        <div className="flex items-center justify-between gap-4">
-          <Link to="/" className="group flex shrink-0 items-center gap-3" aria-label="Creo — ir para o início">
-            <span className="pv-brand-mark inline-flex h-16 w-16 items-center justify-center rounded-2xl">
-              <img src="/creo-icon.png" alt="" className="h-14 w-14 rounded-xl object-contain" />
-            </span>
-            <span className="pv-title text-3xl font-extrabold text-secondary">Creo</span>
-          </Link>
+    <div className="app">
+      <aside className="side">
+        <Link to="/feed" className="side__brand" aria-label="Creo — ir para o início">
+          <span className="brand-mark" aria-hidden>
+            <span />
+          </span>
+          <span className="brand-word">Creo</span>
+        </Link>
 
-          <div className="flex items-center gap-2">
-          <NotificationBell />
-
-          <div className="relative" ref={menuRef}>
-            <button
-              className="pv-chip inline-flex items-center gap-2 rounded-full px-2.5 py-1.5"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              type="button"
+        <nav className="side__nav" aria-label="Menu principal">
+          {NAV.map((n) => (
+            <NavLink
+              key={n.id}
+              to={n.to}
+              end={n.id === 'mural'}
+              className={({ isActive }) => `navitem ${isActive ? 'is-on' : ''}`}
             >
-              <Avatar user={profileForAvatar} size="xs" />
-              <span className="hidden max-w-[150px] truncate text-sm text-secondary sm:inline">{displayName}</span>
-            </button>
+              <span className="navitem__icon">
+                <NavIcon kind={n.id} />
+              </span>
+              <span>{n.label}</span>
+            </NavLink>
+          ))}
+        </nav>
 
-            {menuOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-56 rounded-2xl border border-primary bg-panel p-2 shadow-[0_20px_50px_-25px_rgba(var(--shadow-rgb),0.45)]">
-                <div className="px-3 py-2">
-                  <p className="truncate text-sm font-semibold text-secondary">{displayName}</p>
-                  <p className="pv-muted truncate text-xs">{username || profileQuery.data?.email || ''}</p>
-                </div>
-                <Link className="block rounded-xl px-3 py-2 text-sm text-primary hover:bg-panel" onClick={() => setMenuOpen(false)} to="/profile">
-                  Ver perfil
-                </Link>
-                <button
-                  className="block w-full rounded-xl px-3 py-2 text-left text-sm text-primary hover:bg-panel"
-                  onClick={onLogout}
-                  type="button"
-                >
-                  Sair
-                </button>
-              </div>
-            )}
+        <div className="side__divider" />
+
+        {friendsTop.length > 0 && (
+          <div className="side__praying">
+            <div className="side__eyebrow">Em oração agora</div>
+            <ul className="praylist">
+              {friendsTop.map((friend) => (
+                <li key={friend.userId}>
+                  <Avatar user={friend} size="xs" />
+                  <Link to={`/u/${friend.username}`}>{friend.displayName || friend.username}</Link>
+                </li>
+              ))}
+            </ul>
           </div>
-          </div>
+        )}
+
+        <div className="side__foot" ref={menuRef}>
+          <button type="button" className="side__me" onClick={() => setMenuOpen((v) => !v)}>
+            <Avatar user={profileForAvatar} size="sm" />
+            <span className="side__me-text">
+              <span className="side__me-name">{displayName}</span>
+              <span className="side__me-handle">{handle || profileQuery.data?.email || ''}</span>
+            </span>
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute z-30 mt-2 w-56 overflow-hidden rounded-xl border border-[var(--line-2)] bg-[var(--card)] shadow-[var(--shadow-2)]"
+              style={{ position: 'fixed', bottom: 70, left: 18 }}
+            >
+              <Link
+                to="/profile"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-2.5 text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
+              >
+                Ver perfil
+              </Link>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="block w-full px-4 py-2.5 text-left text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
+              >
+                Sair
+              </button>
+            </div>
+          )}
         </div>
+      </aside>
 
-        <div className="mt-4 grid gap-3 pb-3 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-          <div className="overflow-x-auto overflow-y-visible py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <nav className="inline-flex min-w-max flex-nowrap gap-2 text-sm" aria-label="Menu principal">
-              <NavLink className={({ isActive }) => navClass('pv-chip whitespace-nowrap rounded-full px-3 py-1.5', isActive)} to="/feed">Mural</NavLink>
-              <NavLink className={({ isActive }) => navClass('pv-chip whitespace-nowrap rounded-full px-3 py-1.5', isActive)} to="/friends">Amigos</NavLink>
-              <NavLink className={({ isActive }) => navClass('pv-chip whitespace-nowrap rounded-full px-3 py-1.5', isActive)} to="/groups">Grupos</NavLink>
-              <NavLink className={({ isActive }) => navClass('pv-chip whitespace-nowrap rounded-full px-3 py-1.5', isActive)} to="/groups/new">Criar Grupo</NavLink>
-            </nav>
-          </div>
-
-          <div className="relative w-full" ref={searchRef}>
+      <div className="stage">
+        <div className="top">
+          <div className="top__search" ref={searchRef}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+              <circle cx="6" cy="6" r="4.2" stroke="currentColor" strokeWidth="1.3" />
+              <line x1="9.2" y1="9.2" x2="12" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
             <input
-              className="h-10 w-full rounded-xl border border-primary bg-panel px-3 text-sm text-secondary outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25"
+              placeholder="Buscar amigos, grupos ou intenções"
+              value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onFocus={() => setSearchOpen(true)}
-              placeholder="Buscar amigos e grupos"
-              value={searchTerm}
             />
+            <span className="top__kbd">⌘K</span>
 
             {searchOpen && (
-              <div className="absolute right-0 z-30 mt-2 max-h-[60vh] w-full overflow-y-auto rounded-2xl border border-primary bg-panel p-3 shadow-[0_24px_55px_-30px_rgba(var(--shadow-rgb),0.55)]">
+              <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]">
                 {normalizedSearch.length < 2 && (
-                  <p className="pv-muted text-xs">Digite pelo menos 2 caracteres para buscar amigos e grupos.</p>
+                  <p className="text-xs text-[var(--muted)]">Digite pelo menos 2 caracteres para buscar amigos e grupos.</p>
                 )}
 
                 {searchNotice && (
-                  <p className="mb-2 rounded-lg border border-primary bg-panel px-2 py-1 text-xs text-primary">{searchNotice}</p>
+                  <p className="mb-2 rounded-lg border border-[var(--line-2)] bg-[var(--card-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
+                    {searchNotice}
+                  </p>
                 )}
 
                 {normalizedSearch.length >= 2 && (
                   <div className="space-y-3">
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">Amigos</p>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">Amigos</p>
                       <div className="space-y-1.5">
                         {(usersSearchQuery.data ?? []).map((user) => {
                           const alreadyRequested = requestedUsers[user.username.toLowerCase()]
                           return (
-                            <div key={user.userId} className="flex items-center gap-2 rounded-xl border border-primary bg-panel px-2.5 py-2">
+                            <div
+                              key={user.userId}
+                              className="flex items-center gap-2 rounded-xl border border-[var(--line)] px-2.5 py-2"
+                            >
                               <Avatar user={user} size="xs" linkToProfile />
                               <Link
                                 to={`/u/${user.username}`}
                                 className="min-w-0 flex-1"
                                 onClick={() => setSearchOpen(false)}
                               >
-                                <p className="truncate text-sm font-semibold text-secondary">{user.displayName}</p>
-                                <p className="truncate text-xs text-primary">@{user.username}</p>
+                                <p className="truncate text-sm font-semibold text-[var(--ink)]">{user.displayName}</p>
+                                <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
                               </Link>
                               <button
-                                className="pv-chip shrink-0 rounded-full px-2.5 py-1 text-xs disabled:opacity-50"
+                                className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
                                 disabled={alreadyRequested || sendFriendRequest.isPending}
                                 onClick={() => sendFriendRequest.mutate(user.username)}
                                 type="button"
@@ -317,24 +396,31 @@ export function PageShell({ children }: PropsWithChildren) {
                           )
                         })}
                         {usersSearchQuery.isSuccess && (usersSearchQuery.data ?? []).length === 0 && (
-                          <p className="pv-muted text-xs">Nenhum amigo encontrado.</p>
+                          <p className="text-xs text-[var(--muted)]">Nenhum amigo encontrado.</p>
                         )}
                       </div>
                     </div>
 
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">Grupos</p>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">Grupos</p>
                       <div className="space-y-1.5">
                         {(groupsSearchQuery.data ?? []).map((group) => {
                           const alreadyRequested = requestedGroups[group.id]
                           return (
-                            <div key={group.id} className="flex items-center justify-between rounded-xl border border-primary bg-panel px-2.5 py-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-secondary">{group.name}</p>
-                                <p className="truncate text-xs text-primary">{group.joinPolicy}</p>
-                              </div>
+                            <div
+                              key={group.id}
+                              className="flex items-center justify-between rounded-xl border border-[var(--line)] px-2.5 py-2"
+                            >
+                              <Link
+                                to={`/groups/${group.id}`}
+                                onClick={() => setSearchOpen(false)}
+                                className="min-w-0 flex-1"
+                              >
+                                <p className="truncate text-sm font-semibold text-[var(--ink)]">{group.name}</p>
+                                <p className="truncate text-xs text-[var(--muted)]">{group.joinPolicy}</p>
+                              </Link>
                               <button
-                                className="pv-chip shrink-0 rounded-full px-2.5 py-1 text-xs disabled:opacity-50"
+                                className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
                                 disabled={group.isMember || alreadyRequested || requestGroupJoin.isPending}
                                 onClick={() => requestGroupJoin.mutate(group.id)}
                                 type="button"
@@ -345,10 +431,12 @@ export function PageShell({ children }: PropsWithChildren) {
                           )
                         })}
                         {groupsSearchQuery.isSuccess && (groupsSearchQuery.data ?? []).length === 0 && (
-                          <p className="pv-muted text-xs">Nenhum grupo encontrado.</p>
+                          <p className="text-xs text-[var(--muted)]">Nenhum grupo encontrado.</p>
                         )}
                         {groupsSearchQuery.isError && (
-                          <p className="rounded-lg border border-primary bg-panel px-2 py-1 text-xs text-primary">Não foi possível buscar grupos agora.</p>
+                          <p className="rounded-lg border border-[var(--line-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
+                            Não foi possível buscar grupos agora.
+                          </p>
                         )}
                       </div>
                     </div>
@@ -357,9 +445,14 @@ export function PageShell({ children }: PropsWithChildren) {
               </div>
             )}
           </div>
+
+          <div className="top__actions">
+            <NotificationBell />
+          </div>
         </div>
-      </header>
-      <main className="flex-1 px-4 pb-10 pt-5 sm:px-6">{children}</main>
+
+        <main>{children}</main>
+      </div>
     </div>
   )
 }
