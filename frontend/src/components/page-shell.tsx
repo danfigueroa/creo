@@ -36,8 +36,6 @@ type MyGroup = {
   joinPolicy: 'OPEN' | 'REQUEST' | 'INVITE_ONLY'
 }
 
-type ThemeVariant = 'light' | 'dark'
-
 export function PageShell({ children }: PropsWithChildren) {
   const navigate = useNavigate()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
@@ -46,13 +44,6 @@ export function PageShell({ children }: PropsWithChildren) {
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [searchNotice, setSearchNotice] = useState('')
-  const [theme, setTheme] = useState<ThemeVariant>(() => {
-    if (typeof window === 'undefined') {
-      return 'light'
-    }
-    const savedTheme = window.localStorage.getItem('pv-theme')
-    return savedTheme === 'dark' || savedTheme === 'vibrant' ? 'dark' : 'light'
-  })
   const [requestedUsers, setRequestedUsers] = useState<Record<string, boolean>>({})
   const [requestedGroups, setRequestedGroups] = useState<Record<string, boolean>>({})
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -221,11 +212,6 @@ export function PageShell({ children }: PropsWithChildren) {
     return () => window.clearTimeout(timer)
   }, [searchNotice])
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    window.localStorage.setItem('pv-theme', theme)
-  }, [theme])
-
   return (
     <div className="pv-shell-column mx-auto flex min-h-screen w-full max-w-5xl flex-col">
       <header className="pv-shell-header sticky top-0 z-40 px-4 pt-4 sm:px-6">
@@ -255,25 +241,6 @@ export function PageShell({ children }: PropsWithChildren) {
                 <div className="px-3 py-2">
                   <p className="truncate text-sm font-semibold text-secondary">{displayName}</p>
                   <p className="pv-muted truncate text-xs">{username || profileQuery.data?.email || ''}</p>
-                </div>
-                <div className="mb-1 px-3 pb-2 pt-1">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">Tema</p>
-                  <div className="flex gap-1.5">
-                    <button
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${theme === 'light' ? 'pv-chip-active' : 'pv-chip'}`}
-                      onClick={() => setTheme('light')}
-                      type="button"
-                    >
-                      Claro
-                    </button>
-                    <button
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${theme === 'dark' ? 'pv-chip-active' : 'pv-chip'}`}
-                      onClick={() => setTheme('dark')}
-                      type="button"
-                    >
-                      Escuro
-                    </button>
-                  </div>
                 </div>
                 <Link className="block rounded-xl px-3 py-2 text-sm text-primary hover:bg-panel" onClick={() => setMenuOpen(false)} to="/profile">
                   Ver perfil
