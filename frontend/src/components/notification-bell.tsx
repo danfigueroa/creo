@@ -185,7 +185,7 @@ export function NotificationBell() {
         type="button"
         aria-label={`Notificações${unreadCount ? ` (${unreadCount} não lidas)` : ''}`}
         onClick={() => setOpen((prev) => !prev)}
-        className="pv-chip relative inline-flex h-9 w-9 items-center justify-center rounded-full"
+        className="iconbtn"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -195,20 +195,13 @@ export function NotificationBell() {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="h-4 w-4"
+          className="h-[18px] w-[18px]"
           aria-hidden
         >
           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
           <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
         </svg>
-        {badge && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold leading-none tabular-nums tracking-tight text-onPrimary ring-2 ring-[var(--bg)] shadow-[0_2px_4px_-1px_rgba(var(--shadow-rgb),0.4)]"
-          >
-            {badge}
-          </span>
-        )}
+        {badge && <span className="iconbtn__pip" aria-hidden title={badge} />}
       </button>
 
       {open && (
