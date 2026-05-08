@@ -68,7 +68,7 @@
   --on-primary-rgb: 11 29 34;
   --ink-rgb: 247 242 232;
   --shadow-rgb: 0, 0, 0;
-  --panel-surface: linear-gradient(180deg, rgba(21, 26, 24, 0.95), rgba(18, 23, 21, 0.95));
+  --panel-surface: var(--panel);
   --chip-border: rgba(60, 196, 216, 0.45);
   --chip-bg: rgba(60, 196, 216, 0.06);
   --chip-text: #D8EDF1;
