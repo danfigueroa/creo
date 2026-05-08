@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { PrayerAction } from '@/lib/traditions'
 import { Avatar } from '@/components/avatar'
-import { Glyph } from '@/components/glyph'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
 
@@ -331,14 +330,14 @@ function ReactionPill({ action, count, triggered, triggerKey, disabled, onPress 
       style={styleVars}
       aria-label={`${action.label}${count ? `, ${count}` : ''}`}
     >
-      <span className="rx__glyph">
-        <Glyph kind={action.glyph} size={11} color="var(--rx-dot)" />
+      <span className="rx__emoji" aria-hidden>
+        {action.emoji}
       </span>
       <span className="rx__label">{action.label}</span>
       {count > 0 && <span className="rx__count">{count}</span>}
       {bursts.map((id) => (
         <span key={id} className="rx__burst" aria-hidden>
-          <Glyph kind={action.glyph} size={14} color="var(--rx-dot)" />
+          {action.emoji}
         </span>
       ))}
     </button>
