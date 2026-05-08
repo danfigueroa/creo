@@ -1122,6 +1122,17 @@ textarea::placeholder {
   justify-content: center;
   width: 14px; height: 14px;
 }
+.rx__emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+.rx__burst {
+  font-size: 16px;
+  line-height: 1;
+}
 .rx__label { line-height: 1; white-space: nowrap; }
 .rx__count {
   font-variant-numeric: tabular-nums;
