@@ -245,6 +245,12 @@ function PrayerCard({
             </span>
           </div>
         </div>
+        {total > 0 && (
+          <div className="post__total" aria-label={`${total} orações ao todo`}>
+            <span className="post__total-num">{total}</span>
+            <span className="post__total-label">em oração</span>
+          </div>
+        )}
         {isOwner && (
           <Link to={`/requests/${item.id}`} className="post__edit" aria-label="Editar pedido">
             Editar
@@ -257,7 +263,7 @@ function PrayerCard({
         <p className="post__text">{item.body}</p>
       </Link>
 
-      <footer className="post__foot">
+      <footer className="post__foot" onClick={(e) => e.stopPropagation()}>
         <div className="post__reactions">
           {prayerActions.map((action) => (
             <ReactionPill
@@ -271,12 +277,6 @@ function PrayerCard({
             />
           ))}
         </div>
-        {total > 0 && (
-          <div className="post__total" aria-label={`${total} orações ao todo`}>
-            <span className="post__total-num">{total}</span>
-            <span className="post__total-label">em oração</span>
-          </div>
-        )}
       </footer>
     </article>
   )
