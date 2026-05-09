@@ -233,8 +233,12 @@ function PrayerCard({
             ) : (
               <span className="post__name">{item.authorDisplayName || 'Membro'}</span>
             )}
-            <span className="post__handle">@{item.authorUsername || 'usuario'}</span>
-            <span className="post__sep">·</span>
+            {item.authorUsername && (
+              <>
+                <span className="post__handle">@{item.authorUsername}</span>
+                <span className="post__sep">·</span>
+              </>
+            )}
             <time className="post__when" dateTime={item.createdAt} title={fullDate}>
               {relativeTime(item.createdAt)}
             </time>

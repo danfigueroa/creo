@@ -265,8 +265,12 @@ export function RequestDetailPage() {
                 <div className="detail__id">
                   <div className="detail__name">{data.authorDisplayName || 'Membro'}</div>
                   <div className="detail__meta">
-                    <span>@{data.authorUsername || 'usuario'}</span>
-                    <span className="post__sep">·</span>
+                    {data.authorUsername && (
+                      <>
+                        <span>@{data.authorUsername}</span>
+                        <span className="post__sep">·</span>
+                      </>
+                    )}
                     <span>{relativeTime(data.createdAt)}</span>
                   </div>
                 </div>
