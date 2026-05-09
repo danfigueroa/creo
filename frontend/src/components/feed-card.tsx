@@ -32,6 +32,7 @@ export type PrayerFeedItem = {
   body: string
   category: string
   visibility: 'PUBLIC' | 'GROUP_ONLY' | 'PRIVATE'
+  allowAnonymous?: boolean
   groupIds?: string[]
   groupNames?: string[]
   createdAt: string
@@ -242,6 +243,18 @@ function PrayerCard({
             <time className="post__when" dateTime={item.createdAt} title={fullDate}>
               {relativeTime(item.createdAt)}
             </time>
+            {isOwner && item.allowAnonymous && (
+              <>
+                <span className="post__sep">·</span>
+                <span
+                  className="post__when"
+                  title="Você publicou esta intenção como anônima — outras pessoas veem como Anônimo."
+                  style={{ fontStyle: 'italic' }}
+                >
+                  publicado como anônimo
+                </span>
+              </>
+            )}
           </div>
           <div className="post__line post__line--meta">
             <span className="cat-pill" style={categoryStyle(item.category)}>

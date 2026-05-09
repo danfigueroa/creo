@@ -272,6 +272,17 @@ export function RequestDetailPage() {
                       </>
                     )}
                     <span>{relativeTime(data.createdAt)}</span>
+                    {isOwner && data.allowAnonymous && (
+                      <>
+                        <span className="post__sep">·</span>
+                        <span
+                          style={{ fontStyle: 'italic', color: 'var(--muted)' }}
+                          title="Você publicou esta intenção como anônima — outras pessoas veem como Anônimo."
+                        >
+                          publicado como anônimo
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <span
