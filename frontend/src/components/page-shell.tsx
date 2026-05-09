@@ -2,9 +2,10 @@ import { PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useSessionStore } from '@/state/session-store'
+import { useComposerStore } from '@/state/composer-store'
 import { getSupabaseClient } from '@/lib/supabase'
 import { api } from '@/lib/api'
-import { NotificationBell } from '@/components/notification-bell'
+import { NewRequestModal } from '@/components/new-request-modal'
 import { Avatar } from '@/components/avatar'
 
 type ProfileMini = {
@@ -116,6 +117,18 @@ export function PageShell({ children }: PropsWithChildren) {
     enabled: !!profileQuery.data,
     queryFn: async () => (await api.get<{ items: Friend[] }>('/friends')).data.items ?? []
   })
+
+  const unreadQuery = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    queryFn: async () => (await api.get<{ count: number }>('/notifications/unread-count')).data.count
+  })
+
+  const composerOpen = useComposerStore((s) => s.open)
+  const composerDefaultGroupId = useComposerStore((s) => s.defaultGroupId)
+  const openComposer = useComposerStore((s) => s.openComposer)
+  const closeComposer = useComposerStore((s) => s.closeComposer)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 250)
@@ -447,12 +460,26 @@ export function PageShell({ children }: PropsWithChildren) {
           </div>
 
           <div className="top__actions">
-            <NotificationBell />
+            <button type="button" className="btn btn--ghost-out top__compose" onClick={() => openComposer()}>
+              <span aria-hidden>＋</span> Nova intenção
+            </button>
+            <Link to="/notifications" className="iconbtn" aria-label={`Notificações${unreadQuery.data ? ` (${unreadQuery.data} não lidas)` : ''}`}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+                <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+              {unreadQuery.data && unreadQuery.data > 0 ? <span className="iconbtn__pip" aria-hidden /> : null}
+            </Link>
           </div>
         </div>
 
         <main>{children}</main>
       </div>
+      <NewRequestModal
+        open={composerOpen}
+        onClose={closeComposer}
+        defaultGroupId={composerDefaultGroupId ?? undefined}
+      />
     </div>
   )
 }
