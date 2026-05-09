@@ -947,6 +947,23 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
+/* "anônimo" hint visible only to the author of an allow_anonymous post */
+.anon-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(14, 74, 83, 0.06);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  cursor: help;
+}
+
 /* ---------- Posts -------------------------------------------------------- */
 
 .posts {
