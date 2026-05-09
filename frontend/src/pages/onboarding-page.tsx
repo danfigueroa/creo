@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Glyph, type GlyphKind } from '@/components/glyph'
 import { api } from '@/lib/api'
-import { toSavedTradition, type Tradition } from '@/lib/traditions'
+import { type Tradition } from '@/lib/traditions'
 
 const STEPS = [
   { id: 'welcome', title: 'Boas-vindas' },
@@ -16,9 +16,7 @@ const STEPS = [
 
 const DENOM_OPTIONS: Array<{ id: Tradition; label: string; hint: string }> = [
   { id: 'CATHOLIC', label: 'Católico', hint: 'Ave Maria, Pai Nosso, Glória, Terço, Rosário' },
-  { id: 'EVANGELICAL', label: 'Evangélico', hint: 'Orei, Intercessão, Gratidão, Jejum, Clamor' },
-  { id: 'BOTH', label: 'Ecumênico / outro', hint: 'Mostra todas as formas' },
-  { id: 'NONE', label: 'Não praticante', hint: 'Pai Nosso e Glória' }
+  { id: 'EVANGELICAL', label: 'Evangélico', hint: 'Orei, Intercessão, Gratidão, Jejum, Clamor' }
 ]
 
 const INTERESTS: Array<{ id: string; label: string; glyph: GlyphKind; tone: number }> = [
@@ -68,7 +66,7 @@ export function OnboardingPage() {
 
   const saveTradition = useMutation({
     mutationFn: async (t: Tradition) => {
-      await api.patch('/profile/tradition', { tradition: toSavedTradition(t) })
+      await api.patch('/profile/tradition', { tradition: t })
     }
   })
 
