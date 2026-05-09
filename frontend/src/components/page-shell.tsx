@@ -359,6 +359,7 @@ export function PageShell({ children }: PropsWithChildren) {
 
       <div className="stage">
         <div className="top">
+          <div aria-hidden />
           <div className="top__search" ref={searchRef}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
               <circle cx="6" cy="6" r="4.2" stroke="currentColor" strokeWidth="1.3" />
@@ -468,8 +469,8 @@ export function PageShell({ children }: PropsWithChildren) {
           </div>
 
           <div className="top__actions">
-            <button type="button" className="btn btn--ghost-out top__compose" onClick={() => openComposer()}>
-              <span aria-hidden>＋</span> Nova intenção
+            <button type="button" className="btn btn--primary" onClick={() => openComposer()}>
+              Nova intenção
             </button>
             <Link to="/notifications" className="iconbtn" aria-label={`Notificações${unreadQuery.data ? ` (${unreadQuery.data} não lidas)` : ''}`}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
