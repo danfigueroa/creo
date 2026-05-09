@@ -274,6 +274,8 @@ export function ProfilePage() {
           </div>
         </section>
 
+        <ProfileActivityTabs userId={profile.data?.id} />
+
       <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Conta</p>
         <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Meu perfil</h2>
@@ -371,6 +373,170 @@ export function ProfilePage() {
       <BlockedUsersSection />
       </main>
     </PageShell>
+  )
+}
+
+type ActivityTab = 'ativas' | 'encerradas' | 'rezadas' | 'linha'
+
+type FeedItemRaw =
+  | { kind: 'PRAYER_REQUEST'; createdAt: string; prayerRequest: { id: string; authorId: string; title: string; body: string; status: string; category: string; createdAt: string } }
+  | { kind: 'ANNOUNCEMENT'; createdAt: string; announcement: unknown }
+
+type FeedResponse = { items: FeedItemRaw[] }
+
+type MyPrayerEntry = {
+  requestId: string
+  requestTitle: string
+  authorId: string
+  authorUsername: string
+  authorDisplayName: string
+  actionType: string
+  createdAt: string
+}
+
+const TABS: Array<{ id: ActivityTab; label: string }> = [
+  { id: 'ativas', label: 'Ativas' },
+  { id: 'encerradas', label: 'Encerradas' },
+  { id: 'rezadas', label: 'Rezadas (privado)' },
+  { id: 'linha', label: 'Linha do tempo' }
+]
+
+function ProfileActivityTabs({ userId }: { userId?: string }) {
+  const [tab, setTab] = useState<ActivityTab>('ativas')
+
+  const homeQuery = useQuery({
+    queryKey: ['feed', 'home', 'profile-activity'],
+    enabled: !!userId,
+    queryFn: async () => (await api.get<FeedResponse>('/feed/home', { params: { limit: 50 } })).data
+  })
+
+  const myPrayers = useQuery({
+    queryKey: ['me', 'prayers'],
+    enabled: !!userId && tab === 'rezadas',
+    queryFn: async () => (await api.get<{ items: MyPrayerEntry[] }>('/me/prayers')).data.items ?? []
+  })
+
+  const myItems = (homeQuery.data?.items ?? [])
+    .filter((it) => it.kind === 'PRAYER_REQUEST' && it.prayerRequest.authorId === userId)
+    .map((it) => (it as Extract<FeedItemRaw, { kind: 'PRAYER_REQUEST' }>).prayerRequest)
+
+  const ativas = myItems.filter((p) => p.status === 'ACTIVE' || p.status === 'PENDING_REVIEW')
+  const encerradas = myItems.filter((p) => p.status !== 'ACTIVE' && p.status !== 'PENDING_REVIEW')
+
+  return (
+    <>
+      <div className="tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`tab tab--auto ${tab === t.id ? 'is-on' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="profile__panel">
+        {tab === 'ativas' && (
+          <ProfilePostsList items={ativas} loading={homeQuery.isLoading} emptyText="Nenhuma intenção ativa por aqui." />
+        )}
+        {tab === 'encerradas' && (
+          <ProfilePostsList items={encerradas} loading={homeQuery.isLoading} emptyText="Nada encerrado ainda." />
+        )}
+        {tab === 'rezadas' && (
+          <PrivatePrayedList items={myPrayers.data ?? []} loading={myPrayers.isLoading} />
+        )}
+        {tab === 'linha' && (
+          <p className="private__hint">
+            Linha do tempo de marcos pessoais — em breve.
+          </p>
+        )}
+      </div>
+    </>
+  )
+}
+
+function ProfilePostsList({
+  items,
+  loading,
+  emptyText
+}: {
+  items: Array<{ id: string; title: string; body: string; status: string; createdAt: string; category: string }>
+  loading: boolean
+  emptyText: string
+}) {
+  if (loading) {
+    return <p className="private__hint">Carregando…</p>
+  }
+  if (items.length === 0) {
+    return <p className="private__hint">{emptyText}</p>
+  }
+  return (
+    <ul className="private__list">
+      {items.map((p) => (
+        <li key={p.id} className="private__row" style={{ gridTemplateColumns: '1fr auto' }}>
+          <div>
+            <Link to={`/requests/${p.id}`} className="private__title" style={{ color: 'var(--ink)' }}>
+              {p.title}
+            </Link>
+            <p style={{ color: 'var(--muted)', fontSize: 13, margin: '4px 0 0', lineHeight: 1.4 }}>
+              {p.body.length > 140 ? p.body.slice(0, 140) + '…' : p.body}
+            </p>
+          </div>
+          <span className="private__when">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+const PRAYER_LABELS: Record<string, string> = {
+  HAIL_MARY: 'Ave Maria',
+  OUR_FATHER: 'Pai Nosso',
+  GLORY_BE: 'Glória',
+  ROSARY_DECADE: 'Terço',
+  ROSARY_FULL: 'Rosário',
+  I_PRAYED: 'Orei',
+  INTERCESSION: 'Intercessão',
+  GRATITUDE: 'Gratidão',
+  FASTING: 'Jejum',
+  CRYING_OUT: 'Clamor'
+}
+
+function PrivatePrayedList({ items, loading }: { items: MyPrayerEntry[]; loading: boolean }) {
+  if (loading) {
+    return <p className="private__hint">Carregando…</p>
+  }
+  if (items.length === 0) {
+    return (
+      <div className="private">
+        <p className="private__hint">Apenas você vê esta lista.</p>
+        <p className="private__hint">Você ainda não rezou por intenções de outras pessoas.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="private">
+      <p className="private__hint">Apenas você vê esta lista.</p>
+      <ul className="private__list">
+        {items.map((p, i) => (
+          <li key={`${p.requestId}-${p.createdAt}-${i}`} className="private__row">
+            <span className="private__rx" style={{ background: 'oklch(0.94 0.03 220)', color: 'oklch(0.40 0.08 220)' }}>
+              {PRAYER_LABELS[p.actionType] || p.actionType}
+            </span>
+            <Link to={`/requests/${p.requestId}`} className="private__title" style={{ color: 'var(--ink)' }}>
+              "{p.requestTitle}"
+            </Link>
+            <span className="private__who">de {p.authorDisplayName}</span>
+            <span className="private__when">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
