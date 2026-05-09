@@ -244,16 +244,9 @@ function PrayerCard({
               {relativeTime(item.createdAt)}
             </time>
             {isOwner && item.allowAnonymous && (
-              <>
-                <span className="post__sep">·</span>
-                <span
-                  className="post__when"
-                  title="Você publicou esta intenção como anônima — outras pessoas veem como Anônimo."
-                  style={{ fontStyle: 'italic' }}
-                >
-                  publicado como anônimo
-                </span>
-              </>
+              <span className="anon-flag" title="Você publicou esta intenção como anônima — outras pessoas veem como Anônimo.">
+                anônimo
+              </span>
             )}
           </div>
           <div className="post__line post__line--meta">
