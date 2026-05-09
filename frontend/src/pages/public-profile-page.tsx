@@ -187,19 +187,25 @@ export function PublicProfilePage() {
 
   return (
     <PageShell>
-      <section className="pv-panel rounded-3xl p-6 sm:p-7">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+      <main className="profile">
+        <div className="profile__cover" />
+        <div className="profile__head">
           <Avatar user={owner} size="xl" />
-          <div className="min-w-0 flex-1">
-            <h1 className="pv-title text-2xl font-bold text-secondary sm:text-3xl">{owner.displayName}</h1>
-            <p className="pv-muted mt-0.5 text-sm">@{owner.username}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-panel px-2.5 py-1 text-[11px] font-semibold text-primary">
-                <span aria-hidden>{owner.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}</span>
+          <div className="profile__idblock">
+            <h1 className="profile__name">{owner.displayName}</h1>
+            <div className="profile__meta">
+              <span>@{owner.username}</span>
+              <span className="post__sep">·</span>
+              <span>
+                <span aria-hidden style={{ marginRight: 4 }}>
+                  {owner.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}
+                </span>
                 {traditionLabel[owner.tradition]}
               </span>
             </div>
+            {owner.bio && <p className="profile__bio">"{owner.bio}"</p>}
           </div>
+          <div className="profile__actions">
           <ProfileActionButton
             status={status}
             displayName={owner.displayName}
@@ -261,11 +267,8 @@ export function PublicProfilePage() {
             blockBusy={blockUser.isPending}
             unblockBusy={unblockUser.isPending}
           />
+          </div>
         </div>
-        {owner.bio && (
-          <p className="pv-muted mt-5 whitespace-pre-line text-sm leading-relaxed text-secondary/90">{owner.bio}</p>
-        )}
-      </section>
 
       {stats ? (
         <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
@@ -335,6 +338,7 @@ export function PublicProfilePage() {
           </p>
         </section>
       )}
+      </main>
     </PageShell>
   )
 }
