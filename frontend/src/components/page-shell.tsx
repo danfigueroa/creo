@@ -44,10 +44,11 @@ type Friend = {
   avatarUrl?: string | null
 }
 
-type NavKind = 'mural' | 'amigos' | 'grupos' | 'criar'
+type NavKind = 'mural' | 'notifs' | 'amigos' | 'grupos' | 'criar'
 
-const NAV: Array<{ id: NavKind; label: string; to: string }> = [
+const NAV: Array<{ id: NavKind; label: string; to: string; pip?: boolean }> = [
   { id: 'mural', label: 'Mural', to: '/feed' },
+  { id: 'notifs', label: 'Notificações', to: '/notifications', pip: true },
   { id: 'amigos', label: 'Amigos', to: '/friends' },
   { id: 'grupos', label: 'Grupos', to: '/groups' },
   { id: 'criar', label: 'Criar grupo', to: '/groups/new' }
@@ -61,6 +62,13 @@ function NavIcon({ kind }: { kind: NavKind }) {
           <rect x="2.5" y="3" width="13" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
           <rect x="2.5" y="8" width="13" height="3" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
           <rect x="2.5" y="13" width="13" height="2" rx="0.6" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      )
+    case 'notifs':
+      return (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       )
     case 'amigos':
@@ -296,6 +304,7 @@ export function PageShell({ children }: PropsWithChildren) {
                 <NavIcon kind={n.id} />
               </span>
               <span>{n.label}</span>
+              {n.pip && unreadQuery.data && unreadQuery.data > 0 ? <span className="navitem__pip" /> : null}
             </NavLink>
           ))}
         </nav>
