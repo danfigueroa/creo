@@ -163,40 +163,35 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/55 px-3 py-6 sm:px-6 sm:py-10"
-      onClick={handleBackdropClick}
-      role="presentation"
-    >
+    <div className="modal-veil" onClick={handleBackdropClick} role="presentation">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="pv-new-request-heading"
-        className="pv-panel relative my-auto w-full max-w-2xl rounded-3xl p-5 sm:p-7"
+        className="modal"
+        style={{ width: 'min(720px, calc(100vw - 40px))', maxHeight: '90vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Novo pedido</p>
-            <h2 id="pv-new-request-heading" className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">
-              Compartilhe sua intenção de oração
-            </h2>
-            <p className="pv-muted mt-2 max-w-xl text-sm">
-              Escreva com o coração. Sua comunidade vai ler e orar com você — escolha abaixo quem deve receber este pedido.
-            </p>
-          </div>
+        <header className="modal__head">
+          <h2 id="pv-new-request-heading" className="modal__title">
+            Nova intenção
+          </h2>
           <button
             type="button"
             onClick={onClose}
             disabled={createMutation.isPending}
             aria-label="Fechar"
-            className="pv-chip inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-lg disabled:opacity-50"
+            className="modal__close"
           >
             ×
           </button>
-        </div>
+        </header>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-6">
+        <form onSubmit={onSubmit} className="modal__body" style={{ display: 'block' }}>
+          <p className="pv-muted" style={{ fontSize: 13, marginTop: 0, marginBottom: 18 }}>
+            Escreva com o coração. Sua comunidade vai ler e orar com você.
+          </p>
+          <div className="space-y-6">
           <div>
             <div className="flex items-baseline justify-between gap-3">
               <label htmlFor="pv-title" className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
@@ -368,6 +363,7 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
           </div>
 
           {error && <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
+          </div>
         </form>
       </div>
     </div>
