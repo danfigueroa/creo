@@ -228,6 +228,46 @@ func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID stri
 	return s.repo.RecordPrayerAction(ctx, userID, requestID, actionType, windowHours)
 }
 
+// ListPrayerActionsByRequest returns every prayer action recorded for the
+// request, with the actor's display info. Visibility is delegated to whoever
+// shows the request — if the viewer can read the request body, they can see
+// who prayed.
+func (s *Service) ListPrayerActionsByRequest(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerActionRecord, error) {
+	if _, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID); err != nil {
+		return nil, err
+	}
+	return s.repo.ListPrayerActionsByRequest(ctx, requestID)
+}
+
+var ErrInvalidUpdateBody = errors.New("invalid update body")
+
+const (
+	requestUpdateMinBody = 1
+	requestUpdateMaxBody = 2000
+)
+
+func (s *Service) CreatePrayerRequestUpdate(ctx context.Context, actorUserID, requestID, body string) (models.PrayerRequestUpdate, error) {
+	body = strings.TrimSpace(body)
+	if l := len([]rune(body)); l < requestUpdateMinBody || l > requestUpdateMaxBody {
+		return models.PrayerRequestUpdate{}, ErrInvalidUpdateBody
+	}
+	req, err := s.repo.GetPrayerRequestByID(ctx, actorUserID, requestID)
+	if err != nil {
+		return models.PrayerRequestUpdate{}, err
+	}
+	if req.AuthorID != actorUserID {
+		return models.PrayerRequestUpdate{}, ErrPermissionDenied
+	}
+	return s.repo.CreatePrayerRequestUpdate(ctx, requestID, actorUserID, body)
+}
+
+func (s *Service) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerRequestUpdate, error) {
+	if _, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID); err != nil {
+		return nil, err
+	}
+	return s.repo.ListPrayerRequestUpdates(ctx, requestID)
+}
+
 func (s *Service) SetUserTradition(ctx context.Context, userID string, tradition models.Tradition) (models.User, error) {
 	if !isValidTradition(tradition) {
 		return models.User{}, ErrInvalidTradition

@@ -59,6 +59,9 @@ type Repository interface {
 	ListHomePrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error)
 	CountHomePrayerRequests(ctx context.Context, userID string) (int64, error)
 	RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error
+	ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error)
+	CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error)
+	ListPrayerRequestUpdates(ctx context.Context, requestID string) ([]models.PrayerRequestUpdate, error)
 	ListUserGroups(ctx context.Context, userID string) ([]models.Group, error)
 	SearchGroupsByName(ctx context.Context, userID, query string, limit int) ([]models.GroupSummary, error)
 	CreateGroup(ctx context.Context, userID, name, description string, imageURL *string, joinPolicy models.GroupJoinPolicy) (models.Group, error)
@@ -2463,6 +2466,130 @@ func itoa(n int) string {
 	}
 	// supports up to $99 which is more than enough for any builder here
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+func (r *PostgresRepository) ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pa.user_id::text, u.username, u.display_name, u.avatar_url, pa.action_type, pa.created_at
+		FROM prayer_actions pa
+		INNER JOIN users u ON u.id = pa.user_id AND u.deleted_at IS NULL
+		WHERE pa.prayer_request_id = $1::uuid
+		ORDER BY pa.created_at DESC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]models.PrayerActionRecord, 0)
+	for rows.Next() {
+		var rec models.PrayerActionRecord
+		if err := rows.Scan(&rec.UserID, &rec.Username, &rec.DisplayName, &rec.AvatarURL, &rec.ActionType, &rec.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return models.PrayerRequestUpdate{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var id string
+	var createdAt time.Time
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO prayer_request_updates (prayer_request_id, author_id, body)
+		VALUES ($1::uuid, $2::uuid, $3)
+		RETURNING id::text, created_at
+	`, requestID, authorID, body).Scan(&id, &createdAt); err != nil {
+		return models.PrayerRequestUpdate{}, err
+	}
+
+	r.notifyPrayersOfRequestUpdate(ctx, tx, requestID, authorID)
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.PrayerRequestUpdate{}, err
+	}
+
+	out := models.PrayerRequestUpdate{
+		ID:              id,
+		PrayerRequestID: requestID,
+		AuthorID:        authorID,
+		Body:            body,
+		CreatedAt:       createdAt,
+	}
+	// hydrate author info
+	_ = r.db.QueryRow(ctx, `
+		SELECT username, display_name FROM users WHERE id = $1::uuid AND deleted_at IS NULL
+	`, authorID).Scan(&out.AuthorUsername, &out.AuthorDisplayName)
+	return out, nil
+}
+
+func (r *PostgresRepository) ListPrayerRequestUpdates(ctx context.Context, requestID string) ([]models.PrayerRequestUpdate, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pru.id::text, pru.prayer_request_id::text, pru.author_id::text,
+		       u.username, u.display_name,
+		       pru.body, pru.created_at
+		FROM prayer_request_updates pru
+		INNER JOIN users u ON u.id = pru.author_id AND u.deleted_at IS NULL
+		WHERE pru.prayer_request_id = $1::uuid
+		ORDER BY pru.created_at DESC
+	`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]models.PrayerRequestUpdate, 0)
+	for rows.Next() {
+		var u models.PrayerRequestUpdate
+		if err := rows.Scan(
+			&u.ID, &u.PrayerRequestID, &u.AuthorID,
+			&u.AuthorUsername, &u.AuthorDisplayName,
+			&u.Body, &u.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, u)
+	}
+	return items, rows.Err()
+}
+
+// notifyPrayersOfRequestUpdate emits a REQUEST_UPDATED notification for every
+// distinct user who has prayed for the request, except the author. Best-effort.
+func (r *PostgresRepository) notifyPrayersOfRequestUpdate(ctx context.Context, exec notifyExec, requestID, authorID string) {
+	rows, err := r.db.Query(ctx, `
+		SELECT DISTINCT user_id::text
+		FROM prayer_actions
+		WHERE prayer_request_id = $1::uuid AND user_id <> $2::uuid
+	`, requestID, authorID)
+	if err != nil {
+		return
+	}
+	prayerIDs := make([]string, 0)
+	for rows.Next() {
+		var pid string
+		if err := rows.Scan(&pid); err != nil {
+			rows.Close()
+			return
+		}
+		prayerIDs = append(prayerIDs, pid)
+	}
+	rows.Close()
+
+	actor := authorID
+	for _, pid := range prayerIDs {
+		_ = insertNotificationOn(ctx, exec, models.CreateNotificationInput{
+			UserID:      pid,
+			Type:        models.NotificationTypeRequestUpdated,
+			ActorUserID: &actor,
+			SubjectType: models.NotificationSubjectPrayerRequest,
+			SubjectID:   requestID,
+			Payload:     map[string]any{},
+		})
+	}
 }
 
 var _ Repository = (*PostgresRepository)(nil)

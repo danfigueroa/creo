@@ -161,6 +161,25 @@ type UpdatePrayerRequestInput struct {
 	GroupIDs       []string
 }
 
+type PrayerActionRecord struct {
+	UserID      string           `json:"userId"`
+	Username    string           `json:"username"`
+	DisplayName string           `json:"displayName"`
+	AvatarURL   *string          `json:"avatarUrl,omitempty"`
+	ActionType  PrayerActionType `json:"actionType"`
+	CreatedAt   time.Time        `json:"createdAt"`
+}
+
+type PrayerRequestUpdate struct {
+	ID              string    `json:"id"`
+	PrayerRequestID string    `json:"prayerRequestId"`
+	AuthorID        string    `json:"authorId"`
+	AuthorUsername  string    `json:"authorUsername,omitempty"`
+	AuthorDisplayName string  `json:"authorDisplayName,omitempty"`
+	Body            string    `json:"body"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
 type Group struct {
 	ID                 string          `json:"id"`
 	Name               string          `json:"name"`
@@ -281,6 +300,7 @@ const (
 	NotificationTypeRequestRejected       NotificationType = "REQUEST_REJECTED"
 	NotificationTypeRequestChangesAsked   NotificationType = "REQUEST_CHANGES_ASKED"
 	NotificationTypeGroupAnnouncementPosted NotificationType = "GROUP_ANNOUNCEMENT_POSTED"
+	NotificationTypeRequestUpdated          NotificationType = "REQUEST_UPDATED"
 )
 
 type NotificationSubjectType string
