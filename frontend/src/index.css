@@ -2351,17 +2351,6 @@ textarea::placeholder {
   border-radius: var(--r-3);
   position: relative;
 }
-.welcome__quote::before {
-  content: "\201C";
-  position: absolute;
-  top: -10px;
-  left: 18px;
-  font-family: var(--serif);
-  font-size: 56px;
-  line-height: 1;
-  color: var(--ink-3);
-  opacity: 0.5;
-}
 .welcome__quote blockquote {
   font-family: var(--serif);
   font-size: 19px;
