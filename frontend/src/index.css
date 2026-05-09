@@ -1646,3 +1646,73 @@ textarea::placeholder {
   .profile__cover { margin: 18px -20px 0; }
   .profile__stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- Notifications ----------------------------------------------- */
+
+.notifs {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 36px 80px;
+}
+.notif-group { margin-top: 24px; }
+.notif-group__h {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0 10px;
+}
+.notif-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.notif {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  transition: border-color 160ms ease, background 160ms ease;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  width: 100%;
+  color: inherit;
+}
+.notif:hover { background: var(--card-2); border-color: var(--line-2); }
+.notif__body { flex: 1; min-width: 0; }
+.notif__line { font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
+.notif__line strong { color: var(--ink); font-weight: 600; }
+.notif__line em { font-style: normal; color: var(--ink); font-weight: 500; }
+.notif__when { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.notif__quote {
+  font-family: var(--serif);
+  font-style: italic;
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+.notif__rx {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: baseline;
+}
+.notif__milestone-mark {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .notifs { padding: 24px 20px 60px; }
+}
