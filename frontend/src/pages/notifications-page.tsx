@@ -16,8 +16,10 @@ type NotificationType =
   | 'REQUEST_APPROVED'
   | 'REQUEST_REJECTED'
   | 'REQUEST_CHANGES_ASKED'
+  | 'MILESTONE_PRAYED'
+  | 'MILESTONE_CREATED'
 
-type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP'
+type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP' | 'MILESTONE'
 
 type Actor = {
   userId: string
@@ -41,13 +43,14 @@ type ListResponse = {
   items: Notification[]
 }
 
-type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'other'
+type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'milestone' | 'other'
 
 const BUCKET_LABELS: Record<Bucket, string> = {
   prayed: 'Orações pelas suas intenções',
   updates: 'Atualizações de intenções',
   follow: 'Comunidade',
   group: 'Grupos',
+  milestone: 'Marcos',
   other: 'Outros'
 }
 
@@ -64,6 +67,9 @@ function bucketOf(type: NotificationType): Bucket {
     case 'GROUP_JOIN_REQUESTED':
     case 'GROUP_ANNOUNCEMENT_POSTED':
       return 'group'
+    case 'MILESTONE_PRAYED':
+    case 'MILESTONE_CREATED':
+      return 'milestone'
     default:
       return 'other'
   }
@@ -91,6 +97,8 @@ function targetPath(n: Notification): string {
       return '/friends'
     case 'GROUP':
       return `/groups/${n.subjectId}`
+    case 'MILESTONE':
+      return '/profile'
     default:
       return '/feed'
   }
@@ -103,6 +111,14 @@ function copyFor(n: Notification): string {
       return `${name} orou pelo seu pedido`
     case 'REQUEST_UPDATED':
       return `${name} publicou uma atualização em uma intenção que você reza`
+    case 'MILESTONE_PRAYED': {
+      const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
+      return count ? `Você atingiu ${count} orações enviadas.` : 'Você atingiu um marco de orações.'
+    }
+    case 'MILESTONE_CREATED': {
+      const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
+      return count ? `Você compartilhou ${count} ${count === 1 ? 'intenção' : 'intenções'}.` : 'Você atingiu um marco de intenções.'
+    }
     case 'FRIEND_REQUEST_RECEIVED':
       return `${name} quer ser seu amigo`
     case 'FRIEND_REQUEST_ACCEPTED':
@@ -158,7 +174,7 @@ export function NotificationsPage() {
 
   const groups = useMemo(() => {
     const items = listQuery.data ?? []
-    const buckets: Record<Bucket, Notification[]> = { prayed: [], updates: [], follow: [], group: [], other: [] }
+    const buckets: Record<Bucket, Notification[]> = { prayed: [], updates: [], follow: [], group: [], milestone: [], other: [] }
     items.forEach((n) => buckets[bucketOf(n.type)].push(n))
     return (Object.keys(BUCKET_LABELS) as Bucket[])
       .map((b) => ({ key: b, label: BUCKET_LABELS[b], items: buckets[b] }))
