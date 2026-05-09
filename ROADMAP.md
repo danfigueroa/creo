@@ -1,144 +1,80 @@
 # Roadmap pós-redesign
 
-Estado em 2026-05-09. Phase 1 (editorial cream + ink) e Phase 2 (telas novas:
-IntentionDetail, NotificationsPage, Welcome, Onboarding) entregues. Profile
-recebeu o header editorial e o composer ganhou o shell `.modal*`.
-
-A fila abaixo organiza o que ficou de fora — quase tudo backend ou polish
-visual de segunda passada — em rodadas independentes que podem ser tocadas
-em qualquer ordem.
+Estado em 2026-05-09. As fases visuais (editorial cream + ink) e as duas
+rodadas de backend (IntentionDetail, stats expandidas, friend suggestions,
+milestones de count) estão entregues. O que segue é o que ficou aberto
+depois disso.
 
 ---
 
-## Rodada A — Backend de IntentionDetail
+## Concluído
 
-Destrava as duas seções que hoje aparecem como placeholder (`Quem rezou` mostra
-contadores e `Atualizações do autor` mostra "Em breve").
-
-### A.1 — `GET /requests/:id/actions`
-
-- Endpoint novo retornando lista de prayer_actions agrupada por usuário e tipo.
-  Backend já tem a tabela `prayer_actions(user_id, request_id, action_type, created_at)`.
-- Política de privacidade a definir antes de codar:
-  - **Opção 1**: nomes só pra autor do pedido.
-  - **Opção 2**: nomes pra todo mundo (já hoje é público quem rezou, só não tem UI).
-  - **Opção 3**: nomes pra amigos do autor + autor.
-- Frontend já tem o slot pronto em `IntentionDetail` — substituir o
-  `<span className="prayed-pill prayed-pill--more">N pessoas</span>` pela lista
-  real de nomes em chips.
-
-### A.2 — Updates do autor
-
-- Tabela `prayer_request_updates(id, request_id, author_id, body, created_at)` já
-  existe no schema (visto em `000001_init.up.sql`).
-- Falta:
-  - `POST /requests/:id/updates` — service valida que `actor == author`, body 1-2000.
-  - `GET /requests/:id/updates` — lista paginada por `created_at DESC`.
-  - Notificação `UPDATE` pra todo mundo que rezou no pedido (best-effort, padrão
-    igual ao `notifyGroupMembersOfAnnouncement`).
-- Frontend: trocar o "Em breve" no `IntentionDetail` por modal pequeno que abre
-  ao clicar `+ Adicionar atualização`.
+- ✅ Phase 1 — paleta editorial, sidebar shell, reactions com glyph + oklch.
+- ✅ Phase 2 — IntentionDetail, NotificationsPage, Welcome, Onboarding 6 passos.
+- ✅ Profile + public profile com header editorial (cover band + 88px avatar overlap + grade de 4 stats).
+- ✅ Composer modal envelopado em `.modal*`.
+- ✅ Backend de IntentionDetail: `/requests/:id/actions` (Quem rezou com nomes), `/requests/:id/updates` (CRUD básico), `REQUEST_UPDATED` notif emitida pra quem rezou.
+- ✅ Stats expandidas: `prayerActionsReceived` + `streakDays` (CTE em SP timezone) + `GET /profile/stats`.
+- ✅ Friend suggestions: `GET /users/suggested` rankeado por mutual friends + grupos em comum, com reason em pt-BR.
+- ✅ MILESTONE notifs (count-based): `MILESTONE_PRAYED` em [10, 50, 100, 500, 1000] e `MILESTONE_CREATED` em [1, 10, 50, 100], idempotentes por threshold-cross único.
 
 ---
 
-## Rodada B — Stats expandidas no perfil
+## Pendências reais
 
-Hoje `Profile.stats` retorna só `requestsCreated` e `prayerActionsTotal`. O
-header novo tem 4 quadros que ficam com `—`:
+### Visual / UX que ficou pela metade
 
-- `orações enviadas` — já temos (`prayerActionsTotal`).
-- `orações recebidas` — somar prayer_actions onde request.author = userID. Novo
-  campo no service.
-- `intenções compartilhadas` — já temos (`requestsCreated`).
-- `dias consecutivos` — calcular streak de dias com pelo menos 1 prayer_action
-  do usuário. Query mais cara — considerar materializar num campo no `users` ou
-  cron diário.
+- **Profile tabs (Ativas / Encerradas / Rezadas privadas / Linha do tempo)** — o redesign do perfil parou no header. O corpo da página segue com o form antigo de edição (nome/username/bio + tradição + bloqueados). As 4 abas previstas pelo design não foram construídas.
+- **Profile form retoken** — o form de edit ainda usa `pv-panel`. Mistura padrões com o header editorial. Refatorar pra `.detail__section` ou modal seria coerente.
+- **Auth-page** — deferido. Uso só pra callbacks e reset; Welcome cobre 99% do fluxo.
+- **Group settings tab** — `Upload de foto`, selects e botões ainda em padrão antigo. Vale aplicar `.btn--ghost-out` no upload e `.cat-pill` nos selects onde fizer sentido.
 
-Frontend: trocar os 4 `—` em `profile-page.tsx` pelos valores reais; idem pro
-public-profile quando o viewer tem acesso.
+### Funcionalidades incompletas
 
----
+- **"Amigos em comum" no public profile** — o redesign tem essa seção mas hoje não renderiza nada. Precisa endpoint novo `GET /friends/mutual/:userId` (lista users que são amigos do viewer **e** do owner do perfil).
+- **"Em oração agora" no sidebar** — hoje renderiza top 4 friends do `/friends`. Falta o dot verde animado e a noção real de "rezando agora", o que implica presence/activity feed (modelagem nova: tabela ou Redis com last-action timestamp).
+- **MILESTONE de streak** — só implementei MILESTONE de count. Streak (7, 30, 100 dias consecutivos) precisaria de:
+  - Cron diário que verifica streaks e emite `MILESTONE_STREAK`, ou
+  - Trigger no first-action-of-day que recalcula streak e emite se cruzou threshold.
+- **Rodada F: cap nos `groupIds` do compartilhar** — `IntentionDetail.Compartilhar com` chama `PATCH /requests/:id` sem limite de grupos. Vale capar em ~5 e validar que viewer é membro de todos os grupos novos no service.
+- **PRAYED dedup** — várias orações em sequência geram várias notifs `PRAYED` pro autor. Boa hora de agrupar por (request, prayer) com cooldown de N min ou virar uma lista numa única notif.
 
-## Rodada C — Notificações expandidas
+### Mobile / acessibilidade não-testados
 
-Backend hoje emite `PRAYED`, `FRIEND_REQUEST_*`, `GROUP_*` e `REQUEST_*`. A
-NotificationsPage tem buckets `prayed`, `follow`, `group`, `outros`. Faltam:
+- **Onboarding viewport curto** — `.onb__h` com clamp(34, 5vw, 52) pode amassar em < 360px. Também testar transição entre passos com viewport curto.
+- **Welcome em mobile** — colapso pra single-col abaixo de 1100px funciona, mas o auth card pode ficar curto demais quando o teclado abre. Validar.
+- **ConfirmDialog focus** — não testado com leitor de tela. Importante porque é o único confirm de delete usado em vários lugares.
 
-- **`UPDATE`** — quando autor de pedido publica uma atualização (ver A.2).
-  Bucket "Atualizações de intenções" no UI.
-- **`MILESTONE`** — gamificação tipo "100 orações enviadas", "30 dias seguidos".
-  Bucket "Marcos". Dispara quando o stat cruza um threshold. Pode esperar a
-  rodada B pra ter dados.
+### Documentação / observabilidade
 
----
-
-## Rodada D — Friend suggestions
-
-A step 3 do onboarding hoje mostra 6 nomes mockados. Pra produção:
-
-- Endpoint `GET /users/suggested` que retorna até 10 usuários com algum sinal
-  de relevância (amigos-de-amigos, mesma tradição, mesmo grupo). Algoritmo
-  mínimo viável: top 10 usuários com mais grupos em comum + amigos em comum.
-- Frontend: trocar `SUGGESTED_FRIENDS` em `onboarding-page.tsx` pela query real;
-  click envia `POST /friends/requests` e mostra check imediato.
-- "Amigos em comum" no public-profile atualmente vazio também consome a mesma
-  lógica.
+- **CLAUDE.md** ainda não menciona `/profile/stats`, `/users/suggested`, `/requests/:id/actions`, `/requests/:id/updates`, MILESTONE types — útil pra futuras sessões.
+- **Logging** — milestones e updates emitem notif silenciosa. Quando algo falha no `insertNotificationOn`, vai pra log mas ninguém olha.
 
 ---
 
-## Rodada E — Polish que sobrou
+## Top 3 pra próxima rodada
 
-Visuais menores que ficaram pra trás:
-
-- **`auth-page.tsx`** — segue com tokens cascateados mas sem o visual editorial.
-  É a página atingida via "Esqueceu a senha?" e callbacks de email. Deveria ter
-  pelo menos um header serif e o botão pill `.btn--primary`.
-- **Profile editing** — o form de edit (nome, username, bio, tradição) ainda
-  vive em painéis `pv-panel`. Estética inconsistente com o header editorial
-  novo. Refatorar pra usar `.modal*` ou `.detail__section` blocks.
-- **Group page settings tab** — segue com inputs grandes e botão genérico.
-  Aplicar `.btn--ghost-out` no upload e `.cat-pill` nos seletores onde fizer
-  sentido.
-- **Mobile no onboarding** — testar se o `.onb__cards` 1-col no mobile não
-  ficou apertado. Testar também a transição entre passos em viewport curto.
-- **"Em oração agora" no sidebar** — hoje mostra top 4 amigos sem o pulse dot.
-  Quando a rodada B trouxer streak, os amigos com streak ativa podem ganhar o
-  dot animado.
+1. **Profile tabs** — fecha o redesign do perfil. Frontend-only se decidirmos cada aba: Ativas/Encerradas usam `/requests` filtrado; Rezadas privadas precisa endpoint `GET /me/prayers` (novo, mas barato — equivalente do /actions invertido); Linha do tempo é placeholder até termos milestones.
+2. **MILESTONE streak** — completa o sistema de marcos. A escolha entre cron e trigger é estrutural; ambas dão certo.
+3. **PRAYED dedup** — silenciosamente o bug mais visível em produção. Cooldown de 60s na notif `PRAYED` por (recipient, request, actor) elimina spam sem mexer nas counts.
 
 ---
 
-## Rodada F — Backend pra IntentionDetail compartilhar
+## Decisões fechadas (não-pendências)
 
-`Compartilhar com` no IntentionDetail funciona via `PATCH /requests/:id` com
-`groupIds` adicionado. Ok pra autor. Considerar:
-
-- Limitar quantos grupos cada pedido pode estar (ex.: 5) pra evitar spam.
-- Quando o pedido sai de `visibility=PUBLIC` pra `GROUP_ONLY` via share, o
-  service hoje pode rejeitar se o usuário não for membro — verificar.
+- ❌ Tradition enum BOTH / NONE — decidido manter binário CATHOLIC | EVANGELICAL.
+- ❌ PRAISE action type — decidido não criar; mantemos os 5 católicos + 5 evangélicos atuais.
+- ❌ Dark theme — dropado e não volta.
 
 ---
 
-## Não-pendências (decisões fechadas)
+## Próximas sessões sugeridas
 
-- **Tradições**: ficamos com 2 (Católico/Evangélico). Não vai entrar BOTH ou
-  NONE no backend nem no UI.
-- **PRAISE action type**: cancelado, mantemos os 5 católicos + 5 evangélicos
-  existentes.
-- **Dark theme**: dropado de vez — não tem retorno previsto.
+Se uma sessão só:
+- Top 3 acima. Profile tabs leva metade do tempo, milestones streak + PRAYED dedup são pequenos cada.
 
----
+Se duas:
+- **Sessão A**: Profile tabs + form retoken (tudo frontend, foco no perfil).
+- **Sessão B**: MILESTONE streak + PRAYED dedup + cap de grupos (backend de polish).
 
-## Ordem sugerida pra próxima sessão
-
-Se for uma sessão só:
-
-1. **Rodada A.1** (Quem rezou com nomes) — alto impacto visual no detail.
-2. **Rodada B** (stats) — destrava o header de profile que tá com `—`.
-3. **Rodada A.2** (updates) — fecha o IntentionDetail.
-
-Se for duas sessões:
-
-- Sessão 1: Rodadas A + B (frontend já tá pronto, é praticamente só backend).
-- Sessão 2: Rodadas C + D + E (notif types + suggestions + polish).
-
-Rodada F pode entrar como tarefa pequena em qualquer sessão.
+Polish residual de auth/group settings e mobile-sweep podem entrar como tarefas pequenas em qualquer sessão.
