@@ -44,6 +44,17 @@ export function ProfilePage() {
     }
   })
 
+  type ProfileStats = {
+    requestsCreated: number
+    prayerActionsTotal: number
+    prayerActionsReceived: number
+    streakDays: number
+  }
+  const stats = useQuery({
+    queryKey: ['profile', 'stats'],
+    queryFn: async () => (await api.get<ProfileStats>('/profile/stats')).data
+  })
+
   useEffect(() => {
     if (!profile.data) return
     setDisplayName(profile.data.displayName || '')
@@ -246,19 +257,19 @@ export function ProfilePage() {
 
         <section className="profile__stats">
           <div className="stat">
-            <div className="stat__num">—</div>
+            <div className="stat__num">{stats.data?.prayerActionsTotal ?? '—'}</div>
             <div className="stat__label">orações enviadas</div>
           </div>
           <div className="stat">
-            <div className="stat__num">—</div>
+            <div className="stat__num">{stats.data?.prayerActionsReceived ?? '—'}</div>
             <div className="stat__label">orações recebidas</div>
           </div>
           <div className="stat">
-            <div className="stat__num">—</div>
+            <div className="stat__num">{stats.data?.requestsCreated ?? '—'}</div>
             <div className="stat__label">intenções compartilhadas</div>
           </div>
           <div className="stat">
-            <div className="stat__num">—</div>
+            <div className="stat__num">{stats.data?.streakDays ?? '—'}</div>
             <div className="stat__label">dias consecutivos</div>
           </div>
         </section>
