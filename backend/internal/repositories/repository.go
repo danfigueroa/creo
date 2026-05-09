@@ -259,16 +259,61 @@ func (r *PostgresRepository) GetUserStats(ctx context.Context, userID string) (m
 	if err != nil {
 		return models.ProfileStats{}, err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var cat string
 		var c int
 		if err = rows.Scan(&cat, &c); err != nil {
+			rows.Close()
 			return models.ProfileStats{}, err
 		}
 		stats.PrayerActionsByCategory[cat] = c
 	}
-	return stats, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return models.ProfileStats{}, err
+	}
+
+	// Prayers received: count of prayer_actions on every request the user
+	// authored (excluding deleted requests).
+	if err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::int
+		FROM prayer_actions pa
+		INNER JOIN prayer_requests pr ON pr.id = pa.prayer_request_id
+		WHERE pr.author_id = $1 AND pr.deleted_at IS NULL
+	`, userID).Scan(&stats.PrayerActionsReceived); err != nil {
+		return models.ProfileStats{}, err
+	}
+
+	// Streak: longest run of consecutive days ending today (or yesterday) where
+	// the user recorded at least one prayer action. Computed from the distinct
+	// day series in prayer_actions. Cheap enough at this scale; if the table
+	// grows we can move to a materialized counter or daily cron.
+	streakRow := r.db.QueryRow(ctx, `
+		WITH days AS (
+			SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day
+			FROM prayer_actions
+			WHERE user_id = $1
+		),
+		ranked AS (
+			SELECT day, day - (ROW_NUMBER() OVER (ORDER BY day))::int AS grp
+			FROM days
+		),
+		runs AS (
+			SELECT grp, MAX(day) AS last_day, COUNT(*)::int AS streak
+			FROM ranked
+			GROUP BY grp
+		),
+		today AS (
+			SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS today
+		)
+		SELECT COALESCE(MAX(streak), 0)::int
+		FROM runs, today
+		WHERE last_day = today.today OR last_day = today.today - 1
+	`, userID)
+	if err := streakRow.Scan(&stats.StreakDays); err != nil {
+		return models.ProfileStats{}, err
+	}
+	return stats, nil
 }
 
 func (r *PostgresRepository) UpsertAuthUser(ctx context.Context, userID, email, preferredUsername, preferredDisplayName, preferredTradition string) error {

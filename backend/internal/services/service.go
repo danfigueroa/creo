@@ -268,6 +268,12 @@ func (s *Service) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, re
 	return s.repo.ListPrayerRequestUpdates(ctx, requestID)
 }
 
+// GetUserStats returns ProfileStats for the given user (used by /profile/stats
+// for the authenticated user; the public profile flow has its own gating).
+func (s *Service) GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error) {
+	return s.repo.GetUserStats(ctx, userID)
+}
+
 func (s *Service) SetUserTradition(ctx context.Context, userID string, tradition models.Tradition) (models.User, error) {
 	if !isValidTradition(tradition) {
 		return models.User{}, ErrInvalidTradition

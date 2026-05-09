@@ -106,6 +106,8 @@ const (
 type ProfileStats struct {
 	RequestsCreated         int            `json:"requestsCreated"`
 	PrayerActionsTotal      int            `json:"prayerActionsTotal"`
+	PrayerActionsReceived   int            `json:"prayerActionsReceived"`
+	StreakDays              int            `json:"streakDays"`
 	PrayerActionsByType     map[string]int `json:"prayerActionsByType"`
 	PrayerActionsByCategory map[string]int `json:"prayerActionsByCategory"`
 }

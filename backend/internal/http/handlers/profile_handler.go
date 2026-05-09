@@ -48,6 +48,20 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, profile)
 }
 
+func (h *ProfileHandler) GetProfileStats(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	stats, err := h.service.GetUserStats(r.Context(), userID)
+	if err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, stats)
+}
+
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {

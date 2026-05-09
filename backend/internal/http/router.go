@@ -45,6 +45,7 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 		api.Group(func(protected chi.Router) {
 			protected.Use(middleware.RequireAuth(validator))
 			protected.Get("/profile", profileHandler.GetProfile)
+			protected.Get("/profile/stats", profileHandler.GetProfileStats)
 			protected.Patch("/profile", profileHandler.UpdateProfile)
 			protected.Patch("/profile/tradition", profileHandler.UpdateTradition)
 			protected.Get("/users/{username}", profileHandler.GetPublicProfile)
