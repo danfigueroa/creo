@@ -1841,3 +1841,366 @@ textarea::placeholder {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ---------- Onboarding -------------------------------------------------- */
+
+.app--onb { grid-template-columns: 1fr; max-width: none; }
+.onb {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at 50% -10%, oklch(0.95 0.04 80) 0%, var(--bg) 60%);
+}
+
+.onb__progress {
+  display: flex;
+  gap: 6px;
+  padding: 28px 36px 0;
+  justify-content: center;
+}
+.onb__pip {
+  width: 36px; height: 3px;
+  border-radius: 2px;
+  background: var(--line-2);
+  transition: background 240ms ease, width 240ms ease;
+}
+.onb__pip.is-on { background: var(--ink); width: 56px; }
+.onb__pip.is-done { background: var(--ink-3); }
+
+.onb__stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 40px 36px;
+  width: 100%;
+}
+
+.onb__step {
+  width: 100%;
+  max-width: 580px;
+  text-align: center;
+  opacity: 1;
+  animation: stepIn 420ms cubic-bezier(.2, .7, .2, 1) both;
+}
+@keyframes stepIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.onb__welcome { text-align: center; }
+.onb__mark {
+  width: 56px; height: 56px;
+  margin: 0 auto 24px;
+  border-radius: 14px;
+  background: var(--ink);
+  display: grid; place-items: center;
+  position: relative;
+}
+.onb__mark::before {
+  content: "";
+  position: absolute; inset: 14px;
+  border-radius: 6px;
+  background:
+    radial-gradient(circle at 50% 38%, var(--bg) 0 28%, transparent 29%),
+    linear-gradient(var(--bg) 0 0) 50% 65% / 2px 12px no-repeat,
+    linear-gradient(var(--bg) 0 0) 50% 65% / 12px 2px no-repeat;
+}
+
+.onb__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin: 0 0 16px;
+}
+.onb__h {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1.06;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.onb__lede {
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0 auto 28px;
+  max-width: 46ch;
+  text-wrap: pretty;
+}
+
+.onb__quote {
+  margin: 32px auto 0;
+  max-width: 38ch;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--muted);
+  line-height: 1.55;
+  position: relative;
+  padding-top: 28px;
+}
+.onb__quote::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 50%;
+  width: 32px; height: 1px;
+  background: var(--line-2);
+  transform: translateX(-50%);
+}
+.onb__quote p { margin: 0; }
+.onb__quote-mark { display: none; }
+.onb__quote-attr {
+  display: block;
+  margin-top: 8px;
+  font-style: normal;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+  text-transform: uppercase;
+}
+
+/* Step 1 — denomination cards */
+.onb__cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+  text-align: left;
+}
+@media (max-width: 600px) { .onb__cards { grid-template-columns: 1fr; } }
+.onb-card {
+  padding: 18px 18px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  transition: all 200ms ease;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+.onb-card:hover { border-color: var(--ink-3); background: var(--card-2); }
+.onb-card.is-on {
+  border-color: var(--ink);
+  background: var(--card-2);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ink) 14%, transparent);
+}
+.onb-card__title {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.onb-card__hint { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+
+/* Step 2 — interest chips */
+.onb__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.onb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  transition: all 180ms ease;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onb-chip:hover { border-color: var(--ink-3); }
+.onb-chip.is-on {
+  background: color-mix(in oklab, oklch(0.92 0.04 var(--chip-tone, 200)) 80%, var(--card));
+  border-color: color-mix(in oklab, oklch(0.55 0.10 var(--chip-tone, 200)) 50%, var(--line-2));
+  color: oklch(0.40 0.10 var(--chip-tone, 200));
+  font-weight: 600;
+}
+.onb-chip__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px; height: 16px;
+}
+
+.onb__count {
+  margin: 22px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Step 3 — friend cards */
+.onb__friends {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+  text-align: left;
+}
+@media (max-width: 600px) { .onb__friends { grid-template-columns: 1fr; } }
+.onb-friend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  text-align: left;
+  transition: all 180ms ease;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+.onb-friend:hover { border-color: var(--ink-3); }
+.onb-friend.is-on {
+  border-color: var(--ink);
+  background: var(--card-2);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ink) 14%, transparent);
+}
+.onb-friend__txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.onb-friend__name { font-size: 14px; font-weight: 600; color: var(--ink); }
+.onb-friend__ctx { font-size: 12px; color: var(--muted); }
+.onb-friend__check {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  display: grid; place-items: center;
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.onb-friend.is-on .onb-friend__check {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+/* Step 4 — first intention */
+.onb__compose {
+  margin: 8px auto 0;
+  max-width: 520px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  padding: 18px;
+}
+.onb__textarea {
+  width: 100%;
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.5;
+  color: var(--ink);
+  resize: none;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+.onb__textarea::placeholder { color: var(--muted-2); font-style: italic; }
+.onb__compose-foot {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+.onb__count-soft { font-size: 12px; color: var(--muted); }
+
+/* Step 5 — tour list */
+.onb__tour-list {
+  list-style: none;
+  margin: 8px auto 0;
+  padding: 0;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: left;
+}
+.onb__tour-list li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.onb__tour-num {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.onb__tour-list strong {
+  display: block;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--ink);
+  margin-bottom: 4px;
+  letter-spacing: -0.005em;
+}
+.onb__tour-list span:not(.onb__tour-num) {
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* Onboarding footer */
+.onb__foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 36px 28px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg) 95%, transparent);
+}
+.onb__back {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onb__back:hover:not(:disabled) { color: var(--ink); background: rgba(14, 74, 83, 0.06); }
+.onb__back:disabled { opacity: 0.3; cursor: default; }
+.onb__step-num {
+  margin: 0 auto;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.onb__cta-row { display: flex; gap: 8px; align-items: center; }
+.onb__skip {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: var(--r-pill);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.onb__skip:hover { color: var(--ink); background: rgba(14, 74, 83, 0.06); }
+.onb__cta { padding: 10px 22px; }
