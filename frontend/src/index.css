@@ -633,7 +633,8 @@ textarea::placeholder {
 /* ---------- Topbar ------------------------------------------------------- */
 
 .top {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 520px) 1fr;
   gap: 16px;
   align-items: center;
   padding: 14px 36px;
@@ -646,8 +647,8 @@ textarea::placeholder {
 }
 
 .top__search {
-  flex: 1;
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 10px;
   padding: 9px 14px;
@@ -680,7 +681,7 @@ textarea::placeholder {
   letter-spacing: 0.04em;
 }
 
-.top__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.top__actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
 
 .iconbtn {
   position: relative;
@@ -1212,7 +1213,9 @@ textarea::placeholder {
   .app { grid-template-columns: 1fr; }
   .side { display: none; }
   .feed { padding: 28px 20px 60px; }
-  .top { padding: 14px 20px; }
+  .top { padding: 14px 20px; grid-template-columns: minmax(0, 1fr) auto; }
+  .top__search { grid-column: 1 / -1; }
+  .top__actions { grid-column: 1 / -1; justify-self: end; }
   .stage > main { padding: 22px 20px 60px; }
   .stage > main:has(> .feed) { padding: 4px 20px 40px; }
 }
