@@ -274,10 +274,23 @@ func (s *Service) CreatePrayerRequestUpdate(ctx context.Context, actorUserID, re
 }
 
 func (s *Service) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerRequestUpdate, error) {
-	if _, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID); err != nil {
+	req, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListPrayerRequestUpdates(ctx, requestID)
+	updates, err := s.repo.ListPrayerRequestUpdates(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+	// Mirror the request-level anonymity onto the author-published updates so
+	// non-authors can't fingerprint the writer through the updates list.
+	if req.AllowAnonymous && req.AuthorID != viewerUserID {
+		for i := range updates {
+			updates[i].AuthorUsername = ""
+			updates[i].AuthorDisplayName = "Anônimo"
+		}
+	}
+	return updates, nil
 }
 
 // GetUserStats returns ProfileStats for the given user (used by /profile/stats

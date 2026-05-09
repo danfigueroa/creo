@@ -1334,6 +1334,16 @@ func (r *PostgresRepository) enrichPrayerRequests(ctx context.Context, userID st
 		if !ok {
 			continue
 		}
+		// Honor allow_anonymous: every viewer that isn't the author themselves
+		// sees the request as authored by "Anônimo" — no username, no avatar.
+		// AuthorID is kept (it's not exposed in any user-by-id route) so
+		// downstream code can still tell who owns what when needed.
+		if items[i].AllowAnonymous && items[i].AuthorID != userID {
+			items[i].AuthorUsername = ""
+			items[i].AuthorDisplayName = "Anônimo"
+			items[i].AuthorAvatarURL = nil
+			continue
+		}
 		items[i].AuthorUsername = author.username
 		items[i].AuthorDisplayName = author.displayName
 		items[i].AuthorAvatarURL = author.avatarURL
