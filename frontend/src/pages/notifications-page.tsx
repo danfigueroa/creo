@@ -18,6 +18,7 @@ type NotificationType =
   | 'REQUEST_CHANGES_ASKED'
   | 'MILESTONE_PRAYED'
   | 'MILESTONE_CREATED'
+  | 'MILESTONE_STREAK'
 
 type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP' | 'MILESTONE'
 
@@ -69,6 +70,7 @@ function bucketOf(type: NotificationType): Bucket {
       return 'group'
     case 'MILESTONE_PRAYED':
     case 'MILESTONE_CREATED':
+    case 'MILESTONE_STREAK':
       return 'milestone'
     default:
       return 'other'
@@ -118,6 +120,10 @@ function copyFor(n: Notification): string {
     case 'MILESTONE_CREATED': {
       const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
       return count ? `Você compartilhou ${count} ${count === 1 ? 'intenção' : 'intenções'}.` : 'Você atingiu um marco de intenções.'
+    }
+    case 'MILESTONE_STREAK': {
+      const days = typeof n.payload?.days === 'number' ? (n.payload.days as number) : 0
+      return days ? `Você rezou por ${days} dias seguidos.` : 'Você atingiu um marco de constância.'
     }
     case 'FRIEND_REQUEST_RECEIVED':
       return `${name} quer ser seu amigo`
