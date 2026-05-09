@@ -336,8 +336,7 @@ export function PageShell({ children }: PropsWithChildren) {
           {menuOpen && (
             <div
               role="menu"
-              className="absolute z-30 mt-2 w-56 overflow-hidden rounded-xl border border-[var(--line-2)] bg-[var(--card)] shadow-[var(--shadow-2)]"
-              style={{ position: 'fixed', bottom: 70, left: 18 }}
+              className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-[var(--line-2)] bg-[var(--card)] shadow-[var(--shadow-2)]"
             >
               <Link
                 to="/profile"
