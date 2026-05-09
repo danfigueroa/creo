@@ -659,15 +659,31 @@ func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, userID, req
 	if err := r.db.QueryRow(ctx, `
 		SELECT author_id::text FROM prayer_requests WHERE id = $1 AND deleted_at IS NULL
 	`, requestID).Scan(&authorID); err == nil && authorID != "" && authorID != userID {
-		actor := userID
-		_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
-			UserID:      authorID,
-			Type:        models.NotificationTypePrayed,
-			ActorUserID: &actor,
-			SubjectType: models.NotificationSubjectPrayerRequest,
-			SubjectID:   requestID,
-			Payload:     map[string]any{"actionType": string(actionType)},
-		})
+		// Dedup: don't emit a fresh PRAYED notification when the same actor
+		// has already triggered one for this request in the last 60 minutes.
+		// Avoids spamming the author when someone reacts multiple times.
+		var recent bool
+		_ = r.db.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM notifications
+				WHERE user_id = $1::uuid
+				  AND type = 'PRAYED'
+				  AND actor_user_id = $2::uuid
+				  AND subject_id = $3::uuid
+				  AND created_at > NOW() - INTERVAL '60 minutes'
+			)
+		`, authorID, userID, requestID).Scan(&recent)
+		if !recent {
+			actor := userID
+			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
+				UserID:      authorID,
+				Type:        models.NotificationTypePrayed,
+				ActorUserID: &actor,
+				SubjectType: models.NotificationSubjectPrayerRequest,
+				SubjectID:   requestID,
+				Payload:     map[string]any{"actionType": string(actionType)},
+			})
+		}
 	}
 
 	r.maybeEmitPrayedMilestone(ctx, userID)
