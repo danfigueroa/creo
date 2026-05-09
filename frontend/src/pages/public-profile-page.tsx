@@ -28,6 +28,8 @@ type PublicProfile = {
   stats?: {
     requestsCreated: number
     prayerActionsTotal: number
+    prayerActionsReceived: number
+    streakDays: number
     prayerActionsByType: Record<string, number>
     prayerActionsByCategory: Record<string, number>
   } | null
@@ -269,6 +271,25 @@ export function PublicProfilePage() {
           />
           </div>
         </div>
+
+      <section className="profile__stats">
+        <div className="stat">
+          <div className="stat__num">{stats?.prayerActionsTotal ?? '—'}</div>
+          <div className="stat__label">orações enviadas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__num">{stats?.prayerActionsReceived ?? '—'}</div>
+          <div className="stat__label">orações recebidas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__num">{stats?.requestsCreated ?? '—'}</div>
+          <div className="stat__label">intenções compartilhadas</div>
+        </div>
+        <div className="stat">
+          <div className="stat__num">{stats?.streakDays ?? '—'}</div>
+          <div className="stat__label">dias consecutivos</div>
+        </div>
+      </section>
 
       {stats ? (
         <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
