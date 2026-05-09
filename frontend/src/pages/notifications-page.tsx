@@ -12,6 +12,7 @@ type NotificationType =
   | 'GROUP_JOIN_APPROVED'
   | 'GROUP_JOIN_REQUESTED'
   | 'GROUP_ANNOUNCEMENT_POSTED'
+  | 'REQUEST_UPDATED'
   | 'REQUEST_APPROVED'
   | 'REQUEST_REJECTED'
   | 'REQUEST_CHANGES_ASKED'
@@ -40,10 +41,11 @@ type ListResponse = {
   items: Notification[]
 }
 
-type Bucket = 'prayed' | 'follow' | 'group' | 'other'
+type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'other'
 
 const BUCKET_LABELS: Record<Bucket, string> = {
   prayed: 'Orações pelas suas intenções',
+  updates: 'Atualizações de intenções',
   follow: 'Comunidade',
   group: 'Grupos',
   other: 'Outros'
@@ -53,6 +55,8 @@ function bucketOf(type: NotificationType): Bucket {
   switch (type) {
     case 'PRAYED':
       return 'prayed'
+    case 'REQUEST_UPDATED':
+      return 'updates'
     case 'FRIEND_REQUEST_RECEIVED':
     case 'FRIEND_REQUEST_ACCEPTED':
       return 'follow'
@@ -97,6 +101,8 @@ function copyFor(n: Notification): string {
   switch (n.type) {
     case 'PRAYED':
       return `${name} orou pelo seu pedido`
+    case 'REQUEST_UPDATED':
+      return `${name} publicou uma atualização em uma intenção que você reza`
     case 'FRIEND_REQUEST_RECEIVED':
       return `${name} quer ser seu amigo`
     case 'FRIEND_REQUEST_ACCEPTED':
@@ -152,7 +158,7 @@ export function NotificationsPage() {
 
   const groups = useMemo(() => {
     const items = listQuery.data ?? []
-    const buckets: Record<Bucket, Notification[]> = { prayed: [], follow: [], group: [], other: [] }
+    const buckets: Record<Bucket, Notification[]> = { prayed: [], updates: [], follow: [], group: [], other: [] }
     items.forEach((n) => buckets[bucketOf(n.type)].push(n))
     return (Object.keys(BUCKET_LABELS) as Bucket[])
       .map((b) => ({ key: b, label: BUCKET_LABELS[b], items: buckets[b] }))
