@@ -179,16 +179,20 @@ export function ProfilePage() {
 
   return (
     <PageShell>
-      <section className="pv-panel rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Foto de perfil</p>
-        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Sua imagem</h1>
-        <p className="pv-muted mt-2 text-sm">
-          Aparece no header, nos cards do mural e na sua página pública. JPG, PNG ou WEBP até {maxMb} MB.
-        </p>
-
-        <div className="mt-5 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+      <main className="profile">
+        <div className="profile__cover" />
+        <div className="profile__head">
           <Avatar user={previewUser} size="xl" />
-          <div className="flex-1">
+          <div className="profile__idblock">
+            <h1 className="profile__name">{displayName || profile.data?.displayName || 'Seu perfil'}</h1>
+            <div className="profile__meta">
+              <span>@{username || profile.data?.username || 'username'}</span>
+            </div>
+            {profile.data?.bio && (
+              <p className="profile__bio">"{profile.data.bio}"</p>
+            )}
+          </div>
+          <div className="profile__actions">
             <input
               ref={fileInputRef}
               type="file"
@@ -197,38 +201,67 @@ export function ProfilePage() {
               onChange={onFileChange}
               aria-label="Selecionar foto de perfil"
             />
-            <div className="flex flex-wrap gap-2">
-              <Button
+            <button
+              type="button"
+              className="btn btn--ghost-out"
+              disabled={avatarUploadBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadMutation.isPending ? 'Enviando…' : profile.data?.avatarUrl ? 'Trocar foto' : 'Enviar foto'}
+            </button>
+            {profile.data?.avatarUrl && (
+              <button
                 type="button"
+                className="btn btn--ghost-out"
                 disabled={avatarUploadBusy}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => {
+                  setAvatarError('')
+                  setAvatarStatus('')
+                  updateAvatar.mutate(null)
+                }}
+                style={{ marginLeft: 8 }}
               >
-                {uploadMutation.isPending ? 'Enviando…' : profile.data?.avatarUrl ? 'Trocar foto' : 'Enviar foto'}
-              </Button>
-              {profile.data?.avatarUrl && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={avatarUploadBusy}
-                  onClick={() => {
-                    setAvatarError('')
-                    setAvatarStatus('')
-                    updateAvatar.mutate(null)
-                  }}
-                >
-                  Remover foto
-                </Button>
-              )}
-            </div>
-            {avatarStatus && (
-              <p role="status" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{avatarStatus}</p>
-            )}
-            {avatarError && (
-              <p role="alert" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{avatarError}</p>
+                Remover
+              </button>
             )}
           </div>
         </div>
-      </section>
+
+        {(avatarStatus || avatarError) && (
+          <p
+            role={avatarError ? 'alert' : 'status'}
+            style={{
+              marginBottom: 18,
+              padding: '8px 12px',
+              borderRadius: 'var(--r-2)',
+              background: 'var(--card-2)',
+              border: '1px solid var(--line-2)',
+              color: 'var(--ink-2)',
+              fontSize: 13
+            }}
+          >
+            {avatarError || avatarStatus}
+          </p>
+        )}
+
+        <section className="profile__stats">
+          <div className="stat">
+            <div className="stat__num">—</div>
+            <div className="stat__label">orações enviadas</div>
+          </div>
+          <div className="stat">
+            <div className="stat__num">—</div>
+            <div className="stat__label">orações recebidas</div>
+          </div>
+          <div className="stat">
+            <div className="stat__num">—</div>
+            <div className="stat__label">intenções compartilhadas</div>
+          </div>
+          <div className="stat">
+            <div className="stat__num">—</div>
+            <div className="stat__label">dias consecutivos</div>
+          </div>
+        </section>
 
       <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Conta</p>
@@ -325,6 +358,7 @@ export function ProfilePage() {
       </section>
 
       <BlockedUsersSection />
+      </main>
     </PageShell>
   )
 }
