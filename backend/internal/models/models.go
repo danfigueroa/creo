@@ -282,6 +282,13 @@ type UserSummary struct {
 	AvatarURL   *string `json:"avatarUrl,omitempty"`
 }
 
+type UserSuggestion struct {
+	UserSummary
+	MutualFriends int    `json:"mutualFriends"`
+	SharedGroups  int    `json:"sharedGroups"`
+	Reason        string `json:"reason"`
+}
+
 type BlockedUser struct {
 	UserID      string    `json:"userId"`
 	Username    string    `json:"username"`

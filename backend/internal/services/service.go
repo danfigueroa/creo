@@ -549,6 +549,16 @@ func (s *Service) ListBlockedUsers(ctx context.Context, blockerID string) ([]mod
 	return s.repo.ListBlockedUsers(ctx, blockerID)
 }
 
+// SuggestFriends returns up to 10 users with relevance signal (mutual friends
+// or shared groups) for the given viewer. Used by the onboarding wizard and
+// can also feed any "pessoas para conhecer" surface.
+func (s *Service) SuggestFriends(ctx context.Context, userID string, limit int) ([]models.UserSuggestion, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	return s.repo.SuggestFriends(ctx, userID, limit)
+}
+
 func (s *Service) SearchUsersForFriendship(ctx context.Context, userID, query string, limit int) ([]models.UserSummary, error) {
 	query = strings.TrimSpace(strings.TrimPrefix(strings.ToLower(query), "@"))
 	if query == "" {

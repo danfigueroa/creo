@@ -86,6 +86,7 @@ type Repository interface {
 	CancelFriendRequest(ctx context.Context, userID, requestID string) error
 	RemoveFriendship(ctx context.Context, userID, targetUserID string) error
 	SearchUsersForFriendship(ctx context.Context, userID, query string, limit int) ([]models.UserSummary, error)
+	SuggestFriends(ctx context.Context, userID string, limit int) ([]models.UserSuggestion, error)
 	BlockUser(ctx context.Context, blockerID, blockedUsername string) (models.BlockedUser, error)
 	UnblockUser(ctx context.Context, blockerID, blockedUserID string) error
 	ListBlockedUsers(ctx context.Context, blockerID string) ([]models.BlockedUser, error)
@@ -2510,6 +2511,109 @@ func itoa(n int) string {
 		return string(rune('0' + n))
 	}
 	// supports up to $99 which is more than enough for any builder here
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// SuggestFriends returns up to `limit` users ranked by mutual friends + shared
+// groups, excluding self, existing friends/incoming/outgoing requests, and
+// users involved in any blocking relationship with the viewer.
+func (r *PostgresRepository) SuggestFriends(ctx context.Context, userID string, limit int) ([]models.UserSuggestion, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	rows, err := r.db.Query(ctx, `
+		WITH viewer_friends AS (
+			SELECT CASE WHEN user_id = $1 THEN friend_user_id ELSE user_id END AS uid
+			FROM friendships
+			WHERE status = 'ACCEPTED' AND (user_id = $1 OR friend_user_id = $1)
+		),
+		viewer_groups AS (
+			SELECT group_id FROM group_memberships
+			WHERE user_id = $1 AND deleted_at IS NULL
+		),
+		excluded AS (
+			SELECT $1::uuid AS uid
+			UNION SELECT uid FROM viewer_friends
+			UNION SELECT friend_user_id FROM friendships WHERE user_id = $1 AND status = 'PENDING'
+			UNION SELECT user_id FROM friendships WHERE friend_user_id = $1 AND status = 'PENDING'
+			UNION SELECT blocked_user_id FROM user_blocks WHERE blocker_user_id = $1
+			UNION SELECT blocker_user_id FROM user_blocks WHERE blocked_user_id = $1
+		),
+		mutual AS (
+			SELECT CASE WHEN f.user_id = vf.uid THEN f.friend_user_id ELSE f.user_id END AS candidate,
+			       COUNT(*)::int AS mf
+			FROM friendships f
+			INNER JOIN viewer_friends vf ON vf.uid IN (f.user_id, f.friend_user_id)
+			WHERE f.status = 'ACCEPTED'
+			GROUP BY 1
+		),
+		shared AS (
+			SELECT gm.user_id AS candidate, COUNT(DISTINCT gm.group_id)::int AS sg
+			FROM group_memberships gm
+			INNER JOIN viewer_groups vg ON vg.group_id = gm.group_id
+			WHERE gm.deleted_at IS NULL
+			GROUP BY gm.user_id
+		),
+		ranked AS (
+			SELECT u.id::text, u.username, u.display_name, u.avatar_url,
+			       COALESCE(m.mf, 0) AS mf,
+			       COALESCE(s.sg, 0) AS sg
+			FROM users u
+			LEFT JOIN mutual m ON m.candidate = u.id
+			LEFT JOIN shared s ON s.candidate = u.id
+			WHERE u.deleted_at IS NULL
+			  AND u.id NOT IN (SELECT uid FROM excluded WHERE uid IS NOT NULL)
+			  AND (COALESCE(m.mf, 0) + COALESCE(s.sg, 0)) > 0
+		)
+		SELECT id, username, display_name, avatar_url, mf, sg
+		FROM ranked
+		ORDER BY (mf + sg) DESC, mf DESC, username ASC
+		LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]models.UserSuggestion, 0)
+	for rows.Next() {
+		var s models.UserSuggestion
+		if err := rows.Scan(&s.UserID, &s.Username, &s.DisplayName, &s.AvatarURL, &s.MutualFriends, &s.SharedGroups); err != nil {
+			return nil, err
+		}
+		switch {
+		case s.MutualFriends > 0 && s.SharedGroups > 0:
+			s.Reason = "Amigos em comum e grupos juntos"
+		case s.MutualFriends > 0:
+			if s.MutualFriends == 1 {
+				s.Reason = "1 amigo em comum"
+			} else {
+				s.Reason = formatMutualReason(s.MutualFriends)
+			}
+		case s.SharedGroups > 0:
+			if s.SharedGroups == 1 {
+				s.Reason = "1 grupo em comum"
+			} else {
+				s.Reason = formatGroupReason(s.SharedGroups)
+			}
+		}
+		items = append(items, s)
+	}
+	return items, rows.Err()
+}
+
+func formatMutualReason(n int) string {
+	return strings.Replace("N amigos em comum", "N", strconvI(n), 1)
+}
+
+func formatGroupReason(n int) string {
+	return strings.Replace("N grupos em comum", "N", strconvI(n), 1)
+}
+
+func strconvI(n int) string {
+	// avoid pulling strconv just for this
+	if n < 10 {
+		return string(rune('0' + n))
+	}
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
 }
 
