@@ -687,12 +687,14 @@ func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, userID, req
 	}
 
 	r.maybeEmitPrayedMilestone(ctx, userID)
+	r.maybeEmitStreakMilestone(ctx, userID)
 
 	return nil
 }
 
 var prayedMilestones = []int{10, 50, 100, 500, 1000}
 var createdMilestones = []int{1, 10, 50, 100}
+var streakMilestones = []int{7, 30, 100, 365}
 
 // maybeEmitPrayedMilestone fires MILESTONE_PRAYED when the user's total prayer
 // actions hits one of the threshold values exactly. Idempotent because the
@@ -712,6 +714,62 @@ func (r *PostgresRepository) maybeEmitPrayedMilestone(ctx context.Context, userI
 				SubjectType: models.NotificationSubjectMilestone,
 				SubjectID:   userID,
 				Payload:     map[string]any{"count": m},
+			})
+			return
+		}
+	}
+}
+
+// maybeEmitStreakMilestone fires MILESTONE_STREAK when, on the user's first
+// prayer action of today (in São Paulo time), the running streak hits one of
+// the threshold values. Idempotent because the "first action of today" gate
+// only opens once per day.
+func (r *PostgresRepository) maybeEmitStreakMilestone(ctx context.Context, userID string) {
+	var todayCount int
+	if err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::int FROM prayer_actions
+		WHERE user_id = $1::uuid
+		  AND (created_at AT TIME ZONE 'America/Sao_Paulo')::date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+	`, userID).Scan(&todayCount); err != nil {
+		return
+	}
+	if todayCount != 1 {
+		return
+	}
+
+	var streak int
+	if err := r.db.QueryRow(ctx, `
+		WITH days AS (
+			SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day
+			FROM prayer_actions
+			WHERE user_id = $1::uuid
+		),
+		ranked AS (
+			SELECT day, day - (ROW_NUMBER() OVER (ORDER BY day))::int AS grp
+			FROM days
+		),
+		runs AS (
+			SELECT grp, MAX(day) AS last_day, COUNT(*)::int AS streak
+			FROM ranked
+			GROUP BY grp
+		),
+		today AS (
+			SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS today
+		)
+		SELECT COALESCE(MAX(streak), 0)::int
+		FROM runs, today
+		WHERE last_day = today.today OR last_day = today.today - 1
+	`, userID).Scan(&streak); err != nil {
+		return
+	}
+	for _, m := range streakMilestones {
+		if streak == m {
+			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
+				UserID:      userID,
+				Type:        models.NotificationTypeMilestoneStreak,
+				SubjectType: models.NotificationSubjectMilestone,
+				SubjectID:   userID,
+				Payload:     map[string]any{"days": m},
 			})
 			return
 		}

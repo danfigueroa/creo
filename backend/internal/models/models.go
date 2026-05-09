@@ -324,6 +324,7 @@ const (
 	NotificationTypeRequestUpdated          NotificationType = "REQUEST_UPDATED"
 	NotificationTypeMilestonePrayed         NotificationType = "MILESTONE_PRAYED"
 	NotificationTypeMilestoneCreated        NotificationType = "MILESTONE_CREATED"
+	NotificationTypeMilestoneStreak         NotificationType = "MILESTONE_STREAK"
 )
 
 
