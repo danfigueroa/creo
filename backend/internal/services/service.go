@@ -228,6 +228,18 @@ func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID stri
 	return s.repo.RecordPrayerAction(ctx, userID, requestID, actionType, windowHours)
 }
 
+// ListMyPrayers returns the authenticated user's prayer actions, newest first.
+// Used by the profile "Rezadas (privado)" tab.
+func (s *Service) ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return s.repo.ListMyPrayers(ctx, userID, limit, offset)
+}
+
 // ListPrayerActionsByRequest returns every prayer action recorded for the
 // request, with the actor's display info. Visibility is delegated to whoever
 // shows the request — if the viewer can read the request body, they can see

@@ -60,6 +60,7 @@ type Repository interface {
 	CountHomePrayerRequests(ctx context.Context, userID string) (int64, error)
 	RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error
 	ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error)
+	ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error)
 	CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error)
 	ListPrayerRequestUpdates(ctx context.Context, requestID string) ([]models.PrayerRequestUpdate, error)
 	ListUserGroups(ctx context.Context, userID string) ([]models.Group, error)
@@ -2670,6 +2671,42 @@ func strconvI(n int) string {
 		return string(rune('0' + n))
 	}
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// ListMyPrayers returns the authenticated user's own prayer actions joined with
+// each request's title and author, newest first. Used by the "Rezadas (privado)"
+// tab in the profile.
+func (r *PostgresRepository) ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT pa.prayer_request_id::text, pr.title,
+		       pr.author_id::text, u.username, u.display_name,
+		       pa.action_type, pa.created_at
+		FROM prayer_actions pa
+		INNER JOIN prayer_requests pr ON pr.id = pa.prayer_request_id AND pr.deleted_at IS NULL
+		INNER JOIN users u ON u.id = pr.author_id AND u.deleted_at IS NULL
+		WHERE pa.user_id = $1::uuid
+		ORDER BY pa.created_at DESC
+		LIMIT $2 OFFSET $3
+	`, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]models.MyPrayerEntry, 0)
+	for rows.Next() {
+		var e models.MyPrayerEntry
+		if err := rows.Scan(&e.RequestID, &e.RequestTitle, &e.AuthorID, &e.AuthorUsername, &e.AuthorDisplayName, &e.ActionType, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, e)
+	}
+	return items, rows.Err()
 }
 
 func (r *PostgresRepository) ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error) {

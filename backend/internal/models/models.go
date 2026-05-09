@@ -172,6 +172,18 @@ type PrayerActionRecord struct {
 	CreatedAt   time.Time        `json:"createdAt"`
 }
 
+// MyPrayerEntry — pedido + reação do próprio usuário, pra aba "Rezadas (privado)"
+// no perfil. AuthorDisplayName e AuthorUsername são do autor do pedido.
+type MyPrayerEntry struct {
+	RequestID         string           `json:"requestId"`
+	RequestTitle      string           `json:"requestTitle"`
+	AuthorID          string           `json:"authorId"`
+	AuthorUsername    string           `json:"authorUsername"`
+	AuthorDisplayName string           `json:"authorDisplayName"`
+	ActionType        PrayerActionType `json:"actionType"`
+	CreatedAt         time.Time        `json:"createdAt"`
+}
+
 type PrayerRequestUpdate struct {
 	ID              string    `json:"id"`
 	PrayerRequestID string    `json:"prayerRequestId"`
