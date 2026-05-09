@@ -432,6 +432,9 @@ func (r *PostgresRepository) CreatePrayerRequest(ctx context.Context, in models.
 	if err = tx.Commit(ctx); err != nil {
 		return models.PrayerRequest{}, err
 	}
+
+	r.maybeEmitCreatedMilestone(ctx, in.AuthorID)
+
 	return pr, nil
 }
 
@@ -666,7 +669,59 @@ func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, userID, req
 		})
 	}
 
+	r.maybeEmitPrayedMilestone(ctx, userID)
+
 	return nil
+}
+
+var prayedMilestones = []int{10, 50, 100, 500, 1000}
+var createdMilestones = []int{1, 10, 50, 100}
+
+// maybeEmitPrayedMilestone fires MILESTONE_PRAYED when the user's total prayer
+// actions hits one of the threshold values exactly. Idempotent because the
+// count crosses each threshold once.
+func (r *PostgresRepository) maybeEmitPrayedMilestone(ctx context.Context, userID string) {
+	var total int
+	if err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::int FROM prayer_actions WHERE user_id = $1
+	`, userID).Scan(&total); err != nil {
+		return
+	}
+	for _, m := range prayedMilestones {
+		if total == m {
+			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
+				UserID:      userID,
+				Type:        models.NotificationTypeMilestonePrayed,
+				SubjectType: models.NotificationSubjectMilestone,
+				SubjectID:   userID,
+				Payload:     map[string]any{"count": m},
+			})
+			return
+		}
+	}
+}
+
+// maybeEmitCreatedMilestone fires MILESTONE_CREATED when the user crosses an
+// "intentions shared" threshold.
+func (r *PostgresRepository) maybeEmitCreatedMilestone(ctx context.Context, userID string) {
+	var total int
+	if err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::int FROM prayer_requests WHERE author_id = $1 AND deleted_at IS NULL
+	`, userID).Scan(&total); err != nil {
+		return
+	}
+	for _, m := range createdMilestones {
+		if total == m {
+			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
+				UserID:      userID,
+				Type:        models.NotificationTypeMilestoneCreated,
+				SubjectType: models.NotificationSubjectMilestone,
+				SubjectID:   userID,
+				Payload:     map[string]any{"count": m},
+			})
+			return
+		}
+	}
 }
 
 func (r *PostgresRepository) ListGroupsPrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error) {

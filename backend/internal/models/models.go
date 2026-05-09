@@ -310,12 +310,16 @@ const (
 	NotificationTypeRequestChangesAsked   NotificationType = "REQUEST_CHANGES_ASKED"
 	NotificationTypeGroupAnnouncementPosted NotificationType = "GROUP_ANNOUNCEMENT_POSTED"
 	NotificationTypeRequestUpdated          NotificationType = "REQUEST_UPDATED"
+	NotificationTypeMilestonePrayed         NotificationType = "MILESTONE_PRAYED"
+	NotificationTypeMilestoneCreated        NotificationType = "MILESTONE_CREATED"
 )
+
 
 type NotificationSubjectType string
 
 const (
 	NotificationSubjectPrayerRequest NotificationSubjectType = "PRAYER_REQUEST"
+	NotificationSubjectMilestone     NotificationSubjectType = "MILESTONE"
 	NotificationSubjectFriendship    NotificationSubjectType = "FRIENDSHIP"
 	NotificationSubjectGroup         NotificationSubjectType = "GROUP"
 )
