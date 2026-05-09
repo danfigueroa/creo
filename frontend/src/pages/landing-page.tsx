@@ -1,154 +1,393 @@
-import { Link } from 'react-router-dom'
-import { Button } from '@/components/button'
+import { FormEvent, useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { getSupabaseClient } from '@/lib/supabase'
+import { useSessionStore } from '@/state/session-store'
 
-const features = [
-  {
-    title: 'Pedidos de oração',
-    body: 'Compartilhe intenções com sua comunidade e acompanhe quem está orando por elas em tempo real.'
-  },
-  {
-    title: 'Grupos comunitários',
-    body: 'Organize pastorais, células e movimentos com regras de entrada flexíveis e moderação simples.'
-  },
-  {
-    title: 'Rede de amigos',
-    body: 'Encontre pessoas pelo @username e mantenha-se perto de quem caminha com você na fé.'
-  },
-  {
-    title: 'Ambiente acolhedor',
-    body: 'Moderação ativa, traduções e tom respeitoso para católicos e evangélicos conviverem em paz.'
-  }
+type AuthTab = 'entrar' | 'criar'
+
+const FEATURES = [
+  { n: '01', title: 'Pedidos de oração', desc: 'Compartilhe intenções com amigos e grupos.' },
+  { n: '02', title: 'Comunidade unida', desc: 'Pastorais, células e movimentos em um só espaço.' },
+  { n: '03', title: 'Ambiente acolhedor', desc: 'Moderação ativa para conviver em paz.' }
 ]
 
-const steps = [
-  {
-    title: 'Crie sua conta',
-    body: 'Cadastro rápido com e-mail e senha — ou link de acesso sem senha. Escolha sua tradição.'
-  },
-  {
-    title: 'Encontre sua comunidade',
-    body: 'Conecte-se com amigos e entre em grupos abertos, sob solicitação ou apenas por convite.'
-  },
-  {
-    title: 'Ore em comunidade',
-    body: 'Publique pedidos, marque "estou orando" e acompanhe as intenções da sua rede no mural.'
-  }
-]
+function translateAuthError(raw: string): string {
+  const m = (raw || '').toLowerCase()
+  if (m.includes('email not confirmed')) return 'Você ainda não confirmou seu e-mail. Abra o link que enviamos.'
+  if (m.includes('invalid login credentials') || m.includes('invalid credentials')) return 'E-mail ou senha incorretos.'
+  if (m.includes('user already registered') || m.includes('already registered')) return 'Já existe uma conta com este e-mail. Tente entrar.'
+  if (m.includes('password should be at least')) return 'A senha precisa ter ao menos 6 caracteres.'
+  if (m.includes('rate limit') || m.includes('too many')) return 'Muitas tentativas. Aguarde um instante.'
+  return raw || 'Algo deu errado. Tente novamente em instantes.'
+}
 
 export function LandingPage() {
+  const navigate = useNavigate()
+  const setAccessToken = useSessionStore((s) => s.setAccessToken)
+  const [tab, setTab] = useState<AuthTab>('entrar')
+  const [email, setEmail] = useState('')
+  const [pass, setPass] = useState('')
+  const [name, setName] = useState('')
+  const [magic, setMagic] = useState(false)
+  const [info, setInfo] = useState('')
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  const tabsRef = useRef<HTMLDivElement | null>(null)
+  const [ink, setInk] = useState({ x: 0, w: 0 })
+  useEffect(() => {
+    const el = tabsRef.current?.querySelector(`[data-tab="${tab}"]`) as HTMLElement | null
+    if (!el || !tabsRef.current) return
+    const tr = tabsRef.current.getBoundingClientRect()
+    const er = el.getBoundingClientRect()
+    setInk({ x: er.left - tr.left, w: er.width })
+  }, [tab])
+
+  async function onSignIn(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setInfo('')
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      setError('Configuração do Supabase ausente.')
+      return
+    }
+    setIsLoading(true)
+    try {
+      const { data, error: signErr } = await supabase.auth.signInWithPassword({ email, password: pass })
+      if (signErr) {
+        setError(translateAuthError(signErr.message))
+        return
+      }
+      const token = (data.session as any)?.access_token as string | undefined
+      if (!token) {
+        setError('Não foi possível iniciar sessão.')
+        return
+      }
+      setAccessToken(token)
+      const onboarded = window.localStorage.getItem('creo-onboarded') === 'true'
+      navigate(onboarded ? '/feed' : '/onboarding', { replace: true })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function onSignUp(e: FormEvent) {
+    e.preventDefault()
+    setError('')
+    setInfo('')
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      setError('Configuração do Supabase ausente.')
+      return
+    }
+    if (!name.trim()) {
+      setError('Como podemos te chamar? Preencha seu nome.')
+      return
+    }
+    setIsLoading(true)
+    try {
+      const { error: signErr } = await supabase.auth.signUp({
+        email,
+        password: pass,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+          data: { display_name: name.trim() }
+        }
+      })
+      if (signErr) {
+        setError(translateAuthError(signErr.message))
+        return
+      }
+      setInfo(`Conta criada. Enviamos um link de confirmação para ${email.trim()}. Abra-o pra ativar.`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function onMagicLink() {
+    setError('')
+    setInfo('')
+    if (!email) {
+      setError('Informe seu e-mail para receber o link de acesso.')
+      return
+    }
+    const supabase = getSupabaseClient()
+    if (!supabase) {
+      setError('Configuração do Supabase ausente.')
+      return
+    }
+    setIsLoading(true)
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth` }
+      })
+      if (otpErr) {
+        setError(translateAuthError(otpErr.message))
+        return
+      }
+      setMagic(true)
+      setInfo(`Enviamos um link de acesso para ${email.trim()}.`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6">
-      <header className="mb-8 flex items-center justify-between rounded-2xl border border-primary bg-panel/90 p-4 backdrop-blur">
-        <Link to="/" className="group flex items-center gap-3" aria-label="Creo — ir para o início">
-          <span className="pv-brand-mark inline-flex h-20 w-20 items-center justify-center rounded-2xl">
-            <img src="/creo-icon.png" alt="" className="h-16 w-16 rounded-xl object-contain" />
-          </span>
-          <span className="text-3xl font-bold tracking-tight text-secondary">Creo</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <Link to="/auth">
-            <Button variant="secondary">Entrar</Button>
-          </Link>
-          <Link to="/auth" className="hidden sm:inline-flex">
-            <Button>Criar conta</Button>
-          </Link>
-        </div>
-      </header>
-
-      <main className="flex-1 space-y-12 sm:space-y-16">
-        <section className="pv-panel rounded-3xl p-6 sm:p-10 lg:p-14">
-          <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
-            <img src="/creo-logo.png" alt="Creo" className="h-28 w-auto sm:h-36 lg:h-44" />
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.22em] text-primary sm:text-sm">
-              Eu acredito. Nós conectamos. Nós crescemos.
-            </p>
-            <h1 className="pv-title mt-6 text-3xl font-bold leading-[1.1] text-secondary sm:text-5xl lg:text-6xl">
-              A rede social que aproxima sua comunidade da fé.
-            </h1>
-            <p className="pv-muted mt-5 max-w-2xl text-base leading-relaxed sm:text-lg">
-              Compartilhe pedidos de oração, organize grupos, conecte-se com amigos e viva a espiritualidade em
-              comunidade — católica ou evangélica — em um ambiente moderno e acolhedor.
-            </p>
-            <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:justify-center">
-              <Link to="/auth">
-                <Button className="w-full sm:w-auto">Criar conta gratuita</Button>
-              </Link>
-              <Link to="/auth">
-                <Button className="w-full sm:w-auto" variant="secondary">Já tenho conta</Button>
-              </Link>
+    <div className="app app--welcome" data-screen-label="Welcome">
+      <div className="welcome">
+        <section className="welcome__hero" aria-label="Apresentação">
+          <div className="welcome__brand">
+            <div className="brand-mark" aria-hidden>
+              <span />
             </div>
+            <span className="brand-word">Creo</span>
           </div>
 
-          <div className="mx-auto mt-12 grid max-w-4xl gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-primary bg-panel px-4 py-4 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Tradições</p>
-              <p className="mt-2 text-sm font-semibold text-secondary">Católica e evangélica</p>
-            </div>
-            <div className="rounded-2xl border border-primary bg-panel px-4 py-4 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Privacidade</p>
-              <p className="mt-2 text-sm font-semibold text-secondary">Pedidos só para sua rede</p>
-            </div>
-            <div className="rounded-2xl border border-primary bg-panel px-4 py-4 text-center">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Acesso</p>
-              <p className="mt-2 text-sm font-semibold text-secondary">Web, gratuito e seguro</p>
-            </div>
-          </div>
-        </section>
+          <h1 className="welcome__title">
+            Sua comunidade
+            <br />
+            unida em oração,
+            <br />
+            <em>todos os dias.</em>
+          </h1>
 
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Recursos</p>
-          <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">
-            Tudo que sua comunidade precisa em um só lugar
-          </h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {features.map((feature, index) => (
-              <div key={feature.title} className="pv-panel rounded-2xl p-5">
-                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
-                <h3 className="pv-title mt-4 text-base font-semibold text-secondary">{feature.title}</h3>
-                <p className="pv-muted mt-2 text-sm leading-relaxed">{feature.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="pv-panel rounded-3xl p-6 sm:p-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Como funciona</p>
-          <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Comece em três passos</h2>
-          <div className="mt-8 grid gap-6 sm:grid-cols-3">
-            {steps.map((step, index) => (
-              <div key={step.title} className="rounded-2xl border border-primary bg-panel p-5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                  Passo {String(index + 1).padStart(2, '0')}
-                </span>
-                <h3 className="pv-title mt-2 text-lg font-semibold text-secondary">{step.title}</h3>
-                <p className="pv-muted mt-2 text-sm leading-relaxed">{step.body}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-8">
-            <Link to="/auth">
-              <Button>Quero começar</Button>
-            </Link>
-          </div>
-        </section>
-
-        <section className="pv-panel rounded-3xl p-6 text-center sm:p-10">
-          <p className="pv-title text-xl font-semibold leading-relaxed text-secondary sm:text-2xl">
-            “Onde dois ou três estiverem reunidos em meu nome, ali estarei eu, no meio deles.”
+          <p className="welcome__lede">
+            Compartilhe intenções, acompanhe pedidos de amigos e grupos e fortaleça sua comunidade
+            de fé — católica ou evangélica — em um ambiente moderno e acolhedor.
           </p>
-          <p className="pv-muted mt-3 text-sm">Mateus 18,20</p>
-        </section>
-      </main>
 
-      <footer className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-primary/40 pt-6 text-xs text-primary sm:flex-row sm:items-center">
-        <p>© {new Date().getFullYear()} Creo — feito com fé para a comunidade.</p>
-        <div className="flex gap-4">
-          <Link to="/auth" className="hover:text-secondary">Entrar</Link>
-          <Link to="/auth" className="hover:text-secondary">Criar conta</Link>
-        </div>
-      </footer>
+          <ul className="welcome__features">
+            {FEATURES.map((f) => (
+              <li key={f.n} className="welcome__feature">
+                <span className="welcome__feature-n">{f.n}</span>
+                <div className="welcome__feature-text">
+                  <h3>{f.title}</h3>
+                  <p>{f.desc}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <figure className="welcome__quote">
+            <blockquote>
+              "Onde dois ou três estiverem reunidos em meu nome, ali estarei eu, no meio deles."
+            </blockquote>
+            <figcaption>Mateus 18,20</figcaption>
+          </figure>
+        </section>
+
+        <section className="welcome__auth" aria-label="Acesso">
+          <div className="welcome__auth-card">
+            <div className="welcome__tabs" ref={tabsRef} role="tablist">
+              <button
+                type="button"
+                data-tab="entrar"
+                className={`welcome__tab ${tab === 'entrar' ? 'is-on' : ''}`}
+                onClick={() => setTab('entrar')}
+                role="tab"
+                aria-selected={tab === 'entrar'}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                data-tab="criar"
+                className={`welcome__tab ${tab === 'criar' ? 'is-on' : ''}`}
+                onClick={() => setTab('criar')}
+                role="tab"
+                aria-selected={tab === 'criar'}
+              >
+                Criar conta
+              </button>
+              <span
+                className="welcome__tab-ink"
+                style={{ transform: `translateX(${ink.x}px)`, width: ink.w }}
+              />
+            </div>
+
+            {tab === 'entrar' ? (
+              <>
+                <h2 className="welcome__auth-title">Bem-vindo de volta.</h2>
+                <p className="welcome__auth-sub">
+                  Acesse com e-mail e senha — ou receba um link único por e-mail.
+                </p>
+
+                <form className="welcome__form" onSubmit={onSignIn}>
+                  <label className="welcome__field">
+                    <span className="welcome__label">E-mail</span>
+                    <input
+                      type="email"
+                      placeholder="voce@exemplo.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label className="welcome__field">
+                    <div className="welcome__label-row">
+                      <span className="welcome__label">Senha</span>
+                      <Link className="welcome__link-quiet" to="/auth?reset=1">
+                        Esqueceu a senha?
+                      </Link>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={pass}
+                      onChange={(e) => setPass(e.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
+                    {isLoading ? 'Entrando…' : 'Entrar'}
+                  </button>
+
+                  <div className="welcome__or">
+                    <span>ou</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={onMagicLink}
+                    disabled={isLoading}
+                    className={`welcome__magic ${magic ? 'is-sent' : ''}`}
+                  >
+                    <span className="welcome__magic-icon" aria-hidden>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path
+                          d="M2 4.5l5 3 5-3M2 4.5v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-5M2 4.5l4.4-2.2a1 1 0 0 1 1.2 0L12 4.5"
+                          stroke="currentColor"
+                          strokeWidth="1.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    {magic ? 'Link enviado — confira sua caixa de entrada' : 'Receber link de acesso por e-mail'}
+                  </button>
+                </form>
+
+                {error && (
+                  <p role="alert" style={alertStyle()}>
+                    {error}
+                  </p>
+                )}
+                {info && (
+                  <p role="status" style={alertStyle()}>
+                    {info}
+                  </p>
+                )}
+
+                <p className="welcome__foot">
+                  Ainda não tem conta?{' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setTab('criar')
+                    }}
+                  >
+                    Crie a sua.
+                  </a>
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="welcome__auth-title">Crie sua conta.</h2>
+                <p className="welcome__auth-sub">
+                  Em menos de um minuto. Você pode começar a rezar com a comunidade ainda hoje.
+                </p>
+
+                <form className="welcome__form" onSubmit={onSignUp}>
+                  <label className="welcome__field">
+                    <span className="welcome__label">Nome</span>
+                    <input
+                      type="text"
+                      placeholder="Como você quer ser chamado"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="welcome__field">
+                    <span className="welcome__label">E-mail</span>
+                    <input
+                      type="email"
+                      placeholder="voce@exemplo.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="welcome__field">
+                    <span className="welcome__label">Senha</span>
+                    <input
+                      type="password"
+                      placeholder="Mínimo de 8 caracteres"
+                      value={pass}
+                      onChange={(e) => setPass(e.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
+                    {isLoading ? 'Criando…' : 'Criar conta'}
+                  </button>
+
+                  <p className="welcome__terms">
+                    Ao continuar, você concorda com os termos e a política de privacidade.
+                  </p>
+                </form>
+
+                {error && (
+                  <p role="alert" style={alertStyle()}>
+                    {error}
+                  </p>
+                )}
+                {info && (
+                  <p role="status" style={alertStyle()}>
+                    {info}
+                  </p>
+                )}
+
+                <p className="welcome__foot">
+                  Já tem conta?{' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setTab('entrar')
+                    }}
+                  >
+                    Entrar.
+                  </a>
+                </p>
+              </>
+            )}
+          </div>
+
+          <div className="welcome__assure">
+            <span className="welcome__assure-dot" aria-hidden />
+            Suas intenções são privadas por padrão.
+          </div>
+        </section>
+      </div>
     </div>
   )
+}
+
+function alertStyle(): React.CSSProperties {
+  return {
+    marginTop: 12,
+    fontSize: 13,
+    color: 'var(--ink-2)',
+    background: 'var(--card-2)',
+    border: '1px solid var(--line-2)',
+    borderRadius: 'var(--r-2)',
+    padding: '8px 12px'
+  }
 }
