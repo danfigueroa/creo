@@ -1,9 +1,20 @@
 import { FormEvent, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { Avatar } from '@/components/avatar'
 import { Glyph, type GlyphKind } from '@/components/glyph'
 import { api } from '@/lib/api'
 import { type Tradition } from '@/lib/traditions'
+
+type SuggestedUser = {
+  userId: string
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+  mutualFriends: number
+  sharedGroups: number
+  reason: string
+}
 
 const STEPS = [
   { id: 'welcome', title: 'Boas-vindas' },
@@ -30,31 +41,7 @@ const INTERESTS: Array<{ id: string; label: string; glyph: GlyphKind; tone: numb
   { id: 'pais', label: 'País / mundo', glyph: 'ring', tone: 220 }
 ]
 
-const SUGGESTED_FRIENDS = [
-  { name: 'Amanda Mendes', initials: 'A', tone: 25, ctx: '3 amigos em comum' },
-  { name: 'Marcus Santana', initials: 'M', tone: 145, ctx: 'Mesmo grupo: Catequistas SP' },
-  { name: 'Beatriz Coelho', initials: 'B', tone: 340, ctx: 'Encontrada por contatos' },
-  { name: 'Pe. Joaquim', initials: 'J', tone: 95, ctx: 'Líder do Grupo São Bento' },
-  { name: 'Pastor Andrade', initials: 'P', tone: 60, ctx: 'Encontrado por contatos' },
-  { name: 'Lara Figueiredo', initials: 'L', tone: 200, ctx: '2 amigos em comum' }
-]
 
-function MiniAvatar({ initials, tone, size = 40 }: { initials: string; tone: number; size?: number }) {
-  return (
-    <span
-      className="avatar"
-      style={{
-        width: size,
-        height: size,
-        background: `oklch(0.92 0.03 ${tone})`,
-        color: `oklch(0.38 0.08 ${tone})`,
-        fontSize: Math.round(size * 0.4)
-      }}
-    >
-      <span>{initials}</span>
-    </span>
-  )
-}
 
 export function OnboardingPage() {
   const navigate = useNavigate()
@@ -67,6 +54,17 @@ export function OnboardingPage() {
   const saveTradition = useMutation({
     mutationFn: async (t: Tradition) => {
       await api.patch('/profile/tradition', { tradition: t })
+    }
+  })
+
+  const suggestionsQuery = useQuery({
+    queryKey: ['users', 'suggested'],
+    queryFn: async () => (await api.get<{ items: SuggestedUser[] }>('/users/suggested')).data.items ?? []
+  })
+
+  const sendFriendRequest = useMutation({
+    mutationFn: async (username: string) => {
+      await api.post('/friends/requests', { targetUsername: username })
     }
   })
 
@@ -212,26 +210,44 @@ export function OnboardingPage() {
                 depois.
               </p>
               <div className="onb__friends">
-                {SUGGESTED_FRIENDS.map((f) => (
-                  <button
-                    key={f.name}
-                    type="button"
-                    className={`onb-friend ${friends[f.name] ? 'is-on' : ''}`}
-                    onClick={() => toggle(friends, setFriends, f.name)}
-                  >
-                    <MiniAvatar initials={f.initials} tone={f.tone} />
-                    <div className="onb-friend__txt">
-                      <span className="onb-friend__name">{f.name}</span>
-                      <span className="onb-friend__ctx">{f.ctx}</span>
-                    </div>
-                    <span className="onb-friend__check" aria-hidden>
-                      {friends[f.name] ? '✓' : '+'}
-                    </span>
-                  </button>
-                ))}
+                {suggestionsQuery.isLoading && (
+                  <p className="onb__count">Buscando pessoas próximas…</p>
+                )}
+                {suggestionsQuery.data?.length === 0 && (
+                  <p className="onb__count">
+                    Ainda não temos sugestões pra você — adicione amigos pelo @username depois.
+                  </p>
+                )}
+                {(suggestionsQuery.data ?? []).map((f) => {
+                  const selected = !!friends[f.username]
+                  return (
+                    <button
+                      key={f.userId}
+                      type="button"
+                      className={`onb-friend ${selected ? 'is-on' : ''}`}
+                      onClick={() => {
+                        toggle(friends, setFriends, f.username)
+                        if (!selected) {
+                          sendFriendRequest.mutate(f.username)
+                        }
+                      }}
+                    >
+                      <Avatar user={f} size="md" />
+                      <div className="onb-friend__txt">
+                        <span className="onb-friend__name">{f.displayName}</span>
+                        <span className="onb-friend__ctx">{f.reason}</span>
+                      </div>
+                      <span className="onb-friend__check" aria-hidden>
+                        {selected ? '✓' : '+'}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
               <p className="onb__count">
-                {friendCount > 0 ? `${friendCount} adicionado${friendCount > 1 ? 's' : ''}` : '—'}
+                {friendCount > 0
+                  ? `${friendCount} solicitação${friendCount > 1 ? 'ões' : ''} enviada${friendCount > 1 ? 's' : ''}`
+                  : '—'}
               </p>
             </div>
           )}
