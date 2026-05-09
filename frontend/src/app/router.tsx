@@ -26,6 +26,9 @@ const AnnouncementPage = lazy(() =>
 const NotificationsPage = lazy(() =>
   import('@/pages/notifications-page').then((m) => ({ default: m.NotificationsPage }))
 )
+const OnboardingPage = lazy(() =>
+  import('@/pages/onboarding-page').then((m) => ({ default: m.OnboardingPage }))
+)
 
 function lazyRoute(element: JSX.Element) {
   return (
@@ -50,6 +53,7 @@ export const router = createBrowserRouter([
       { path: '/groups/:id/announcements/:aid/edit', element: lazyRoute(<AnnouncementPage mode="edit" />) },
       { path: '/friends', element: lazyRoute(<FriendsPage />) },
       { path: '/notifications', element: lazyRoute(<NotificationsPage />) },
+      { path: '/onboarding', element: lazyRoute(<OnboardingPage />) },
       { path: '/requests/:id', element: lazyRoute(<RequestDetailPage />) },
       { path: '/profile', element: lazyRoute(<ProfilePage />) },
       { path: '/u/:username', element: lazyRoute(<PublicProfilePage />) },
