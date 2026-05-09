@@ -234,6 +234,24 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 
 `refetchInterval: 30_000` + `refetchIntervalInBackground: false` quando o que importa só faz sentido com a aba ativa (ex.: `unread-count` do sino).
 
+### Telas e shell
+
+- **`/`** (`pages/landing-page.tsx`) — Welcome screen 2-col com hero editorial à esquerda (brand mark, título serif gigante com itálico, lede, 3 features numeradas, citação Mt 18,20) e auth card à direita (tabs Entrar/Criar com underline animado, magic-link). Sign-in bem-sucedido roteia pra `/onboarding` se `localStorage.creo-onboarded` não existe, senão `/feed`.
+- **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais.
+- **`/onboarding`** (`pages/onboarding-page.tsx`) — wizard de 6 passos (welcome, denominação, interesses, amigos sugeridos, primeira intenção, tour). Salva `creo-onboarded=true` ao concluir. Tradição vai pra backend via PATCH `/profile/tradition`. Interesses ficam em `localStorage.creo-interests` (sem backend ainda).
+- **`/feed`** (`pages/feed-page.tsx`) — canvas `.feed` 720px, headline serif, tabs com `tabs__ink`, composer quiet (abre modal global), posts.
+- **`/requests/:id`** (`pages/request-detail-page.tsx`) — IntentionDetail editorial: header + body em serif, total de orações destacado, reactions row, "Quem rezou" agrupado, "Atualizações do autor" (placeholder), "Compartilhar com" (PATCH /requests/:id).
+- **`/notifications`** (`pages/notifications-page.tsx`) — página completa com agrupamento por tipo (orações, comunidade, grupos, outros). Sino na topbar **navega pra cá** (não tem mais dropdown). Sidebar tem item "Notificações" com pip vermelho idem.
+- **`/groups`, `/groups/:id`, `/profile`, `/u/:username`, `/friends`, `/moderation`, `/groups/:id/announcements/*`** — visual existente, retokenizado pelos aliases.
+
+### Componentes-chave
+
+- `components/page-shell.tsx` — `.app` grid (sidebar 248px + stage). Sidebar tem brand + nav (Mural, Notificações, Amigos, Grupos, Criar grupo) + "Em oração agora" (top friends do `/friends`) + `side__me` no rodapé. Topbar com search pill + **botão "+ Nova intenção"** (`btn btn--ghost-out top__compose`) + sino linkando pra `/notifications`.
+- `state/composer-store.ts` — Zustand store global pro modal de nova intenção. PageShell renderiza o `<NewRequestModal>` controlado por essa store; qualquer página pode chamar `openComposer()`.
+- `components/feed-card.tsx` — `PrayerCard` com total no head + Editar; reactions no rodapé. `AnnouncementCard` com hero image + event date badge.
+- `components/glyph.tsx` — 5 marcas geométricas (rose/sun/diamond/beads/ring) usadas pelas reaction pills.
+- `lib/traditions.ts` — `Tradition` agora é `'CATHOLIC' | 'EVANGELICAL' | 'BOTH' | 'NONE'` (TS). Cada `PrayerAction` tem `denoms[]` que limita visibilidade. `toSavedTradition(t)` colapsa BOTH/NONE pra CATHOLIC (backend ainda não tem os 4 valores).
+
 ### Estilo
 
 **Identidade editorial**: cream warm (`#F0E6D0`) + ink teal (`#0E4A53`) single-color. Sem accent laranja, sem dark theme. Tipografia: **Source Serif 4** (italic em placeholders, regular em headlines/títulos de post) + **Geist** sans pra UI + **Geist Mono** pra hints (⌘K).
