@@ -484,6 +484,28 @@ export function PageShell({ children }: PropsWithChildren) {
 
         <main>{children}</main>
       </div>
+
+      <nav className="mobile-tabbar" aria-label="Navegação mobile">
+        <NavLink to="/feed" end className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
+          <span className="mtab__icon"><NavIcon kind="mural" /></span>
+          <span>Mural</span>
+        </NavLink>
+        <NavLink to="/friends" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
+          <span className="mtab__icon"><NavIcon kind="amigos" /></span>
+          <span>Amigos</span>
+        </NavLink>
+        <NavLink to="/groups" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
+          <span className="mtab__icon"><NavIcon kind="grupos" /></span>
+          <span>Grupos</span>
+        </NavLink>
+        <NavLink to="/profile" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
+          <span className="mtab__icon">
+            <Avatar user={profileForAvatar} size="xs" />
+          </span>
+          <span>Perfil</span>
+        </NavLink>
+      </nav>
+
       <NewRequestModal
         open={composerOpen}
         onClose={closeComposer}
