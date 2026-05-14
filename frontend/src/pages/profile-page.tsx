@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
@@ -11,7 +11,8 @@ import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { errorMessage } from '@/lib/api-error'
 import { Tradition, traditionOptions } from '@/lib/traditions'
-import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, uploadAvatar } from '@/lib/supabase'
+import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, getSupabaseClient, uploadAvatar } from '@/lib/supabase'
+import { useSessionStore } from '@/state/session-store'
 
 const BIO_MAX = 280
 
@@ -371,6 +372,7 @@ export function ProfilePage() {
       </section>
 
       <BlockedUsersSection />
+      <SessionSection />
       </main>
     </PageShell>
   )
@@ -612,6 +614,41 @@ function BlockedUsersSection() {
           </article>
         ))}
       </div>
+    </section>
+  )
+}
+
+function SessionSection() {
+  const navigate = useNavigate()
+  const setAccessToken = useSessionStore((s) => s.setAccessToken)
+  const [busy, setBusy] = useState(false)
+
+  async function onLogout() {
+    setBusy(true)
+    try {
+      const supabase = getSupabaseClient()
+      if (supabase) {
+        await supabase.auth.signOut()
+      }
+      setAccessToken(null)
+      navigate('/', { replace: true })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
+      <h2 className="pv-title text-lg font-semibold text-secondary">Sessão</h2>
+      <p className="pv-muted mt-1 text-sm">Encerre a sessão neste dispositivo.</p>
+      <button
+        type="button"
+        onClick={onLogout}
+        disabled={busy}
+        className="btn btn--ghost-out mt-3"
+      >
+        {busy ? 'Saindo…' : 'Sair'}
+      </button>
     </section>
   )
 }
