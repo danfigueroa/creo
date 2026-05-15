@@ -1003,6 +1003,11 @@ textarea::placeholder {
 .post__line > * { white-space: nowrap; }
 .post__line--meta { margin-top: 4px; }
 
+@media (max-width: 560px) {
+  .post__line { flex-wrap: wrap; row-gap: 2px; }
+  .post__handle { max-width: 140px; }
+}
+
 .post__name {
   font-weight: 600;
   font-size: 14.5px;
@@ -1069,6 +1074,21 @@ textarea::placeholder {
   gap: 6px;
   flex-wrap: wrap;
   flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .post__reactions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .post__reactions .rx {
+    justify-content: center;
+    padding: 8px 10px;
+  }
 }
 
 .post__total {
@@ -1079,6 +1099,13 @@ textarea::placeholder {
   color: var(--muted);
   margin-left: auto;
   white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .post__total {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 .post__total-num {
   font-family: var(--serif);
