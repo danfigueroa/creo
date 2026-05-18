@@ -2,13 +2,14 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
+import type { Tradition } from '@/lib/traditions'
 
 type AuthTab = 'entrar' | 'criar'
 
 const FEATURES = [
-  { n: '01', title: 'Pedidos de oração', desc: 'Compartilhe intenções com amigos e grupos.' },
-  { n: '02', title: 'Comunidade unida', desc: 'Pastorais, células e movimentos em um só espaço.' },
-  { n: '03', title: 'Ambiente acolhedor', desc: 'Moderação ativa para conviver em paz.' }
+  { n: '01', title: 'Pedidos de oração', desc: 'Compartilhe intenções com privacidade granular — público, só seu grupo, ou anônimo.' },
+  { n: '02', title: 'Rezei por você', desc: 'Acompanhe quem rezou pela sua intenção — sem comentários, só presença.' },
+  { n: '03', title: 'Sua comunidade', desc: 'Pastorais, células e movimentos num só espaço acolhedor.' }
 ]
 
 function translateAuthError(raw: string): string {
@@ -28,6 +29,7 @@ export function LandingPage() {
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [name, setName] = useState('')
+  const [tradition, setTradition] = useState<Tradition>('CATHOLIC')
   const [magic, setMagic] = useState(false)
   const [info, setInfo] = useState('')
   const [error, setError] = useState('')
@@ -65,8 +67,7 @@ export function LandingPage() {
         return
       }
       setAccessToken(token)
-      const onboarded = window.localStorage.getItem('creo-onboarded') === 'true'
-      navigate(onboarded ? '/feed' : '/onboarding', { replace: true })
+      navigate('/feed', { replace: true })
     } finally {
       setIsLoading(false)
     }
@@ -87,12 +88,13 @@ export function LandingPage() {
     }
     setIsLoading(true)
     try {
+      window.localStorage.setItem('creo-pending-tradition', tradition)
       const { error: signErr } = await supabase.auth.signUp({
         email,
         password: pass,
         options: {
           emailRedirectTo: `${window.location.origin}/auth`,
-          data: { display_name: name.trim() }
+          data: { display_name: name.trim(), tradition }
         }
       })
       if (signErr) {
@@ -331,6 +333,38 @@ export function LandingPage() {
                       required
                     />
                   </label>
+
+                  <div className="welcome__field">
+                    <span className="welcome__label">Tradição</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
+                      {(['CATHOLIC', 'EVANGELICAL'] as const).map((t) => {
+                        const active = tradition === t
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setTradition(t)}
+                            aria-pressed={active}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: 'var(--r-2)',
+                              border: `1.5px solid ${active ? 'var(--ink)' : 'var(--line-2)'}`,
+                              background: active ? 'var(--ink)' : 'transparent',
+                              color: active ? 'var(--bg)' : 'var(--ink)',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              fontFamily: 'var(--sans)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              transition: 'border-color 0.15s, background 0.15s, color 0.15s'
+                            }}
+                          >
+                            {t === 'CATHOLIC' ? 'Católico' : 'Evangélico'}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
                     {isLoading ? 'Criando…' : 'Criar conta'}

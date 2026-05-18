@@ -89,9 +89,18 @@ export function AuthPage() {
     }
     let active = true
 
-    const redirectIfSession = (token: string | null | undefined) => {
+    const redirectIfSession = async (token: string | null | undefined) => {
       if (!active || !token) return
       setAccessToken(token)
+      const pendingTradition = window.localStorage.getItem('creo-pending-tradition')
+      if (pendingTradition) {
+        try {
+          await api.patch('/profile/tradition', { tradition: pendingTradition })
+        } catch {
+          // best-effort
+        }
+        window.localStorage.removeItem('creo-pending-tradition')
+      }
       navigate(nextPath, { replace: true })
     }
 
