@@ -139,9 +139,7 @@ export function LandingPage() {
       <div className="welcome">
         <section className="welcome__hero" aria-label="Apresentação">
           <div className="welcome__brand">
-            <div className="brand-mark" aria-hidden>
-              <span />
-            </div>
+            <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
             <span className="brand-word">Creo</span>
           </div>
 

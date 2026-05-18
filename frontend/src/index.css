@@ -483,20 +483,8 @@ textarea::placeholder {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--ink);
-  display: grid;
-  place-items: center;
-  position: relative;
-}
-.brand-mark::before {
-  content: "";
-  position: absolute;
-  inset: 6px;
-  border-radius: 4px;
-  background:
-    radial-gradient(circle at 50% 35%, var(--bg) 0 18%, transparent 19%),
-    linear-gradient(var(--bg) 0 0) 50% 60% / 2px 8px no-repeat,
-    linear-gradient(var(--bg) 0 0) 50% 60% / 8px 2px no-repeat;
+  display: block;
+  flex-shrink: 0;
 }
 
 .brand-word {
@@ -2296,7 +2284,6 @@ textarea::placeholder {
   gap: 10px;
 }
 .welcome__brand .brand-mark { width: 32px; height: 32px; border-radius: 9px; }
-.welcome__brand .brand-mark span { width: 14px; height: 14px; }
 .welcome__brand .brand-word { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
 
 .welcome__title {

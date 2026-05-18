@@ -286,9 +286,7 @@ export function PageShell({ children }: PropsWithChildren) {
     <div className="app">
       <aside className="side">
         <Link to="/feed" className="side__brand" aria-label="Creo — ir para o início">
-          <span className="brand-mark" aria-hidden>
-            <span />
-          </span>
+          <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
           <span className="brand-word">Creo</span>
         </Link>
 
