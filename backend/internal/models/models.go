@@ -11,6 +11,8 @@ type PrayerActionType string
 
 type Tradition string
 
+type Language string
+
 type GroupJoinPolicy string
 
 type GroupRole string
@@ -61,6 +63,12 @@ const (
 )
 
 const (
+	LanguagePtBr Language = "PT_BR"
+	LanguageEn   Language = "EN"
+	LanguageEs   Language = "ES"
+)
+
+const (
 	JoinPolicyOpen       GroupJoinPolicy = "OPEN"
 	JoinPolicyRequest    GroupJoinPolicy = "REQUEST"
 	JoinPolicyInviteOnly GroupJoinPolicy = "INVITE_ONLY"
@@ -88,6 +96,7 @@ type User struct {
 	AvatarURL   *string   `json:"avatarUrl,omitempty"`
 	Bio         *string   `json:"bio,omitempty"`
 	Tradition   Tradition `json:"tradition"`
+	Language    Language  `json:"language"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
