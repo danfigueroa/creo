@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
 import { api } from '@/lib/api'
+import i18n from '@/lib/i18n'
 
 type NotificationType =
   | 'PRAYED'
@@ -46,14 +48,9 @@ type ListResponse = {
 
 type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'milestone' | 'other'
 
-const BUCKET_LABELS: Record<Bucket, string> = {
-  prayed: 'Orações pelas suas intenções',
-  updates: 'Atualizações de intenções',
-  follow: 'Comunidade',
-  group: 'Grupos',
-  milestone: 'Marcos',
-  other: 'Outros'
-}
+const BUCKET_ORDER: Bucket[] = ['prayed', 'updates', 'follow', 'group', 'milestone', 'other']
+
+const bucketLabel = (b: Bucket): string => i18n.t(`notif.bucket.${b}`)
 
 function bucketOf(type: NotificationType): Bucket {
   switch (type) {
@@ -81,14 +78,14 @@ function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   if (Number.isNaN(ms)) return ''
   const sec = Math.round(ms / 1000)
-  if (sec < 60) return 'agora'
+  if (sec < 60) return i18n.t('time.now')
   const min = Math.round(sec / 60)
-  if (min < 60) return `há ${min} min`
+  if (min < 60) return i18n.t('time.agoMin', { count: min })
   const hr = Math.round(min / 60)
-  if (hr < 24) return `há ${hr} h`
+  if (hr < 24) return i18n.t('time.agoHour', { count: hr })
   const day = Math.round(hr / 24)
-  if (day < 30) return `há ${day} d`
-  return new Date(iso).toLocaleDateString('pt-BR')
+  if (day < 30) return i18n.t('notif.agoDay', { count: day })
+  return new Date(iso).toLocaleDateString(i18n.language)
 }
 
 function targetPath(n: Notification): string {
@@ -107,48 +104,49 @@ function targetPath(n: Notification): string {
 }
 
 function copyFor(n: Notification): string {
-  const name = n.actor?.displayName || n.actor?.username || 'Alguém'
+  const name = n.actor?.displayName || n.actor?.username || i18n.t('notif.someone')
   switch (n.type) {
     case 'PRAYED':
-      return `${name} orou pelo seu pedido`
+      return i18n.t('notif.prayed', { name })
     case 'REQUEST_UPDATED':
-      return `${name} publicou uma atualização em uma intenção que você reza`
+      return i18n.t('notif.requestUpdated', { name })
     case 'MILESTONE_PRAYED': {
       const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
-      return count ? `Você atingiu ${count} orações enviadas.` : 'Você atingiu um marco de orações.'
+      return count ? i18n.t('notif.milestonePrayed', { count }) : i18n.t('notif.milestonePrayedGeneric')
     }
     case 'MILESTONE_CREATED': {
       const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
-      return count ? `Você compartilhou ${count} ${count === 1 ? 'intenção' : 'intenções'}.` : 'Você atingiu um marco de intenções.'
+      return count ? i18n.t('notif.milestoneCreated', { count }) : i18n.t('notif.milestoneCreatedGeneric')
     }
     case 'MILESTONE_STREAK': {
       const days = typeof n.payload?.days === 'number' ? (n.payload.days as number) : 0
-      return days ? `Você rezou por ${days} dias seguidos.` : 'Você atingiu um marco de constância.'
+      return days ? i18n.t('notif.milestoneStreak', { count: days }) : i18n.t('notif.milestoneStreakGeneric')
     }
     case 'FRIEND_REQUEST_RECEIVED':
-      return `${name} quer ser seu amigo`
+      return i18n.t('notif.friendRequestReceived', { name })
     case 'FRIEND_REQUEST_ACCEPTED':
-      return `${name} aceitou seu pedido de amizade`
+      return i18n.t('notif.friendRequestAccepted', { name })
     case 'GROUP_JOIN_APPROVED':
-      return 'Você foi aceito em um grupo'
+      return i18n.t('notif.groupJoinApproved')
     case 'GROUP_JOIN_REQUESTED':
-      return `${name} pediu para entrar em um grupo que você administra`
+      return i18n.t('notif.groupJoinRequested', { name })
     case 'GROUP_ANNOUNCEMENT_POSTED': {
       const title = typeof n.payload?.title === 'string' ? (n.payload.title as string) : ''
-      return title ? `${name} publicou: ${title}` : `${name} publicou um anúncio`
+      return title ? i18n.t('notif.announcementTitle', { name, title }) : i18n.t('notif.announcement', { name })
     }
     case 'REQUEST_APPROVED':
-      return 'Seu pedido foi aprovado pela moderação'
+      return i18n.t('notif.requestApproved')
     case 'REQUEST_REJECTED':
-      return 'Seu pedido foi rejeitado pela moderação'
+      return i18n.t('notif.requestRejected')
     case 'REQUEST_CHANGES_ASKED':
-      return 'A moderação pediu ajustes no seu pedido'
+      return i18n.t('notif.requestChangesAsked')
     default:
-      return 'Nova notificação'
+      return i18n.t('notif.newNotification')
   }
 }
 
 export function NotificationsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -182,8 +180,8 @@ export function NotificationsPage() {
     const items = listQuery.data ?? []
     const buckets: Record<Bucket, Notification[]> = { prayed: [], updates: [], follow: [], group: [], milestone: [], other: [] }
     items.forEach((n) => buckets[bucketOf(n.type)].push(n))
-    return (Object.keys(BUCKET_LABELS) as Bucket[])
-      .map((b) => ({ key: b, label: BUCKET_LABELS[b], items: buckets[b] }))
+    return BUCKET_ORDER
+      .map((b) => ({ key: b, label: bucketLabel(b), items: buckets[b] }))
       .filter((g) => g.items.length > 0)
   }, [listQuery.data])
 
@@ -199,9 +197,9 @@ export function NotificationsPage() {
     <PageShell>
       <main className="notifs">
         <div className="feed__head">
-          <div className="feed__eyebrow">Comunidade</div>
-          <h1 className="feed__title">Notificações</h1>
-          <p className="feed__sub">Quem rezou, quem atualizou, quem se aproximou.</p>
+          <div className="feed__eyebrow">{t('notif.eyebrow')}</div>
+          <h1 className="feed__title">{t('nav.notifications')}</h1>
+          <p className="feed__sub">{t('notif.sub')}</p>
           {unread > 0 && (
             <button
               type="button"
@@ -218,22 +216,22 @@ export function NotificationsPage() {
                 padding: 0
               }}
             >
-              Marcar todas como lidas
+              {t('notif.markAllRead')}
             </button>
           )}
         </div>
 
         {listQuery.isLoading && (
-          <p style={{ color: 'var(--muted)', fontSize: 14 }}>Carregando notificações…</p>
+          <p style={{ color: 'var(--muted)', fontSize: 14 }}>{t('notif.loading')}</p>
         )}
 
         {!listQuery.isLoading && !hasItems && (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
             <p style={{ fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', margin: 0 }}>
-              Você está em dia.
+              {t('notif.emptyTitle')}
             </p>
             <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
-              Nada para acompanhar agora — volte quando uma intenção se mover.
+              {t('notif.emptySub')}
             </p>
           </div>
         )}
