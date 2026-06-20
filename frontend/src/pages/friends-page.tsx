@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Input } from '@/components/input'
 import { Button } from '@/components/button'
@@ -34,6 +35,7 @@ type FriendRequest = {
 }
 
 export function FriendsPage() {
+  const { t, i18n } = useTranslation()
   const [query, setQuery] = useState('')
   const toast = useToast()
   const confirm = useConfirm()
@@ -72,7 +74,7 @@ export function FriendsPage() {
       await api.post('/friends/requests', { targetUsername })
     },
     onSuccess: async () => {
-      toast.success('Solicitação enviada.')
+      toast.success(t('pubProfile.requestSent'))
       await searchQuery.refetch()
       await requestsQuery.refetch()
     },
@@ -84,7 +86,7 @@ export function FriendsPage() {
       await api.post(`/friends/requests/${requestId}/accept`)
     },
     onSuccess: async () => {
-      toast.success('Amizade aceita.')
+      toast.success(t('pubProfile.friendAccepted'))
       await requestsQuery.refetch()
       await friendsQuery.refetch()
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
@@ -97,7 +99,7 @@ export function FriendsPage() {
       await api.post(`/friends/requests/${requestId}/reject`)
     },
     onSuccess: async () => {
-      toast.info('Solicitação recusada.')
+      toast.info(t('pubProfile.requestRejected'))
       await requestsQuery.refetch()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -108,7 +110,7 @@ export function FriendsPage() {
       await api.delete(`/friends/${userId}`)
     },
     onSuccess: async () => {
-      toast.info('Amizade desfeita.')
+      toast.info(t('pubProfile.friendRemoved'))
       await friendsQuery.refetch()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -121,9 +123,9 @@ export function FriendsPage() {
 
   async function handleReject(request: FriendRequest) {
     const ok = await confirm({
-      title: 'Recusar solicitação',
-      description: `Recusar a solicitação de @${request.username}?`,
-      confirmLabel: 'Recusar',
+      title: t('pubProfile.rejectTitle'),
+      description: t('pubProfile.rejectDesc', { username: request.username }),
+      confirmLabel: t('group.reject'),
       destructive: true
     })
     if (ok) {
@@ -133,9 +135,9 @@ export function FriendsPage() {
 
   async function handleRemoveFriend(friend: Friend) {
     const ok = await confirm({
-      title: 'Desfazer amizade',
-      description: `Tem certeza que quer desfazer amizade com @${friend.username}? Vocês deixarão de ver pedidos restritos um do outro.`,
-      confirmLabel: 'Desfazer',
+      title: t('pubProfile.removeFriendTitle'),
+      description: t('friends.removeFriendDesc', { username: friend.username }),
+      confirmLabel: t('pubProfile.undo'),
       destructive: true
     })
     if (ok) {
@@ -146,13 +148,13 @@ export function FriendsPage() {
   return (
     <PageShell>
       <section className="pv-panel rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Rede de amigos</p>
-        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Conectar pessoas da comunidade</h1>
-        <p className="pv-muted mt-2 text-sm">Busque usuários pelo nome dentro do sistema e envie solicitações de amizade.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('friends.eyebrow')}</p>
+        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('friends.title')}</h1>
+        <p className="pv-muted mt-2 text-sm">{t('friends.sub')}</p>
 
         <form className="mt-5 flex flex-col gap-2 sm:flex-row" onSubmit={onSearch}>
-          <Input onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por @username ou nome" value={query} />
-          <Button className="w-full sm:w-auto" type="submit">Buscar</Button>
+          <Input onChange={(e) => setQuery(e.target.value)} placeholder={t('friends.searchPlaceholder')} value={query} />
+          <Button className="w-full sm:w-auto" type="submit">{t('friends.search')}</Button>
         </form>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -165,20 +167,20 @@ export function FriendsPage() {
                 </Link>
                 <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
                 <Button className="mt-3 w-full sm:w-auto" disabled={sendRequest.isPending} onClick={() => sendRequest.mutate(user.username)}>
-                  Adicionar amigo
+                  {t('friends.addFriend')}
                 </Button>
               </div>
             </article>
           ))}
           {query.trim().length >= 2 && !searchQuery.isLoading && (searchQuery.data ?? []).length === 0 && (
-            <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm sm:col-span-2">Nenhum usuário encontrado para este nome.</p>
+            <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm sm:col-span-2">{t('friends.noUsers')}</p>
           )}
         </div>
       </section>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <section className="pv-panel rounded-3xl p-6">
-          <h2 className="pv-title text-xl font-semibold text-secondary">Solicitações recebidas</h2>
+          <h2 className="pv-title text-xl font-semibold text-secondary">{t('friends.received')}</h2>
           <div className="mt-4 space-y-3">
             {(requestsQuery.data ?? []).map((request) => (
               <article key={request.id} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
@@ -188,26 +190,26 @@ export function FriendsPage() {
                     {request.displayName}
                   </Link>
                   <p className="pv-muted mt-1 truncate text-xs">@{request.username}</p>
-                  <p className="pv-muted mt-1 text-xs">Recebida em {new Date(request.requestedAt).toLocaleString('pt-BR')}</p>
+                  <p className="pv-muted mt-1 text-xs">{t('friends.receivedOn', { date: new Date(request.requestedAt).toLocaleString(i18n.language) })}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <Button disabled={acceptRequest.isPending} onClick={() => acceptRequest.mutate(request.id)}>
-                      Aceitar
+                      {t('pubProfile.accept')}
                     </Button>
                     <Button variant="secondary" disabled={rejectRequest.isPending} onClick={() => handleReject(request)}>
-                      Recusar
+                      {t('group.reject')}
                     </Button>
                   </div>
                 </div>
               </article>
             ))}
             {!requestsQuery.isLoading && (requestsQuery.data ?? []).length === 0 && (
-              <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">Nenhuma solicitação pendente.</p>
+              <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">{t('group.noRequests')}</p>
             )}
           </div>
         </section>
 
         <section className="pv-panel rounded-3xl p-6">
-          <h2 className="pv-title text-xl font-semibold text-secondary">Meus amigos</h2>
+          <h2 className="pv-title text-xl font-semibold text-secondary">{t('friends.myFriends')}</h2>
           <div className="mt-4 space-y-3">
             {(friendsQuery.data ?? []).map((friend) => (
               <article key={friend.userId} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
@@ -217,20 +219,20 @@ export function FriendsPage() {
                     {friend.displayName}
                   </Link>
                   <p className="pv-muted mt-1 truncate text-xs">@{friend.username}</p>
-                  <p className="pv-muted mt-1 text-xs">Conectado em {new Date(friend.connectedAt).toLocaleDateString('pt-BR')}</p>
+                  <p className="pv-muted mt-1 text-xs">{t('friends.connectedOn', { date: new Date(friend.connectedAt).toLocaleDateString(i18n.language) })}</p>
                   <Button
                     variant="secondary"
                     className="mt-3 w-full sm:w-auto"
                     disabled={removeFriend.isPending}
                     onClick={() => handleRemoveFriend(friend)}
                   >
-                    Desfazer amizade
+                    {t('pubProfile.removeFriend')}
                   </Button>
                 </div>
               </article>
             ))}
             {!friendsQuery.isLoading && (friendsQuery.data ?? []).length === 0 && (
-              <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">Você ainda não possui amigos adicionados.</p>
+              <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">{t('friends.noFriends')}</p>
             )}
           </div>
         </section>
