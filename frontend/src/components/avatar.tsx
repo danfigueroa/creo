@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import i18n from '@/lib/i18n'
 
 export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
@@ -71,7 +72,7 @@ export function Avatar({ user, size = 'sm', className, linkToProfile = false, ar
         to={`/u/${user.username}`}
         className={merged}
         style={styleVars}
-        aria-label={ariaLabel || `Ver perfil de ${user.displayName || user.username}`}
+        aria-label={ariaLabel || i18n.t('avatar.viewProfileOf', { name: user.displayName || user.username })}
       >
         {content}
       </Link>

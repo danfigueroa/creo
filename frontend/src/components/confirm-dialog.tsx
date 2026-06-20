@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/button'
 
 type ConfirmOptions = {
@@ -21,6 +22,7 @@ type Pending = {
 }
 
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation()
   const [pending, setPending] = useState<Pending | null>(null)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -80,7 +82,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
             )}
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="secondary" type="button" onClick={() => handleClose(false)}>
-                {pending.options.cancelLabel ?? 'Cancelar'}
+                {pending.options.cancelLabel ?? t('common.cancel')}
               </Button>
               <Button
                 ref={confirmButtonRef}
@@ -88,7 +90,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
                 onClick={() => handleClose(true)}
                 className={pending.options.destructive ? 'bg-accent hover:bg-accent/90' : undefined}
               >
-                {pending.options.confirmLabel ?? 'Confirmar'}
+                {pending.options.confirmLabel ?? t('common.confirm')}
               </Button>
             </div>
           </div>
