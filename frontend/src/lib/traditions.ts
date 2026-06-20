@@ -116,6 +116,16 @@ const evangelicalActions: PrayerAction[] = [
     border: 'oklch(0.85 0.05 340)',
     fg: 'oklch(0.42 0.09 340)',
     dot: 'oklch(0.68 0.10 340)'
+  },
+  {
+    type: 'PURPOSE',
+    emoji: '🤝',
+    label: 'Propósito',
+    glyph: 'flame',
+    bg: 'oklch(0.94 0.03 285)',
+    border: 'oklch(0.85 0.05 285)',
+    fg: 'oklch(0.42 0.09 285)',
+    dot: 'oklch(0.66 0.12 285)'
   }
 ]
 
@@ -145,7 +155,7 @@ export const traditionOptions: TraditionOption[] = [
   {
     value: 'EVANGELICAL',
     label: 'Evangélico(a)',
-    description: 'Orei, Intercessão, Gratidão, Jejum e Clamor',
+    description: 'Orei, Intercessão, Gratidão, Jejum, Clamor e Propósito',
     emoji: '🕊️'
   }
 ]
