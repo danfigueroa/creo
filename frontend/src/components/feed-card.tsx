@@ -43,6 +43,7 @@ export type PrayerFeedItem = {
   createdAt: string
   prayedCount: number
   prayerTypeCounts?: Record<string, number>
+  answeredAt?: string | null
 }
 
 export type AnnouncementFeedItem = {
@@ -242,6 +243,11 @@ function PrayerCard({
             )}
           </div>
           <div className="post__line post__line--meta">
+            {item.answeredAt && (
+              <span className="answered-pill">
+                <span aria-hidden>✦</span> {t('card.answered')}
+              </span>
+            )}
             <span className="cat-pill" style={categoryStyle(item.category)}>
               {categoryLabel(item.category)}
             </span>

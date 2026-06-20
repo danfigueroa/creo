@@ -27,6 +27,8 @@ type RequestDetail = {
   groupNames?: string[]
   prayerTypeCounts?: Record<string, number>
   myPrayerTypes?: string[]
+  answeredAt?: string | null
+  testimony?: string | null
   createdAt: string
 }
 
@@ -132,6 +134,10 @@ export function RequestDetailPage() {
   const [updateError, setUpdateError] = useState('')
   const [updateOpen, setUpdateOpen] = useState(false)
 
+  const [testimony, setTestimony] = useState('')
+  const [answerOpen, setAnswerOpen] = useState(false)
+  const [answerError, setAnswerError] = useState('')
+
   const createUpdate = useMutation({
     mutationFn: async () => {
       await api.post(`/requests/${id}/updates`, { body: updateBody.trim() })
@@ -191,6 +197,31 @@ export function RequestDetailPage() {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ['feed'] })
       navigate('/feed', { replace: true })
+    }
+  })
+
+  const answer = useMutation({
+    mutationFn: async () => {
+      await api.post(`/requests/${id}/answer`, { testimony: testimony.trim() })
+    },
+    onSuccess: async () => {
+      setAnswerOpen(false)
+      setAnswerError('')
+      await requestQuery.refetch()
+      await client.invalidateQueries({ queryKey: ['feed'] })
+    },
+    onError: (err: any) => {
+      setAnswerError(err?.response?.data?.error?.message || t('reqDetail.answerError'))
+    }
+  })
+
+  const unanswer = useMutation({
+    mutationFn: async () => {
+      await api.delete(`/requests/${id}/answer`)
+    },
+    onSuccess: async () => {
+      await requestQuery.refetch()
+      await client.invalidateQueries({ queryKey: ['feed'] })
     }
   })
 
@@ -256,6 +287,26 @@ export function RequestDetailPage() {
         {data && (
           <>
             <article className="detail__post">
+              {data.answeredAt && (
+                <div className="answered-banner">
+                  <div className="answered-banner__head">
+                    <span className="answered-banner__seal" aria-hidden>✦</span>
+                    <span className="answered-banner__label">{t('reqDetail.answeredTitle')}</span>
+                    <span className="answered-banner__when">{relativeShort(data.answeredAt)}</span>
+                  </div>
+                  {data.testimony && <p className="answered-banner__text">{data.testimony}</p>}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      className="answered-banner__undo"
+                      onClick={() => unanswer.mutate()}
+                      disabled={unanswer.isPending}
+                    >
+                      {unanswer.isPending ? t('reqDetail.undoing') : t('reqDetail.answerUndo')}
+                    </button>
+                  )}
+                </div>
+              )}
               <header className="detail__head">
                 <Avatar
                   user={{
@@ -532,6 +583,93 @@ export function RequestDetailPage() {
                     </span>
                   )}
                 </div>
+              </section>
+            )}
+
+            {/* Marcar como atendido — graça alcançada */}
+            {isOwner && !data.answeredAt && (
+              <section className="detail__section">
+                <h2 className="detail__h2">{t('reqDetail.answerHeading')}</h2>
+                {!answerOpen ? (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => {
+                      setTestimony(data.testimony || '')
+                      setAnswerOpen(true)
+                    }}
+                  >
+                    {t('reqDetail.answerCta')}
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      background: 'var(--card)',
+                      border: '1px solid var(--line-2)',
+                      borderRadius: 'var(--r-2)',
+                      padding: 14
+                    }}
+                  >
+                    <p style={{ color: 'var(--muted)', fontSize: 13, margin: '0 0 10px' }}>
+                      {t('reqDetail.answerHelp')}
+                    </p>
+                    <textarea
+                      value={testimony}
+                      onChange={(e) => setTestimony(e.target.value)}
+                      placeholder={t('reqDetail.testimonyPlaceholder')}
+                      rows={3}
+                      maxLength={2000}
+                      style={{
+                        width: '100%',
+                        fontFamily: 'var(--serif)',
+                        fontSize: 16,
+                        color: 'var(--ink)',
+                        background: 'transparent',
+                        border: 0,
+                        resize: 'vertical',
+                        outline: 'none'
+                      }}
+                      autoFocus
+                    />
+                    {answerError && (
+                      <p
+                        role="alert"
+                        style={{
+                          color: 'var(--ink-2)',
+                          fontSize: 12,
+                          margin: '8px 0 0',
+                          background: 'var(--card-2)',
+                          border: '1px solid var(--line-2)',
+                          padding: '6px 10px',
+                          borderRadius: 'var(--r-1)'
+                        }}
+                      >
+                        {answerError}
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => {
+                          setAnswerOpen(false)
+                          setAnswerError('')
+                        }}
+                        disabled={answer.isPending}
+                      >
+                        {t('common.cancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        onClick={() => answer.mutate()}
+                        disabled={answer.isPending}
+                      >
+                        {answer.isPending ? t('reqDetail.answering') : t('reqDetail.answerConfirm')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 

@@ -15,6 +15,7 @@ type NotificationType =
   | 'GROUP_JOIN_REQUESTED'
   | 'GROUP_ANNOUNCEMENT_POSTED'
   | 'REQUEST_UPDATED'
+  | 'REQUEST_ANSWERED'
   | 'REQUEST_APPROVED'
   | 'REQUEST_REJECTED'
   | 'REQUEST_CHANGES_ASKED'
@@ -57,6 +58,7 @@ function bucketOf(type: NotificationType): Bucket {
     case 'PRAYED':
       return 'prayed'
     case 'REQUEST_UPDATED':
+    case 'REQUEST_ANSWERED':
       return 'updates'
     case 'FRIEND_REQUEST_RECEIVED':
     case 'FRIEND_REQUEST_ACCEPTED':
@@ -110,6 +112,8 @@ function copyFor(n: Notification): string {
       return i18n.t('notif.prayed', { name })
     case 'REQUEST_UPDATED':
       return i18n.t('notif.requestUpdated', { name })
+    case 'REQUEST_ANSWERED':
+      return i18n.t('notif.requestAnswered', { name })
     case 'MILESTONE_PRAYED': {
       const count = typeof n.payload?.count === 'number' ? (n.payload.count as number) : 0
       return count ? i18n.t('notif.milestonePrayed', { count }) : i18n.t('notif.milestonePrayedGeneric')

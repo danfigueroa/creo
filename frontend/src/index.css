@@ -935,6 +935,23 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
+.answered-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  color: var(--ink);
+  background: rgba(14, 74, 83, 0.1);
+  border: 1px solid var(--ink);
+  margin-right: 8px;
+}
+
 /* "anônimo" hint visible only to the author of an allow_anonymous post */
 .anon-flag {
   display: inline-flex;
@@ -1345,6 +1362,44 @@ textarea::placeholder {
   padding: 28px 28px 24px;
   margin-bottom: 28px;
 }
+.answered-banner {
+  border: 1px solid var(--ink);
+  background: rgba(14, 74, 83, 0.06);
+  border-radius: var(--r-2);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.answered-banner__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.answered-banner__seal { color: var(--ink); font-size: 15px; }
+.answered-banner__label {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.answered-banner__when { font-size: 12px; color: var(--muted); margin-left: auto; }
+.answered-banner__text {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 10px 0 0;
+}
+.answered-banner__undo {
+  margin-top: 10px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.answered-banner__undo:hover { color: var(--ink); }
+
 .detail__head {
   display: flex;
   align-items: center;
