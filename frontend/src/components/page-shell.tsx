@@ -1,10 +1,12 @@
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useSessionStore } from '@/state/session-store'
 import { useComposerStore } from '@/state/composer-store'
 import { getSupabaseClient } from '@/lib/supabase'
 import { api } from '@/lib/api'
+import { fromBackendLanguage, normalizeLanguage } from '@/lib/i18n'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { Avatar } from '@/components/avatar'
 
@@ -13,6 +15,7 @@ type ProfileMini = {
   username: string
   displayName: string
   avatarUrl?: string | null
+  language?: string | null
 }
 
 type SearchUser = {
@@ -46,12 +49,12 @@ type Friend = {
 
 type NavKind = 'mural' | 'notifs' | 'amigos' | 'grupos' | 'criar'
 
-const NAV: Array<{ id: NavKind; label: string; to: string; pip?: boolean }> = [
-  { id: 'mural', label: 'Mural', to: '/feed' },
-  { id: 'notifs', label: 'Notificações', to: '/notifications', pip: true },
-  { id: 'amigos', label: 'Amigos', to: '/friends' },
-  { id: 'grupos', label: 'Grupos', to: '/groups' },
-  { id: 'criar', label: 'Criar grupo', to: '/groups/new' }
+const NAV: Array<{ id: NavKind; labelKey: string; to: string; pip?: boolean }> = [
+  { id: 'mural', labelKey: 'nav.mural', to: '/feed' },
+  { id: 'notifs', labelKey: 'nav.notifications', to: '/notifications', pip: true },
+  { id: 'amigos', labelKey: 'nav.friends', to: '/friends' },
+  { id: 'grupos', labelKey: 'nav.groups', to: '/groups' },
+  { id: 'criar', labelKey: 'nav.createGroup', to: '/groups/new' }
 ]
 
 function NavIcon({ kind }: { kind: NavKind }) {
@@ -104,6 +107,7 @@ function NavIcon({ kind }: { kind: NavKind }) {
 
 export function PageShell({ children }: PropsWithChildren) {
   const navigate = useNavigate()
+  const { t, i18n } = useTranslation()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -119,6 +123,16 @@ export function PageShell({ children }: PropsWithChildren) {
     queryKey: ['profile', 'shell'],
     queryFn: async () => (await api.get<ProfileMini>('/profile')).data
   })
+
+  // Sync the user's saved language preference into the UI on load.
+  const profileLanguage = profileQuery.data?.language
+  useEffect(() => {
+    if (!profileLanguage) return
+    const code = fromBackendLanguage(profileLanguage)
+    if (normalizeLanguage(i18n.language) !== code) {
+      void i18n.changeLanguage(code)
+    }
+  }, [profileLanguage, i18n])
 
   const friendsQuery = useQuery({
     queryKey: ['friends', 'shell'],
@@ -195,21 +209,21 @@ export function PageShell({ children }: PropsWithChildren) {
     },
     onSuccess: (_data, username) => {
       setRequestedUsers((prev) => ({ ...prev, [username.toLowerCase()]: true }))
-      setSearchNotice('Solicitação de amizade enviada.')
+      setSearchNotice(t('shell.friendRequestSent'))
     },
     onError: (err: any) => {
       const code = err?.response?.data?.error?.code
       const message = err?.response?.data?.error?.message
       if (code === 'FRIEND_REQUEST_EXISTS') {
-        setSearchNotice('Vocês já têm uma solicitação pendente ou amizade ativa.')
+        setSearchNotice(t('shell.friendRequestExists'))
       } else if (code === 'USER_NOT_FOUND') {
-        setSearchNotice('Usuário não encontrado.')
+        setSearchNotice(t('shell.userNotFound'))
       } else if (code === 'CANNOT_ADD_SELF') {
-        setSearchNotice('Você não pode se adicionar como amigo.')
+        setSearchNotice(t('shell.cannotAddSelf'))
       } else if (message) {
         setSearchNotice(message)
       } else {
-        setSearchNotice('Não foi possível enviar solicitação de amizade.')
+        setSearchNotice(t('shell.friendRequestError'))
       }
     }
   })
@@ -220,18 +234,18 @@ export function PageShell({ children }: PropsWithChildren) {
     },
     onSuccess: (_data, groupID) => {
       setRequestedGroups((prev) => ({ ...prev, [groupID]: true }))
-      setSearchNotice('Solicitação para entrar no grupo enviada.')
+      setSearchNotice(t('shell.groupJoinSent'))
     },
     onError: () => {
-      setSearchNotice('Não foi possível solicitar entrada no grupo.')
+      setSearchNotice(t('shell.groupJoinError'))
     }
   })
 
   const displayName = useMemo(() => {
     const profile = profileQuery.data
-    if (!profile) return 'Minha conta'
-    return profile.displayName || profile.email.split('@')[0] || 'Minha conta'
-  }, [profileQuery.data])
+    if (!profile) return t('shell.myAccount')
+    return profile.displayName || profile.email.split('@')[0] || t('shell.myAccount')
+  }, [profileQuery.data, t])
 
   const handle = profileQuery.data?.username ? `@${profileQuery.data.username}` : ''
   const profileForAvatar = {
@@ -285,12 +299,12 @@ export function PageShell({ children }: PropsWithChildren) {
   return (
     <div className="app">
       <aside className="side">
-        <Link to="/feed" className="side__brand" aria-label="Creo — ir para o início">
+        <Link to="/feed" className="side__brand" aria-label={t('shell.brandAria')}>
           <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
           <span className="brand-word">Creo</span>
         </Link>
 
-        <nav className="side__nav" aria-label="Menu principal">
+        <nav className="side__nav" aria-label={t('shell.mainMenu')}>
           {NAV.map((n) => (
             <NavLink
               key={n.id}
@@ -301,7 +315,7 @@ export function PageShell({ children }: PropsWithChildren) {
               <span className="navitem__icon">
                 <NavIcon kind={n.id} />
               </span>
-              <span>{n.label}</span>
+              <span>{t(n.labelKey)}</span>
               {n.pip && unreadQuery.data && unreadQuery.data > 0 ? <span className="navitem__pip" /> : null}
             </NavLink>
           ))}
@@ -311,7 +325,7 @@ export function PageShell({ children }: PropsWithChildren) {
 
         {friendsTop.length > 0 && (
           <div className="side__praying">
-            <div className="side__eyebrow">Em oração agora</div>
+            <div className="side__eyebrow">{t('shell.prayingNow')}</div>
             <ul className="praylist">
               {friendsTop.map((friend) => (
                 <li key={friend.userId}>
@@ -341,14 +355,21 @@ export function PageShell({ children }: PropsWithChildren) {
                 onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2.5 text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
               >
-                Ver perfil
+                {t('shell.viewProfile')}
+              </Link>
+              <Link
+                to="/profile#idioma"
+                onClick={() => setMenuOpen(false)}
+                className="block px-4 py-2.5 text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
+              >
+                {t('shell.language')}
               </Link>
               <button
                 type="button"
                 onClick={onLogout}
                 className="block w-full px-4 py-2.5 text-left text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
               >
-                Sair
+                {t('shell.logout')}
               </button>
             </div>
           )}
@@ -364,7 +385,7 @@ export function PageShell({ children }: PropsWithChildren) {
               <line x1="9.2" y1="9.2" x2="12" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
             <input
-              placeholder="Buscar amigos, grupos ou intenções"
+              placeholder={t('shell.searchPlaceholder')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onFocus={() => setSearchOpen(true)}
@@ -374,7 +395,7 @@ export function PageShell({ children }: PropsWithChildren) {
             {searchOpen && (
               <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]">
                 {normalizedSearch.length < 2 && (
-                  <p className="text-xs text-[var(--muted)]">Digite pelo menos 2 caracteres para buscar amigos e grupos.</p>
+                  <p className="text-xs text-[var(--muted)]">{t('shell.searchHint')}</p>
                 )}
 
                 {searchNotice && (
@@ -386,7 +407,7 @@ export function PageShell({ children }: PropsWithChildren) {
                 {normalizedSearch.length >= 2 && (
                   <div className="space-y-3">
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">Amigos</p>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('nav.friends')}</p>
                       <div className="space-y-1.5">
                         {(usersSearchQuery.data ?? []).map((user) => {
                           const alreadyRequested = requestedUsers[user.username.toLowerCase()]
@@ -410,19 +431,19 @@ export function PageShell({ children }: PropsWithChildren) {
                                 onClick={() => sendFriendRequest.mutate(user.username)}
                                 type="button"
                               >
-                                {alreadyRequested ? 'Enviado' : 'Adicionar'}
+                                {alreadyRequested ? t('shell.sent') : t('shell.add')}
                               </button>
                             </div>
                           )
                         })}
                         {usersSearchQuery.isSuccess && (usersSearchQuery.data ?? []).length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">Nenhum amigo encontrado.</p>
+                          <p className="text-xs text-[var(--muted)]">{t('shell.noFriendsFound')}</p>
                         )}
                       </div>
                     </div>
 
                     <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">Grupos</p>
+                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('nav.groups')}</p>
                       <div className="space-y-1.5">
                         {(groupsSearchQuery.data ?? []).map((group) => {
                           const alreadyRequested = requestedGroups[group.id]
@@ -445,17 +466,17 @@ export function PageShell({ children }: PropsWithChildren) {
                                 onClick={() => requestGroupJoin.mutate(group.id)}
                                 type="button"
                               >
-                                {group.isMember ? 'No grupo' : alreadyRequested ? 'Solicitado' : 'Entrar'}
+                                {group.isMember ? t('shell.inGroup') : alreadyRequested ? t('shell.requested') : t('shell.join')}
                               </button>
                             </div>
                           )
                         })}
                         {groupsSearchQuery.isSuccess && (groupsSearchQuery.data ?? []).length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">Nenhum grupo encontrado.</p>
+                          <p className="text-xs text-[var(--muted)]">{t('shell.noGroupsFound')}</p>
                         )}
                         {groupsSearchQuery.isError && (
                           <p className="rounded-lg border border-[var(--line-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
-                            Não foi possível buscar grupos agora.
+                            {t('shell.groupsSearchError')}
                           </p>
                         )}
                       </div>
@@ -468,9 +489,9 @@ export function PageShell({ children }: PropsWithChildren) {
 
           <div className="top__actions">
             <button type="button" className="btn btn--primary" onClick={() => openComposer()}>
-              Nova intenção
+              {t('shell.newIntention')}
             </button>
-            <Link to="/notifications" className="iconbtn" aria-label={`Notificações${unreadQuery.data ? ` (${unreadQuery.data} não lidas)` : ''}`}>
+            <Link to="/notifications" className="iconbtn" aria-label={unreadQuery.data ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}>
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
                 <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
                 <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -483,24 +504,24 @@ export function PageShell({ children }: PropsWithChildren) {
         <main>{children}</main>
       </div>
 
-      <nav className="mobile-tabbar" aria-label="Navegação mobile">
+      <nav className="mobile-tabbar" aria-label={t('shell.mobileNav')}>
         <NavLink to="/feed" end className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon"><NavIcon kind="mural" /></span>
-          <span>Mural</span>
+          <span>{t('nav.mural')}</span>
         </NavLink>
         <NavLink to="/friends" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon"><NavIcon kind="amigos" /></span>
-          <span>Amigos</span>
+          <span>{t('nav.friends')}</span>
         </NavLink>
         <NavLink to="/groups" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon"><NavIcon kind="grupos" /></span>
-          <span>Grupos</span>
+          <span>{t('nav.groups')}</span>
         </NavLink>
         <NavLink to="/profile" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon">
             <Avatar user={profileForAvatar} size="xs" />
           </span>
-          <span>Perfil</span>
+          <span>{t('shell.profile')}</span>
         </NavLink>
       </nav>
 
