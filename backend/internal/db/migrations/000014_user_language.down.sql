@@ -1,0 +1,3 @@
+ALTER TABLE users DROP COLUMN IF EXISTS language;
+
+DROP TYPE IF EXISTS language;
