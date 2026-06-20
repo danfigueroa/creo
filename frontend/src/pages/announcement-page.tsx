@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
@@ -62,6 +63,7 @@ function splitDateTime(iso: string): { dateStr: string; timeStr: string } {
 }
 
 export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
+  const { t } = useTranslation()
   const { id: groupId = '', aid = '' } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -134,7 +136,7 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
       if (err instanceof ImageUploadError) {
         setPhotoError(err.message)
       } else {
-        setPhotoError('Falha ao enviar a imagem.')
+        setPhotoError(t('profile.uploadFailed'))
       }
     }
   })
@@ -145,7 +147,7 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
       const local = `${dateStr}T${timeStr}`
       const parsedEventAt = new Date(local)
       if (Number.isNaN(parsedEventAt.getTime())) {
-        throw new Error('Data inválida.')
+        throw new Error(t('announce.invalidDate'))
       }
       const payload = {
         title: title.trim(),
@@ -167,7 +169,7 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
       navigate(`/groups/${groupId}?tab=mural`)
     },
     onError: (err: any) => {
-      setError(err?.response?.data?.error?.message || 'Não foi possível salvar o anúncio.')
+      setError(err?.response?.data?.error?.message || t('announce.saveError'))
     }
   })
 
@@ -193,15 +195,15 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
     e.preventDefault()
     setError('')
     if (!titleValid) {
-      setError(`O título precisa ter entre ${TITLE_MIN} e ${TITLE_MAX} caracteres.`)
+      setError(t('request.titleRange', { min: TITLE_MIN, max: TITLE_MAX }))
       return
     }
     if (!bodyValid) {
-      setError(`A descrição precisa ter entre ${BODY_MIN} e ${BODY_MAX} caracteres.`)
+      setError(t('announce.bodyRange', { min: BODY_MIN, max: BODY_MAX }))
       return
     }
     if (!eventValid) {
-      setError('Informe a data e hora do evento.')
+      setError(t('announce.eventRequired'))
       return
     }
     persist.mutate()
@@ -227,8 +229,8 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
     authorUsername: profile?.username,
     authorDisplayName: profile?.displayName,
     authorAvatarUrl: profile?.avatarUrl ?? null,
-    title: trimmedTitle || 'Título do anúncio',
-    body: trimmedBody || 'A descrição vai aparecer aqui…',
+    title: trimmedTitle || t('announce.previewTitle'),
+    body: trimmedBody || t('announce.previewBody'),
     eventAt: previewEventAt,
     imageUrl,
     createdAt: new Date().toISOString()
@@ -238,25 +240,25 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
     <PageShell>
       <section className="pv-panel rounded-3xl p-5 sm:p-7">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          {mode === 'edit' ? 'Editar anúncio' : 'Novo anúncio'}
+          {mode === 'edit' ? t('announce.editEyebrow') : t('announce.newEyebrow')}
         </p>
         <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">
-          {mode === 'edit' ? 'Atualizar anúncio do grupo' : 'Avise o grupo sobre um evento'}
+          {mode === 'edit' ? t('announce.editTitle') : t('announce.newTitle')}
         </h1>
         <p className="pv-muted mt-2 max-w-2xl text-sm">
-          Anúncios aparecem no mural do grupo e no feed inicial dos membros, e disparam uma notificação.
-          {details?.name ? <> Grupo: <span className="font-semibold text-primary">{details.name}</span>.</> : null}
+          {t('announce.sub')}
+          {details?.name ? <> {t('announce.groupLabel')} <span className="font-semibold text-primary">{details.name}</span>.</> : null}
         </p>
 
         <div className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <form onSubmit={onSubmit} className="space-y-8">
             <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Sobre o evento</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.aboutEvent')}</p>
               <div className="mt-3 space-y-5">
                 <div>
                   <div className="flex items-baseline justify-between gap-3">
                     <label htmlFor="pv-ann-title" className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                      Título
+                      {t('request.titleLabel')}
                     </label>
                     <span className={`text-[11px] tabular-nums ${trimmedTitle.length > TITLE_MAX ? 'text-primary' : 'pv-muted'}`}>{titleCounter}</span>
                   </div>
@@ -265,16 +267,16 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
                     className="mt-1.5"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Ex.: Encontro de oração da pastoral familiar"
+                    placeholder={t('announce.titlePlaceholder')}
                     maxLength={TITLE_MAX + 20}
                   />
-                  <p className="pv-muted mt-1.5 text-[11px]">Entre {TITLE_MIN} e {TITLE_MAX} caracteres.</p>
+                  <p className="pv-muted mt-1.5 text-[11px]">{t('announce.between', { min: TITLE_MIN, max: TITLE_MAX })}</p>
                 </div>
 
                 <div>
                   <div className="flex items-baseline justify-between gap-3">
                     <label htmlFor="pv-ann-body" className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                      Descrição
+                      {t('group.descriptionLabel')}
                     </label>
                     <span className={`text-[11px] tabular-nums ${trimmedBody.length > BODY_MAX ? 'text-primary' : 'pv-muted'}`}>{bodyCounter}</span>
                   </div>
@@ -283,38 +285,38 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
                     className="mt-1.5 min-h-[160px]"
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
-                    placeholder="Conte o que vai acontecer: local, programação, intenções, link da reunião…"
+                    placeholder={t('announce.bodyPlaceholder')}
                   />
-                  <p className="pv-muted mt-1.5 text-[11px]">Entre {BODY_MIN} e {BODY_MAX} caracteres.</p>
+                  <p className="pv-muted mt-1.5 text-[11px]">{t('announce.between', { min: BODY_MIN, max: BODY_MAX })}</p>
                 </div>
               </div>
             </section>
 
             <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Quando vai acontecer</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.whenLabel')}</p>
               <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
                 <input
                   type="date"
-                  aria-label="Data do evento"
+                  aria-label={t('announce.eventDate')}
                   className="block w-full rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
                   value={dateStr}
                   onChange={(e) => setDateStr(e.target.value)}
                 />
                 <input
                   type="time"
-                  aria-label="Hora do evento"
+                  aria-label={t('announce.eventTime')}
                   step={300}
                   className="block w-[7.5rem] rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
                   value={timeStr}
                   onChange={(e) => setTimeStr(e.target.value)}
                 />
               </div>
-              <p className="pv-muted mt-1.5 text-[11px]">Pode editar depois.</p>
+              <p className="pv-muted mt-1.5 text-[11px]">{t('announce.editLater')}</p>
             </section>
 
             <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Imagem do evento</p>
-              <p className="pv-muted mt-1 text-[11px]">Opcional. JPG, PNG ou WEBP até {maxMb} MB.</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.imageLabel')}</p>
+              <p className="pv-muted mt-1 text-[11px]">{t('announce.imageHelp', { max: maxMb })}</p>
               <div className="mt-3 space-y-3">
                 {imageUrl ? (
                   <img
@@ -325,7 +327,7 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
                   />
                 ) : (
                   <div className="flex aspect-[16/9] w-full max-w-md items-center justify-center rounded-xl border border-dashed border-primary/40 text-xs text-primary/70">
-                    Sem imagem
+                    {t('announce.noImage')}
                   </div>
                 )}
                 <input
@@ -334,15 +336,15 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
                   accept={acceptAttr}
                   className="hidden"
                   onChange={onFileChange}
-                  aria-label="Selecionar imagem do anúncio"
+                  aria-label={t('announce.selectImage')}
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" disabled={upload.isPending} onClick={() => fileInputRef.current?.click()}>
-                    {upload.isPending ? 'Enviando…' : imageUrl ? 'Trocar imagem' : 'Enviar imagem'}
+                    {upload.isPending ? t('profile.uploading') : imageUrl ? t('announce.changeImage') : t('announce.uploadImage')}
                   </Button>
                   {imageUrl && (
                     <Button type="button" variant="secondary" disabled={upload.isPending} onClick={() => setImageUrl(null)}>
-                      Remover
+                      {t('profile.remove')}
                     </Button>
                   )}
                 </div>
@@ -352,10 +354,10 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
 
             <div className="flex flex-col gap-3 border-t border-primary/30 pt-5 sm:flex-row sm:items-center sm:justify-end">
               <Button type="button" variant="secondary" onClick={() => navigate(`/groups/${groupId}?tab=mural`)} disabled={persist.isPending}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={!canSubmit}>
-                {persist.isPending ? 'Salvando…' : mode === 'edit' ? 'Salvar alterações' : 'Publicar anúncio'}
+                {persist.isPending ? t('common.saving') : mode === 'edit' ? t('profile.saveChanges') : t('announce.publish')}
               </Button>
             </div>
 
@@ -363,8 +365,8 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
           </form>
 
           <aside className="lg:sticky lg:top-6 lg:self-start">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">Pré-visualização</p>
-            <p className="pv-muted mt-1 text-[11px]">É assim que vai aparecer no feed dos membros.</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.preview')}</p>
+            <p className="pv-muted mt-1 text-[11px]">{t('announce.previewHelp')}</p>
             <div className="mt-3">
               <AnnouncementCardLayout item={previewItem} interactive={false} />
             </div>
