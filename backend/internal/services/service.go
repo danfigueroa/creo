@@ -628,7 +628,7 @@ func isValidPrayerActionTypeFor(tradition models.Tradition, actionType models.Pr
 	switch tradition {
 	case models.TraditionEvangelical:
 		switch actionType {
-		case models.PrayerActionIPrayed, models.PrayerActionIntercession, models.PrayerActionFasting, models.PrayerActionGratitude, models.PrayerActionCryingOut:
+		case models.PrayerActionIPrayed, models.PrayerActionIntercession, models.PrayerActionFasting, models.PrayerActionGratitude, models.PrayerActionCryingOut, models.PrayerActionPurpose:
 			return true
 		}
 		return false
