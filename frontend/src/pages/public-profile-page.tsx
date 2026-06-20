@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
 import { Button } from '@/components/button'
@@ -36,6 +37,7 @@ type PublicProfile = {
 }
 
 export function PublicProfilePage() {
+  const { t } = useTranslation()
   const { username = '' } = useParams<{ username: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -67,7 +69,7 @@ export function PublicProfilePage() {
       await api.post('/friends/requests', { targetUsername: username })
     },
     onSuccess: async () => {
-      toast.success('Solicitação enviada.')
+      toast.success(t('pubProfile.requestSent'))
       await invalidateFriendsAreas()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -78,7 +80,7 @@ export function PublicProfilePage() {
       await api.post(`/friends/requests/${requestId}/accept`)
     },
     onSuccess: async () => {
-      toast.success('Amizade aceita.')
+      toast.success(t('pubProfile.friendAccepted'))
       await invalidateFriendsAreas()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -89,7 +91,7 @@ export function PublicProfilePage() {
       await api.delete(`/friends/requests/${requestId}`)
     },
     onSuccess: async () => {
-      toast.info('Solicitação cancelada.')
+      toast.info(t('pubProfile.requestCanceled'))
       await invalidateFriendsAreas()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -100,7 +102,7 @@ export function PublicProfilePage() {
       await api.post(`/friends/requests/${requestId}/reject`)
     },
     onSuccess: async () => {
-      toast.info('Solicitação recusada.')
+      toast.info(t('pubProfile.requestRejected'))
       await invalidateFriendsAreas()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -111,7 +113,7 @@ export function PublicProfilePage() {
       await api.delete(`/friends/${userId}`)
     },
     onSuccess: async () => {
-      toast.info('Amizade desfeita.')
+      toast.info(t('pubProfile.friendRemoved'))
       await invalidateFriendsAreas()
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -122,7 +124,7 @@ export function PublicProfilePage() {
       await api.post('/blocks', { targetUsername: username })
     },
     onSuccess: async () => {
-      toast.info('Usuário bloqueado.')
+      toast.info(t('pubProfile.userBlocked'))
       await Promise.all([
         invalidateFriendsAreas(),
         queryClient.invalidateQueries({ queryKey: ['blocks'] })
@@ -136,7 +138,7 @@ export function PublicProfilePage() {
       await api.delete(`/blocks/${userId}`)
     },
     onSuccess: async () => {
-      toast.success('Usuário desbloqueado.')
+      toast.success(t('profile.userUnblocked'))
       await Promise.all([
         invalidateFriendsAreas(),
         queryClient.invalidateQueries({ queryKey: ['blocks'] })
@@ -177,10 +179,10 @@ export function PublicProfilePage() {
     return (
       <PageShell>
         <section className="pv-panel rounded-3xl p-6 text-center sm:p-8">
-          <h1 className="pv-title text-xl font-bold text-secondary">Perfil não encontrado</h1>
-          <p className="pv-muted mt-2 text-sm">Não encontramos um usuário com esse @username.</p>
+          <h1 className="pv-title text-xl font-bold text-secondary">{t('pubProfile.notFoundTitle')}</h1>
+          <p className="pv-muted mt-2 text-sm">{t('pubProfile.notFoundSub')}</p>
           <div className="mt-5 flex justify-center">
-            <Button onClick={() => navigate('/feed')}>Voltar ao mural</Button>
+            <Button onClick={() => navigate('/feed')}>{t('pubProfile.backToFeed')}</Button>
           </div>
         </section>
       </PageShell>
@@ -202,7 +204,7 @@ export function PublicProfilePage() {
                 <span aria-hidden style={{ marginRight: 4 }}>
                   {owner.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}
                 </span>
-                {traditionLabel[owner.tradition]}
+                {traditionLabel(owner.tradition)}
               </span>
             </div>
             {owner.bio && <p className="profile__bio">"{owner.bio}"</p>}
@@ -218,46 +220,46 @@ export function PublicProfilePage() {
             onAcceptFriendRequest={(id) => acceptFriendRequest.mutate(id)}
             onRejectFriendRequest={async (id) => {
               const ok = await confirm({
-                title: 'Recusar solicitação',
-                description: `Recusar solicitação de @${username}?`,
-                confirmLabel: 'Recusar',
+                title: t('pubProfile.rejectTitle'),
+                description: t('pubProfile.rejectDesc', { username }),
+                confirmLabel: t('group.reject'),
                 destructive: true
               })
               if (ok) rejectFriendRequest.mutate(id)
             }}
             onCancelFriendRequest={async (id) => {
               const ok = await confirm({
-                title: 'Cancelar solicitação',
-                description: `Cancelar solicitação enviada para @${username}?`,
-                confirmLabel: 'Cancelar solicitação',
-                cancelLabel: 'Voltar',
+                title: t('pubProfile.cancelTitle'),
+                description: t('pubProfile.cancelDesc', { username }),
+                confirmLabel: t('pubProfile.cancelRequest'),
+                cancelLabel: t('common.back'),
                 destructive: true
               })
               if (ok) cancelFriendRequest.mutate(id)
             }}
             onRemoveFriend={async (id) => {
               const ok = await confirm({
-                title: 'Desfazer amizade',
-                description: `Tem certeza que quer desfazer amizade com ${owner.displayName}?`,
-                confirmLabel: 'Desfazer',
+                title: t('pubProfile.removeFriendTitle'),
+                description: t('pubProfile.removeFriendDesc', { name: owner.displayName }),
+                confirmLabel: t('pubProfile.undo'),
                 destructive: true
               })
               if (ok) removeFriend.mutate(id)
             }}
             onBlock={async () => {
               const ok = await confirm({
-                title: 'Bloquear usuário',
-                description: `Bloquear ${owner.displayName}? Vocês não verão mais pedidos um do outro e qualquer amizade ou solicitação será desfeita.`,
-                confirmLabel: 'Bloquear',
+                title: t('pubProfile.blockTitle'),
+                description: t('pubProfile.blockDesc', { name: owner.displayName }),
+                confirmLabel: t('pubProfile.block'),
                 destructive: true
               })
               if (ok) blockUser.mutate()
             }}
             onUnblock={async () => {
               const ok = await confirm({
-                title: 'Desbloquear usuário',
-                description: `Desbloquear ${owner.displayName}?`,
-                confirmLabel: 'Desbloquear'
+                title: t('profile.unblockUser'),
+                description: t('pubProfile.unblockDesc', { name: owner.displayName }),
+                confirmLabel: t('profile.unblock')
               })
               if (ok) unblockUser.mutate(owner.id)
             }}
@@ -275,36 +277,36 @@ export function PublicProfilePage() {
       <section className="profile__stats">
         <div className="stat">
           <div className="stat__num">{stats?.prayerActionsTotal ?? '—'}</div>
-          <div className="stat__label">orações enviadas</div>
+          <div className="stat__label">{t('profile.statSent')}</div>
         </div>
         <div className="stat">
           <div className="stat__num">{stats?.prayerActionsReceived ?? '—'}</div>
-          <div className="stat__label">orações recebidas</div>
+          <div className="stat__label">{t('profile.statReceived')}</div>
         </div>
         <div className="stat">
           <div className="stat__num">{stats?.requestsCreated ?? '—'}</div>
-          <div className="stat__label">intenções compartilhadas</div>
+          <div className="stat__label">{t('profile.statShared')}</div>
         </div>
         <div className="stat">
           <div className="stat__num">{stats?.streakDays ?? '—'}</div>
-          <div className="stat__label">dias consecutivos</div>
+          <div className="stat__label">{t('profile.statStreak')}</div>
         </div>
       </section>
 
       {stats ? (
         <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-          <h2 className="pv-title text-xl font-bold text-secondary">Atividade de oração</h2>
+          <h2 className="pv-title text-xl font-bold text-secondary">{t('pubProfile.activityTitle')}</h2>
           <p className="pv-muted mt-1 text-sm">
-            {status === 'SELF' ? 'Estes números aparecem para amigos.' : `Visível porque vocês são amigos.`}
+            {status === 'SELF' ? t('pubProfile.activitySelf') : t('pubProfile.activityFriends')}
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <StatCard label="Pedidos criados" value={stats.requestsCreated} />
-            <StatCard label="Orações registradas" value={stats.prayerActionsTotal} />
+            <StatCard label={t('pubProfile.requestsCreated')} value={stats.requestsCreated} />
+            <StatCard label={t('pubProfile.prayersLogged')} value={stats.prayerActionsTotal} />
           </div>
 
           <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Por tipo de oração</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('pubProfile.byPrayerType')}</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {prayerActions.map((action) => {
                 const count = stats.prayerActionsByType[action.type] ?? 0
@@ -321,14 +323,14 @@ export function PublicProfilePage() {
               })}
             </div>
             {prayerActions.every((a) => (stats.prayerActionsByType[a.type] ?? 0) === 0) && (
-              <p className="pv-muted mt-2 text-xs">Sem orações registradas ainda.</p>
+              <p className="pv-muted mt-2 text-xs">{t('pubProfile.noPrayersLogged')}</p>
             )}
           </div>
 
           <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Por categoria de pedido</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('pubProfile.byCategory')}</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {prayerCategoryOptions.map((option) => {
+              {prayerCategoryOptions().map((option) => {
                 const count = stats.prayerActionsByCategory[option.value] ?? 0
                 if (count === 0) return null
                 return (
@@ -342,7 +344,7 @@ export function PublicProfilePage() {
                 )
               })}
               {Object.keys(stats.prayerActionsByCategory).length === 0 && (
-                <p className="pv-muted text-xs sm:col-span-2">Ainda não há categorias contabilizadas.</p>
+                <p className="pv-muted text-xs sm:col-span-2">{t('pubProfile.noCategories')}</p>
               )}
             </div>
             {/* Render any unknown category fallback (defensive) */}
@@ -352,10 +354,10 @@ export function PublicProfilePage() {
       ) : status !== 'SELF' && (
         <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
           <p className="text-sm text-secondary">
-            🔒 Estatísticas de oração ficam visíveis para amigos.
+            🔒 {t('pubProfile.statsLocked')}
           </p>
           <p className="pv-muted mt-1 text-sm">
-            Quando vocês forem amigos, você verá quantos pedidos {owner.displayName} criou e como ela tem orado pela comunidade.
+            {t('pubProfile.statsLockedSub', { name: owner.displayName })}
           </p>
         </section>
       )}
@@ -374,7 +376,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function UnknownCategoriesList({ byCategory }: { byCategory: Record<string, number> }) {
-  const known = new Set(prayerCategoryOptions.map((o) => o.value))
+  const known = new Set(prayerCategoryOptions().map((o) => o.value))
   const unknown = Object.entries(byCategory).filter(([k]) => !known.has(k as never))
   if (unknown.length === 0) return null
   return (
@@ -434,11 +436,12 @@ function ProfileActionButton({
   blockBusy,
   unblockBusy
 }: ProfileActionButtonProps) {
+  const { t } = useTranslation()
   if (!status) return null
   if (status === 'SELF') {
     return (
       <Link to="/profile" className="shrink-0">
-        <Button type="button" variant="secondary">Editar perfil</Button>
+        <Button type="button" variant="secondary">{t('pubProfile.editProfile')}</Button>
       </Link>
     )
   }
@@ -446,10 +449,10 @@ function ProfileActionButton({
     return (
       <div className="flex shrink-0 flex-col items-end gap-2">
         <span className="rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
-          Você bloqueou este usuário
+          {t('pubProfile.youBlocked')}
         </span>
         <Button type="button" variant="secondary" disabled={unblockBusy} onClick={onUnblock}>
-          {unblockBusy ? 'Desbloqueando…' : 'Desbloquear'}
+          {unblockBusy ? t('pubProfile.unblocking') : t('profile.unblock')}
         </Button>
       </div>
     )
@@ -457,7 +460,7 @@ function ProfileActionButton({
   if (status === 'BLOCKED_BY_THEM') {
     return (
       <span className="shrink-0 rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
-        Indisponível
+        {t('pubProfile.unavailable')}
       </span>
     )
   }
@@ -465,13 +468,13 @@ function ProfileActionButton({
     return (
       <div className="flex shrink-0 flex-col items-end gap-2">
         <span className="rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary">
-          ✓ Amigos
+          ✓ {t('pubProfile.friends')}
         </span>
         <Button type="button" variant="secondary" disabled={removeBusy} onClick={() => onRemoveFriend(ownerId)}>
-          {removeBusy ? 'Removendo…' : 'Desfazer amizade'}
+          {removeBusy ? t('pubProfile.removing') : t('pubProfile.removeFriend')}
         </Button>
         <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
-          {blockBusy ? 'Bloqueando…' : 'Bloquear'}
+          {blockBusy ? t('pubProfile.blocking') : t('pubProfile.block')}
         </Button>
       </div>
     )
@@ -479,10 +482,10 @@ function ProfileActionButton({
   if (status === 'PENDING_OUT') {
     return (
       <div className="flex shrink-0 flex-col gap-2">
-        <Button type="button" variant="secondary" disabled className="cursor-default">Solicitação enviada</Button>
+        <Button type="button" variant="secondary" disabled className="cursor-default">{t('pubProfile.requestSentLabel')}</Button>
         {outgoingId && (
           <Button type="button" variant="secondary" disabled={cancelBusy} onClick={() => onCancelFriendRequest(outgoingId)}>
-            {cancelBusy ? 'Cancelando…' : 'Cancelar solicitação'}
+            {cancelBusy ? t('pubProfile.canceling') : t('pubProfile.cancelRequest')}
           </Button>
         )}
       </div>
@@ -492,10 +495,10 @@ function ProfileActionButton({
     return (
       <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
         <Button type="button" disabled={acceptBusy} onClick={() => onAcceptFriendRequest(incomingId)}>
-          {acceptBusy ? 'Aceitando…' : 'Aceitar'}
+          {acceptBusy ? t('pubProfile.accepting') : t('pubProfile.accept')}
         </Button>
         <Button type="button" variant="secondary" disabled={rejectBusy} onClick={() => onRejectFriendRequest(incomingId)}>
-          {rejectBusy ? 'Recusando…' : 'Recusar'}
+          {rejectBusy ? t('pubProfile.rejecting') : t('group.reject')}
         </Button>
       </div>
     )
@@ -503,10 +506,10 @@ function ProfileActionButton({
   return (
     <div className="flex shrink-0 flex-col gap-2">
       <Button type="button" disabled={sendBusy} onClick={onSendFriendRequest}>
-        {sendBusy ? 'Enviando…' : 'Adicionar como amigo'}
+        {sendBusy ? t('pubProfile.sending') : t('pubProfile.addFriend')}
       </Button>
       <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
-        {blockBusy ? 'Bloqueando…' : 'Bloquear'}
+        {blockBusy ? t('pubProfile.blocking') : t('pubProfile.block')}
       </Button>
     </div>
   )
