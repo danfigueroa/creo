@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
 import { Button } from '@/components/button'
@@ -29,6 +30,7 @@ type QueueItem = {
 type ModerationAction = 'approve' | 'reject' | 'request-changes'
 
 export function ModerationPage() {
+  const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const toast = useToast()
   const confirm = useConfirm()
@@ -48,9 +50,9 @@ export function ModerationPage() {
     },
     onSuccess: async (_, vars) => {
       const labels: Record<ModerationAction, string> = {
-        approve: 'Pedido aprovado.',
-        reject: 'Pedido rejeitado.',
-        'request-changes': 'Mudanças solicitadas ao autor.'
+        approve: t('mod.approved'),
+        reject: t('mod.rejected'),
+        'request-changes': t('mod.changesRequested')
       }
       toast.success(labels[vars.action])
       setReasonDrafts((prev) => {
@@ -65,9 +67,9 @@ export function ModerationPage() {
 
   async function handleApprove(item: QueueItem) {
     const ok = await confirm({
-      title: 'Aprovar pedido',
-      description: `Liberar "${item.title}" no grupo ${item.groupName}?`,
-      confirmLabel: 'Aprovar'
+      title: t('mod.approveTitle'),
+      description: t('mod.approveDesc', { title: item.title, group: item.groupName }),
+      confirmLabel: t('group.approve')
     })
     if (ok) action.mutate({ requestId: item.id, action: 'approve' })
   }
@@ -75,7 +77,7 @@ export function ModerationPage() {
   function handleReject(item: QueueItem) {
     const reason = reasonDrafts[item.id]?.trim()
     if (!reason) {
-      toast.error('Descreva o motivo da rejeição.')
+      toast.error(t('mod.reasonRejectRequired'))
       return
     }
     action.mutate({ requestId: item.id, action: 'reject', reason })
@@ -84,7 +86,7 @@ export function ModerationPage() {
   function handleRequestChanges(item: QueueItem) {
     const reason = reasonDrafts[item.id]?.trim()
     if (!reason) {
-      toast.error('Descreva o que precisa ser ajustado.')
+      toast.error(t('mod.reasonChangesRequired'))
       return
     }
     action.mutate({ requestId: item.id, action: 'request-changes', reason })
@@ -93,10 +95,10 @@ export function ModerationPage() {
   return (
     <PageShell>
       <section className="pv-panel rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Governança</p>
-        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Fila de moderação</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('mod.eyebrow')}</p>
+        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('mod.title')}</h1>
         <p className="pv-muted mt-2 text-sm">
-          Pedidos enviados a grupos com moderação obrigatória aparecem aqui. Você só vê itens dos grupos onde é admin ou moderador.
+          {t('mod.sub')}
         </p>
       </section>
 
@@ -106,7 +108,7 @@ export function ModerationPage() {
         )}
         {!queue.isLoading && (queue.data ?? []).length === 0 && (
           <p className="pv-muted rounded-2xl border border-primary bg-panel p-5 text-sm">
-            Nada para revisar agora.
+            {t('mod.empty')}
           </p>
         )}
         {(queue.data ?? []).map((item) => {
@@ -131,11 +133,11 @@ export function ModerationPage() {
                     <span className="pv-muted text-xs">@{item.authorUsername}</span>
                     <span className="text-xs pv-muted">·</span>
                     <span className="text-xs pv-muted">
-                      em <Link to={`/groups/${item.groupId}`} className="text-primary hover:underline">{item.groupName}</Link>
+                      {t('mod.inGroup')} <Link to={`/groups/${item.groupId}`} className="text-primary hover:underline">{item.groupName}</Link>
                     </span>
                   </div>
                   <p className="pv-muted mt-1 text-xs">
-                    Enviado em {new Date(item.createdAt).toLocaleString('pt-BR')}
+                    {t('mod.sentOn', { date: new Date(item.createdAt).toLocaleString(i18n.language) })}
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-primary/40 bg-panel px-2.5 py-1 text-[11px] font-semibold text-primary">
@@ -149,7 +151,7 @@ export function ModerationPage() {
 
               <div className="mt-4">
                 <label className="text-xs font-semibold uppercase tracking-[0.16em] text-primary" htmlFor={`reason-${item.id}`}>
-                  Motivo (obrigatório para rejeitar ou pedir mudanças)
+                  {t('mod.reasonLabel')}
                 </label>
                 <TextArea
                   id={`reason-${item.id}`}
@@ -159,19 +161,19 @@ export function ModerationPage() {
                   onChange={(e) =>
                     setReasonDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
                   }
-                  placeholder="Explique para o autor o que precisa mudar ou por que foi rejeitado."
+                  placeholder={t('mod.reasonPlaceholder')}
                 />
               </div>
 
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button variant="secondary" disabled={busy} onClick={() => handleRequestChanges(item)}>
-                  Pedir mudanças
+                  {t('mod.requestChanges')}
                 </Button>
                 <Button variant="secondary" disabled={busy} onClick={() => handleReject(item)}>
-                  Rejeitar
+                  {t('mod.reject')}
                 </Button>
                 <Button disabled={busy} onClick={() => handleApprove(item)}>
-                  Aprovar
+                  {t('group.approve')}
                 </Button>
               </div>
             </article>
