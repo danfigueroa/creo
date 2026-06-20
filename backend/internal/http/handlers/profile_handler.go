@@ -30,6 +30,10 @@ type updateTraditionRequest struct {
 	Tradition string `json:"tradition"`
 }
 
+type updateLanguageRequest struct {
+	Language string `json:"language"`
+}
+
 func NewProfileHandler(service *services.Service) *ProfileHandler {
 	return &ProfileHandler{service: service}
 }
@@ -149,6 +153,29 @@ func (h *ProfileHandler) UpdateTradition(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidTradition) {
 			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid tradition", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, profile)
+}
+
+func (h *ProfileHandler) UpdateLanguage(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	var req updateLanguageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
+		return
+	}
+	profile, err := h.service.SetUserLanguage(r.Context(), userID, models.Language(req.Language))
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidLanguage) {
+			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid language", nil)
 			return
 		}
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
