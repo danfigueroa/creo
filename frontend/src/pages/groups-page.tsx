@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { api } from '@/lib/api'
@@ -14,13 +15,8 @@ type Group = {
   joinPolicy: JoinPolicy
 }
 
-const policyLabel: Record<JoinPolicy, string> = {
-  OPEN: 'Aberto',
-  REQUEST: 'Por solicitação',
-  INVITE_ONLY: 'Somente convite'
-}
-
 export function GroupsPage() {
+  const { t } = useTranslation()
   const groupsQuery = useQuery({
     queryKey: ['groups', 'mine'],
     queryFn: async () => {
@@ -38,15 +34,14 @@ export function GroupsPage() {
       <section className="pv-panel rounded-3xl p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Comunidade</p>
-            <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Meus grupos</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('groups.eyebrow')}</p>
+            <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('groups.title')}</h1>
             <p className="pv-muted mt-2 max-w-2xl text-sm">
-              Comunidades das quais você participa. Abra um grupo para ver o mural, gerenciar membros e responder
-              solicitações.
+              {t('groups.sub')}
             </p>
           </div>
           <Link to="/groups/new" className="shrink-0">
-            <Button className="w-full sm:w-auto">+ Novo grupo</Button>
+            <Button className="w-full sm:w-auto">{t('groups.newGroup')}</Button>
           </Link>
         </div>
       </section>
@@ -54,7 +49,7 @@ export function GroupsPage() {
       <section className="mt-5">
         {isError && (
           <p className="rounded-2xl border border-primary bg-panel p-4 text-sm text-primary">
-            Não foi possível carregar seus grupos. Tente novamente em instantes.
+            {t('groups.loadError')}
           </p>
         )}
 
@@ -72,14 +67,13 @@ export function GroupsPage() {
 
         {!isLoading && !isError && items.length === 0 && (
           <div className="pv-panel flex flex-col items-start gap-3 rounded-3xl p-6 sm:p-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Você ainda não está em grupos</p>
-            <h2 className="pv-title text-xl font-semibold text-secondary sm:text-2xl">Comece criando o seu primeiro grupo</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('groups.emptyEyebrow')}</p>
+            <h2 className="pv-title text-xl font-semibold text-secondary sm:text-2xl">{t('groups.emptyTitle')}</h2>
             <p className="pv-muted max-w-xl text-sm">
-              Reúna sua comunidade em um espaço dedicado de oração. Você também pode entrar em grupos existentes pela
-              busca no topo.
+              {t('groups.emptySub')}
             </p>
             <Link to="/groups/new">
-              <Button>+ Criar meu primeiro grupo</Button>
+              <Button>{t('groups.createFirst')}</Button>
             </Link>
           </div>
         )}
@@ -110,7 +104,7 @@ export function GroupsPage() {
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate text-base font-semibold text-secondary">{group.name}</h3>
                       <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-                        {policyLabel[group.joinPolicy]}
+                        {t(`group.policy.${group.joinPolicy}`)}
                       </p>
                     </div>
                   </div>
@@ -118,7 +112,7 @@ export function GroupsPage() {
                     <p className="pv-muted text-sm leading-relaxed line-clamp-3">{group.description}</p>
                   )}
                   <p className="mt-auto text-[11px] font-semibold uppercase tracking-[0.16em] text-primary opacity-0 transition group-hover:opacity-100">
-                    Abrir grupo →
+                    {t('groups.openGroup')} →
                   </p>
                 </Link>
               )
