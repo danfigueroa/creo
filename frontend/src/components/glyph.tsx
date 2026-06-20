@@ -1,4 +1,4 @@
-export type GlyphKind = 'rose' | 'sun' | 'diamond' | 'beads' | 'ring'
+export type GlyphKind = 'rose' | 'sun' | 'diamond' | 'beads' | 'ring' | 'flame'
 
 type GlyphProps = {
   kind: GlyphKind
@@ -49,6 +49,12 @@ export function Glyph({ kind, size = 12, color = 'currentColor' }: GlyphProps) {
       return (
         <svg width={s} height={s} viewBox="0 0 12 12" aria-hidden="true">
           <circle cx="6" cy="6" r="4" fill="none" stroke={c} strokeWidth="1.6" />
+        </svg>
+      )
+    case 'flame':
+      return (
+        <svg width={s} height={s} viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M6 1.2c1.6 1.8 3.4 3.4 3.4 5.8A3.4 3.4 0 0 1 6 10.8 3.4 3.4 0 0 1 2.6 7c0-1.4.8-2.4 1.6-3.3.3.7.8 1.1 1.3 1.3C5.2 3.7 5.2 2.4 6 1.2Z" fill={c} />
         </svg>
       )
     default:
