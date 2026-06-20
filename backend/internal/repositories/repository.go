@@ -45,6 +45,7 @@ type Repository interface {
 	GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error)
 	UpsertAuthUser(ctx context.Context, userID, email, preferredUsername, preferredDisplayName, preferredTradition string) error
 	SetUserTradition(ctx context.Context, userID string, tradition models.Tradition) (models.User, error)
+	SetUserLanguage(ctx context.Context, userID string, language models.Language) (models.User, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)
 	CreatePrayerRequest(ctx context.Context, in models.CreatePrayerRequestInput) (models.PrayerRequest, error)
 	UpdatePrayerRequest(ctx context.Context, in models.UpdatePrayerRequestInput) (models.PrayerRequest, error)
@@ -122,20 +123,20 @@ func NewPostgresRepository(db *pgxpool.Pool) *PostgresRepository {
 func (r *PostgresRepository) GetUserByID(ctx context.Context, userID string) (models.User, error) {
 	var u models.User
 	err := r.db.QueryRow(ctx, `
-		SELECT id::text, email, username, display_name, avatar_url, bio, tradition, created_at, updated_at
+		SELECT id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
 		FROM users
 		WHERE id = $1 AND deleted_at IS NULL
-	`, userID).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.CreatedAt, &u.UpdatedAt)
+	`, userID).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
 
 func (r *PostgresRepository) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
 	var u models.User
 	err := r.db.QueryRow(ctx, `
-		SELECT id::text, email, username, display_name, avatar_url, bio, tradition, created_at, updated_at
+		SELECT id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
 		FROM users
 		WHERE LOWER(username) = LOWER($1) AND deleted_at IS NULL
-	`, username).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.CreatedAt, &u.UpdatedAt)
+	`, username).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return models.User{}, ErrUserNotFound
@@ -155,8 +156,8 @@ func (r *PostgresRepository) UpdateUserProfile(ctx context.Context, userID, disp
 		    bio = CASE WHEN $7::bool THEN $6 ELSE bio END,
 		    updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, created_at, updated_at
-	`, userID, displayName, username, avatarURL, setAvatar, bio, setBio).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.CreatedAt, &u.UpdatedAt)
+		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
+	`, userID, displayName, username, avatarURL, setAvatar, bio, setBio).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "username") {
@@ -172,8 +173,19 @@ func (r *PostgresRepository) SetUserTradition(ctx context.Context, userID string
 		UPDATE users
 		SET tradition = $2, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, created_at, updated_at
-	`, userID, tradition).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.CreatedAt, &u.UpdatedAt)
+		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
+	`, userID, tradition).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
+	return u, err
+}
+
+func (r *PostgresRepository) SetUserLanguage(ctx context.Context, userID string, language models.Language) (models.User, error) {
+	var u models.User
+	err := r.db.QueryRow(ctx, `
+		UPDATE users
+		SET language = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
+	`, userID, language).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
 
