@@ -1,4 +1,5 @@
 import type { GlyphKind } from '@/components/glyph'
+import i18n from '@/lib/i18n'
 
 export type Tradition = 'CATHOLIC' | 'EVANGELICAL'
 
@@ -129,13 +130,14 @@ const evangelicalActions: PrayerAction[] = [
   }
 ]
 
+// Labels resolved via i18n so prayer-action names follow the active language.
 export function prayerActionsFor(tradition: Tradition | undefined | null): PrayerAction[] {
-  return tradition === 'EVANGELICAL' ? evangelicalActions : catholicActions
+  const actions = tradition === 'EVANGELICAL' ? evangelicalActions : catholicActions
+  return actions.map((action) => ({ ...action, label: i18n.t(`prayerActions.${action.type}`) }))
 }
 
-export const traditionLabel: Record<Tradition, string> = {
-  CATHOLIC: 'Católico(a)',
-  EVANGELICAL: 'Evangélico(a)'
+export function traditionLabel(value: Tradition): string {
+  return i18n.t(`traditions.${value}.label`)
 }
 
 export type TraditionOption = {
@@ -145,17 +147,19 @@ export type TraditionOption = {
   emoji: string
 }
 
-export const traditionOptions: TraditionOption[] = [
-  {
-    value: 'CATHOLIC',
-    label: 'Católico(a)',
-    description: 'Ave Maria, Pai Nosso, Glória, Terço e Rosário',
-    emoji: '📿'
-  },
-  {
-    value: 'EVANGELICAL',
-    label: 'Evangélico(a)',
-    description: 'Orei, Intercessão, Gratidão, Jejum, Clamor e Propósito',
-    emoji: '🕊️'
-  }
-]
+export function traditionOptions(): TraditionOption[] {
+  return [
+    {
+      value: 'CATHOLIC',
+      label: i18n.t('traditions.CATHOLIC.label'),
+      description: i18n.t('traditions.CATHOLIC.description'),
+      emoji: '📿'
+    },
+    {
+      value: 'EVANGELICAL',
+      label: i18n.t('traditions.EVANGELICAL.label'),
+      description: i18n.t('traditions.EVANGELICAL.description'),
+      emoji: '🕊️'
+    }
+  ]
+}
