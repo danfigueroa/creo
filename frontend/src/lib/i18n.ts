@@ -68,21 +68,15 @@ i18n
       es: { translation: es }
     },
     fallbackLng: 'pt-BR',
-    supportedLngs: ['pt-BR', 'en', 'es'],
-    nonExplicitSupportedLngs: true,
-    load: 'currentOnly',
     interpolation: { escapeValue: false },
     detection: {
       order: ['localStorage', 'navigator'],
       lookupLocalStorage: LANGUAGE_STORAGE_KEY,
-      caches: ['localStorage']
+      caches: ['localStorage'],
+      // Always coerce whatever was detected (e.g. "pt", "en-US") into one of
+      // our three supported bundle codes so lookups resolve.
+      convertDetectedLanguage: (lng) => normalizeLanguage(lng)
     }
   })
-
-// Coerce whatever the detector resolved into a supported code.
-const resolved = normalizeLanguage(i18n.language)
-if (i18n.language !== resolved) {
-  void i18n.changeLanguage(resolved)
-}
 
 export default i18n
