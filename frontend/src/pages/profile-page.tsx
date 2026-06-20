@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
 import { api } from '@/lib/api'
@@ -11,6 +12,8 @@ import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { errorMessage } from '@/lib/api-error'
 import { Tradition, traditionOptions } from '@/lib/traditions'
+import { LANGUAGES } from '@/lib/i18n'
+import { useLanguage } from '@/lib/use-language'
 import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, getSupabaseClient, uploadAvatar } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 
@@ -26,6 +29,8 @@ type Profile = {
 }
 
 export function ProfilePage() {
+  const { t } = useTranslation()
+  const { current: currentLanguage, change: changeLanguage } = useLanguage()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [displayName, setDisplayName] = useState('')
@@ -77,7 +82,7 @@ export function ProfilePage() {
       return res.data
     },
     onSuccess: async () => {
-      setTraditionStatus('Tradição atualizada. Seu feed foi ajustado.')
+      setTraditionStatus(t('profile.traditionUpdated'))
       await Promise.all([
         invalidateProfileEverywhere(),
         queryClient.invalidateQueries({ queryKey: ['profile', 'feed'] }),
@@ -85,7 +90,7 @@ export function ProfilePage() {
       ])
     },
     onError: () => {
-      setTraditionStatus('Não foi possível atualizar a tradição.')
+      setTraditionStatus(t('profile.traditionError'))
     }
   })
 
@@ -100,16 +105,16 @@ export function ProfilePage() {
     },
     onSuccess: async () => {
       setError('')
-      setStatus('Perfil atualizado com sucesso.')
+      setStatus(t('profile.profileUpdated'))
       await invalidateProfileEverywhere()
     },
     onError: (err: any) => {
       setStatus('')
       if (err?.response?.status === 401) {
-        setError('Sua sessão expirou. Entre novamente para salvar seu perfil.')
+        setError(t('profile.sessionExpired'))
         return
       }
-      setError(err?.response?.data?.error?.message || err?.message || 'Não foi possível salvar o perfil.')
+      setError(err?.response?.data?.error?.message || err?.message || t('profile.saveError'))
     }
   })
 
@@ -124,18 +129,18 @@ export function ProfilePage() {
     },
     onSuccess: async (_data, variables) => {
       setAvatarError('')
-      setAvatarStatus(variables ? 'Foto atualizada.' : 'Foto removida.')
+      setAvatarStatus(variables ? t('profile.photoUpdated') : t('profile.photoRemoved'))
       await invalidateProfileEverywhere()
     },
     onError: () => {
       setAvatarStatus('')
-      setAvatarError('Não foi possível salvar a nova foto.')
+      setAvatarError(t('profile.photoSaveError'))
     }
   })
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
-      if (!profile.data) throw new Error('Perfil não carregou ainda.')
+      if (!profile.data) throw new Error(t('profile.notLoaded'))
       return uploadAvatar(file, profile.data.id)
     },
     onSuccess: (publicUrl) => {
@@ -146,7 +151,7 @@ export function ProfilePage() {
       if (err instanceof AvatarUploadError) {
         setAvatarError(err.message)
       } else {
-        setAvatarError('Falha ao enviar a imagem.')
+        setAvatarError(t('profile.uploadFailed'))
       }
     }
   })
@@ -165,15 +170,15 @@ export function ProfilePage() {
     setError('')
     setStatus('')
     if (displayName.trim().length < 2) {
-      setError('Informe um nome de exibição com pelo menos 2 caracteres.')
+      setError(t('profile.displayNameMin'))
       return
     }
     if (!/^[a-z0-9_]{3,30}$/.test(username.trim().replace('@', ''))) {
-      setError('Use um @username de 3 a 30 caracteres, apenas letras minúsculas, números e _.')
+      setError(t('authPage.invalidUsername'))
       return
     }
     if (bio.trim().length > BIO_MAX) {
-      setError(`A bio precisa ter até ${BIO_MAX} caracteres.`)
+      setError(t('profile.bioMax', { max: BIO_MAX }))
       return
     }
     saveProfile.mutate()
@@ -196,7 +201,7 @@ export function ProfilePage() {
         <div className="profile__head">
           <Avatar user={previewUser} size="xl" />
           <div className="profile__idblock">
-            <h1 className="profile__name">{displayName || profile.data?.displayName || 'Seu perfil'}</h1>
+            <h1 className="profile__name">{displayName || profile.data?.displayName || t('profile.yourProfile')}</h1>
             <div className="profile__meta">
               <span>@{username || profile.data?.username || 'username'}</span>
             </div>
@@ -211,7 +216,7 @@ export function ProfilePage() {
               accept={acceptAttr}
               className="hidden"
               onChange={onFileChange}
-              aria-label="Selecionar foto de perfil"
+              aria-label={t('profile.selectPhoto')}
             />
             <button
               type="button"
@@ -219,7 +224,7 @@ export function ProfilePage() {
               disabled={avatarUploadBusy}
               onClick={() => fileInputRef.current?.click()}
             >
-              {uploadMutation.isPending ? 'Enviando…' : profile.data?.avatarUrl ? 'Trocar foto' : 'Enviar foto'}
+              {uploadMutation.isPending ? t('profile.uploading') : profile.data?.avatarUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
             </button>
             {profile.data?.avatarUrl && (
               <button
@@ -233,7 +238,7 @@ export function ProfilePage() {
                 }}
                 style={{ marginLeft: 8 }}
               >
-                Remover
+                {t('profile.remove')}
               </button>
             )}
           </div>
@@ -259,41 +264,41 @@ export function ProfilePage() {
         <section className="profile__stats">
           <div className="stat">
             <div className="stat__num">{stats.data?.prayerActionsTotal ?? '—'}</div>
-            <div className="stat__label">orações enviadas</div>
+            <div className="stat__label">{t('profile.statSent')}</div>
           </div>
           <div className="stat">
             <div className="stat__num">{stats.data?.prayerActionsReceived ?? '—'}</div>
-            <div className="stat__label">orações recebidas</div>
+            <div className="stat__label">{t('profile.statReceived')}</div>
           </div>
           <div className="stat">
             <div className="stat__num">{stats.data?.requestsCreated ?? '—'}</div>
-            <div className="stat__label">intenções compartilhadas</div>
+            <div className="stat__label">{t('profile.statShared')}</div>
           </div>
           <div className="stat">
             <div className="stat__num">{stats.data?.streakDays ?? '—'}</div>
-            <div className="stat__label">dias consecutivos</div>
+            <div className="stat__label">{t('profile.statStreak')}</div>
           </div>
         </section>
 
         <ProfileActivityTabs userId={profile.data?.id} />
 
       <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Conta</p>
-        <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Meu perfil</h2>
-        <p className="pv-muted mt-2 text-sm">Nome público, @username e bio mostrados na sua página de perfil.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.accountEyebrow')}</p>
+        <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('profile.accountTitle')}</h2>
+        <p className="pv-muted mt-2 text-sm">{t('profile.accountSub')}</p>
 
         <form className="mt-6 grid gap-5 lg:grid-cols-2" onSubmit={onSubmit}>
           <div className="space-y-4">
             <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              Nome de exibição
-              <Input onChange={(e) => setDisplayName(e.target.value)} placeholder="Como seu nome aparece no app" value={displayName} />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">Nome mostrado nos pedidos, grupos e amizades.</span>
+              {t('authPage.displayName')}
+              <Input onChange={(e) => setDisplayName(e.target.value)} placeholder={t('profile.displayNamePlaceholder')} value={displayName} />
+              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.displayNameHelp')}</span>
             </label>
 
             <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
               @username
               <Input onChange={(e) => setUsername(e.target.value.replace(/@/g, '').toLowerCase())} placeholder="seu_username" value={username} />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">Identificador único para encontrar e adicionar você.</span>
+              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.usernameHelp')}</span>
             </label>
 
             <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
@@ -304,19 +309,19 @@ export function ProfilePage() {
               <TextArea
                 className="mt-1.5 min-h-[100px]"
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="Conte um pouco sobre você. Aparece no seu perfil público."
+                placeholder={t('profile.bioPlaceholder')}
                 value={bio}
               />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">Visível para qualquer pessoa que abrir seu perfil.</span>
+              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.bioHelp')}</span>
             </label>
           </div>
 
           <div className="rounded-2xl border border-primary bg-panel p-4">
-            <p className="text-sm text-secondary">Prévia do perfil</p>
+            <p className="text-sm text-secondary">{t('profile.preview')}</p>
             <div className="mt-4 flex items-center gap-3">
               <Avatar user={previewUser} size="lg" />
               <div className="min-w-0">
-                <p className="truncate text-lg font-semibold text-secondary">{displayName || 'Seu nome'}</p>
+                <p className="truncate text-lg font-semibold text-secondary">{displayName || t('profile.yourName')}</p>
                 <p className="pv-muted truncate text-sm">@{username || 'username'}</p>
               </div>
             </div>
@@ -326,21 +331,50 @@ export function ProfilePage() {
             {error && <p role="alert" className="mt-4 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
 
             <Button className="mt-5 w-full sm:w-auto" disabled={saveProfile.isPending} type="submit">
-              {saveProfile.isPending ? 'Salvando...' : 'Salvar alterações'}
+              {saveProfile.isPending ? t('common.saving') : t('profile.saveChanges')}
             </Button>
           </div>
         </form>
       </section>
 
+      <section id="idioma" className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.languageEyebrow')}</p>
+        <h2 className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">{t('profile.languageTitle')}</h2>
+        <p className="pv-muted mt-2 text-sm">{t('profile.languageSub')}</p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {LANGUAGES.map((lang) => {
+            const active = currentLanguage === lang.code
+            return (
+              <button
+                key={lang.code}
+                type="button"
+                disabled={active}
+                onClick={() => changeLanguage(lang.code)}
+                className={`flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-primary bg-primary/10 shadow-[0_10px_24px_-16px_var(--fx-ring)]' : 'border-primary bg-panel hover:bg-primary/5'} disabled:cursor-default`}
+                aria-pressed={active}
+              >
+                <span className="text-2xl leading-none" aria-hidden>{lang.flag}</span>
+                <span className="min-w-0">
+                  <span className={`block text-sm font-semibold ${active ? 'text-primary' : 'text-secondary'}`}>
+                    {lang.nativeLabel}{active ? t('profile.currentSuffix') : ''}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
       <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Tradição</p>
-        <h2 className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">Minha tradição</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.traditionEyebrow')}</p>
+        <h2 className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">{t('profile.traditionTitle')}</h2>
         <p className="pv-muted mt-2 text-sm">
-          Isso define as ações de oração disponíveis e o feed que você vê. Ao trocar, você passa a ver apenas pedidos da nova tradição.
+          {t('profile.traditionSub')}
         </p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {traditionOptions.map((option) => {
+          {traditionOptions().map((option) => {
             const active = profile.data?.tradition === option.value
             return (
               <button
@@ -357,7 +391,7 @@ export function ProfilePage() {
                 <span className="text-2xl leading-none" aria-hidden>{option.emoji}</span>
                 <span className="min-w-0">
                   <span className={`block text-sm font-semibold ${active ? 'text-primary' : 'text-secondary'}`}>
-                    {option.label}{active ? ' — atual' : ''}
+                    {option.label}{active ? t('profile.currentSuffix') : ''}
                   </span>
                   <span className="block text-[12px] leading-snug text-primary/80">{option.description}</span>
                 </span>
@@ -396,14 +430,15 @@ type MyPrayerEntry = {
   createdAt: string
 }
 
-const TABS: Array<{ id: ActivityTab; label: string }> = [
-  { id: 'ativas', label: 'Ativas' },
-  { id: 'encerradas', label: 'Encerradas' },
-  { id: 'rezadas', label: 'Rezadas (privado)' },
-  { id: 'linha', label: 'Linha do tempo' }
+const TABS: Array<{ id: ActivityTab; labelKey: string }> = [
+  { id: 'ativas', labelKey: 'profile.tabActive' },
+  { id: 'encerradas', labelKey: 'profile.tabClosed' },
+  { id: 'rezadas', labelKey: 'profile.tabPrayed' },
+  { id: 'linha', labelKey: 'profile.tabTimeline' }
 ]
 
 function ProfileActivityTabs({ userId }: { userId?: string }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<ActivityTab>('ativas')
 
   const homeQuery = useQuery({
@@ -428,33 +463,33 @@ function ProfileActivityTabs({ userId }: { userId?: string }) {
   return (
     <>
       <div className="tabs" role="tablist">
-        {TABS.map((t) => (
+        {TABS.map((tabItem) => (
           <button
-            key={t.id}
+            key={tabItem.id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            className={`tab tab--auto ${tab === t.id ? 'is-on' : ''}`}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === tabItem.id}
+            className={`tab tab--auto ${tab === tabItem.id ? 'is-on' : ''}`}
+            onClick={() => setTab(tabItem.id)}
           >
-            {t.label}
+            {t(tabItem.labelKey)}
           </button>
         ))}
       </div>
 
       <div className="profile__panel">
         {tab === 'ativas' && (
-          <ProfilePostsList items={ativas} loading={homeQuery.isLoading} emptyText="Nenhuma intenção ativa por aqui." />
+          <ProfilePostsList items={ativas} loading={homeQuery.isLoading} emptyText={t('profile.emptyActive')} />
         )}
         {tab === 'encerradas' && (
-          <ProfilePostsList items={encerradas} loading={homeQuery.isLoading} emptyText="Nada encerrado ainda." />
+          <ProfilePostsList items={encerradas} loading={homeQuery.isLoading} emptyText={t('profile.emptyClosed')} />
         )}
         {tab === 'rezadas' && (
           <PrivatePrayedList items={myPrayers.data ?? []} loading={myPrayers.isLoading} />
         )}
         {tab === 'linha' && (
           <p className="private__hint">
-            Linha do tempo de marcos pessoais — em breve.
+            {t('profile.timelineSoon')}
           </p>
         )}
       </div>
@@ -471,8 +506,9 @@ function ProfilePostsList({
   loading: boolean
   emptyText: string
 }) {
+  const { t, i18n } = useTranslation()
   if (loading) {
-    return <p className="private__hint">Carregando…</p>
+    return <p className="private__hint">{t('common.loading')}</p>
   }
   if (items.length === 0) {
     return <p className="private__hint">{emptyText}</p>
@@ -489,52 +525,45 @@ function ProfilePostsList({
               {p.body.length > 140 ? p.body.slice(0, 140) + '…' : p.body}
             </p>
           </div>
-          <span className="private__when">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</span>
+          <span className="private__when">{new Date(p.createdAt).toLocaleDateString(i18n.language)}</span>
         </li>
       ))}
     </ul>
   )
 }
 
-const PRAYER_LABELS: Record<string, string> = {
-  HAIL_MARY: 'Ave Maria',
-  OUR_FATHER: 'Pai Nosso',
-  GLORY_BE: 'Glória',
-  ROSARY_DECADE: 'Terço',
-  ROSARY_FULL: 'Rosário',
-  I_PRAYED: 'Orei',
-  INTERCESSION: 'Intercessão',
-  GRATITUDE: 'Gratidão',
-  FASTING: 'Jejum',
-  CRYING_OUT: 'Clamor'
-}
+const KNOWN_PRAYER_ACTIONS = new Set([
+  'HAIL_MARY', 'OUR_FATHER', 'GLORY_BE', 'ROSARY_DECADE', 'ROSARY_FULL',
+  'I_PRAYED', 'INTERCESSION', 'GRATITUDE', 'FASTING', 'CRYING_OUT', 'PURPOSE'
+])
 
 function PrivatePrayedList({ items, loading }: { items: MyPrayerEntry[]; loading: boolean }) {
+  const { t, i18n } = useTranslation()
   if (loading) {
-    return <p className="private__hint">Carregando…</p>
+    return <p className="private__hint">{t('common.loading')}</p>
   }
   if (items.length === 0) {
     return (
       <div className="private">
-        <p className="private__hint">Apenas você vê esta lista.</p>
-        <p className="private__hint">Você ainda não rezou por intenções de outras pessoas.</p>
+        <p className="private__hint">{t('profile.onlyYouSee')}</p>
+        <p className="private__hint">{t('profile.noPrayedYet')}</p>
       </div>
     )
   }
   return (
     <div className="private">
-      <p className="private__hint">Apenas você vê esta lista.</p>
+      <p className="private__hint">{t('profile.onlyYouSee')}</p>
       <ul className="private__list">
         {items.map((p, i) => (
           <li key={`${p.requestId}-${p.createdAt}-${i}`} className="private__row">
             <span className="private__rx" style={{ background: 'oklch(0.94 0.03 220)', color: 'oklch(0.40 0.08 220)' }}>
-              {PRAYER_LABELS[p.actionType] || p.actionType}
+              {KNOWN_PRAYER_ACTIONS.has(p.actionType) ? t(`prayerActions.${p.actionType}`) : p.actionType}
             </span>
             <Link to={`/requests/${p.requestId}`} className="private__title" style={{ color: 'var(--ink)' }}>
               "{p.requestTitle}"
             </Link>
-            <span className="private__who">de {p.authorDisplayName}</span>
-            <span className="private__when">{new Date(p.createdAt).toLocaleDateString('pt-BR')}</span>
+            <span className="private__who">{t('profile.fromAuthor', { name: p.authorDisplayName })}</span>
+            <span className="private__when">{new Date(p.createdAt).toLocaleDateString(i18n.language)}</span>
           </li>
         ))}
       </ul>
@@ -551,6 +580,7 @@ type BlockedUser = {
 }
 
 function BlockedUsersSection() {
+  const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()
   const toast = useToast()
   const confirm = useConfirm()
@@ -568,7 +598,7 @@ function BlockedUsersSection() {
       await api.delete(`/blocks/${userId}`)
     },
     onSuccess: async () => {
-      toast.success('Usuário desbloqueado.')
+      toast.success(t('profile.userUnblocked'))
       await queryClient.invalidateQueries({ queryKey: ['blocks'] })
     },
     onError: (err) => toast.error(errorMessage(err))
@@ -576,18 +606,18 @@ function BlockedUsersSection() {
 
   async function handleUnblock(user: BlockedUser) {
     const ok = await confirm({
-      title: 'Desbloquear usuário',
-      description: `Desbloquear @${user.username}?`,
-      confirmLabel: 'Desbloquear'
+      title: t('profile.unblockUser'),
+      description: t('profile.unblockConfirm', { username: user.username }),
+      confirmLabel: t('profile.unblock')
     })
     if (ok) unblock.mutate(user.userId)
   }
 
   return (
     <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-      <h2 className="pv-title text-xl font-semibold text-secondary">Usuários bloqueados</h2>
+      <h2 className="pv-title text-xl font-semibold text-secondary">{t('profile.blockedTitle')}</h2>
       <p className="pv-muted mt-1 text-sm">
-        Pessoas bloqueadas não veem seus pedidos e você não vê os delas. Amizades e solicitações são desfeitas ao bloquear.
+        {t('profile.blockedSub')}
       </p>
       <div className="mt-4 space-y-3">
         {blocksQuery.isLoading && (
@@ -595,7 +625,7 @@ function BlockedUsersSection() {
         )}
         {!blocksQuery.isLoading && (blocksQuery.data ?? []).length === 0 && (
           <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">
-            Você não bloqueou ninguém.
+            {t('profile.noBlocked')}
           </p>
         )}
         {(blocksQuery.data ?? []).map((user) => (
@@ -606,10 +636,10 @@ function BlockedUsersSection() {
                 {user.displayName}
               </Link>
               <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
-              <p className="pv-muted mt-1 text-xs">Bloqueado em {new Date(user.blockedAt).toLocaleDateString('pt-BR')}</p>
+              <p className="pv-muted mt-1 text-xs">{t('profile.blockedOn', { date: new Date(user.blockedAt).toLocaleDateString(i18n.language) })}</p>
             </div>
             <Button variant="secondary" disabled={unblock.isPending} onClick={() => handleUnblock(user)}>
-              Desbloquear
+              {t('profile.unblock')}
             </Button>
           </article>
         ))}
@@ -619,6 +649,7 @@ function BlockedUsersSection() {
 }
 
 function SessionSection() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
   const [busy, setBusy] = useState(false)
@@ -639,15 +670,15 @@ function SessionSection() {
 
   return (
     <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-      <h2 className="pv-title text-lg font-semibold text-secondary">Sessão</h2>
-      <p className="pv-muted mt-1 text-sm">Encerre a sessão neste dispositivo.</p>
+      <h2 className="pv-title text-lg font-semibold text-secondary">{t('profile.sessionTitle')}</h2>
+      <p className="pv-muted mt-1 text-sm">{t('profile.sessionSub')}</p>
       <button
         type="button"
         onClick={onLogout}
         disabled={busy}
         className="btn btn--ghost-out mt-3"
       >
-        {busy ? 'Saindo…' : 'Sair'}
+        {busy ? t('profile.signingOut') : t('shell.logout')}
       </button>
     </section>
   )
