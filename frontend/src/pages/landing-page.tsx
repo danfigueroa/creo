@@ -1,30 +1,23 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
+import { translateAuthError } from '@/lib/auth-errors'
+import { LanguageSwitcher } from '@/components/language-switcher'
 import type { Tradition } from '@/lib/traditions'
 
 type AuthTab = 'entrar' | 'criar'
 
-const FEATURES = [
-  { n: '01', title: 'Pedidos de oração', desc: 'Compartilhe intenções com privacidade granular — público, só seu grupo, ou anônimo.' },
-  { n: '02', title: 'Rezei por você', desc: 'Acompanhe quem rezou pela sua intenção — sem comentários, só presença.' },
-  { n: '03', title: 'Sua comunidade', desc: 'Pastorais, células e movimentos num só espaço acolhedor.' }
-]
-
-function translateAuthError(raw: string): string {
-  const m = (raw || '').toLowerCase()
-  if (m.includes('email not confirmed')) return 'Você ainda não confirmou seu e-mail. Abra o link que enviamos.'
-  if (m.includes('invalid login credentials') || m.includes('invalid credentials')) return 'E-mail ou senha incorretos.'
-  if (m.includes('user already registered') || m.includes('already registered')) return 'Já existe uma conta com este e-mail. Tente entrar.'
-  if (m.includes('password should be at least')) return 'A senha precisa ter ao menos 6 caracteres.'
-  if (m.includes('rate limit') || m.includes('too many')) return 'Muitas tentativas. Aguarde um instante.'
-  return raw || 'Algo deu errado. Tente novamente em instantes.'
-}
-
 export function LandingPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
+  const FEATURES = [
+    { n: '01', title: t('landing.feature1Title'), desc: t('landing.feature1Desc') },
+    { n: '02', title: t('landing.feature2Title'), desc: t('landing.feature2Desc') },
+    { n: '03', title: t('landing.feature3Title'), desc: t('landing.feature3Desc') }
+  ]
   const [tab, setTab] = useState<AuthTab>('entrar')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
@@ -51,7 +44,7 @@ export function LandingPage() {
     setInfo('')
     const supabase = getSupabaseClient()
     if (!supabase) {
-      setError('Configuração do Supabase ausente.')
+      setError(t('authErrors.supabaseMissing'))
       return
     }
     setIsLoading(true)
@@ -63,7 +56,7 @@ export function LandingPage() {
       }
       const token = (data.session as any)?.access_token as string | undefined
       if (!token) {
-        setError('Não foi possível iniciar sessão.')
+        setError(t('authErrors.cannotStartSession'))
         return
       }
       setAccessToken(token)
@@ -79,11 +72,11 @@ export function LandingPage() {
     setInfo('')
     const supabase = getSupabaseClient()
     if (!supabase) {
-      setError('Configuração do Supabase ausente.')
+      setError(t('authErrors.supabaseMissing'))
       return
     }
     if (!name.trim()) {
-      setError('Como podemos te chamar? Preencha seu nome.')
+      setError(t('landing.namePrompt'))
       return
     }
     setIsLoading(true)
@@ -101,7 +94,7 @@ export function LandingPage() {
         setError(translateAuthError(signErr.message))
         return
       }
-      setInfo(`Conta criada. Enviamos um link de confirmação para ${email.trim()}. Abra-o pra ativar.`)
+      setInfo(t('landing.accountCreated', { email: email.trim() }))
     } finally {
       setIsLoading(false)
     }
@@ -111,12 +104,12 @@ export function LandingPage() {
     setError('')
     setInfo('')
     if (!email) {
-      setError('Informe seu e-mail para receber o link de acesso.')
+      setError(t('landing.magicEmailPrompt'))
       return
     }
     const supabase = getSupabaseClient()
     if (!supabase) {
-      setError('Configuração do Supabase ausente.')
+      setError(t('authErrors.supabaseMissing'))
       return
     }
     setIsLoading(true)
@@ -130,7 +123,7 @@ export function LandingPage() {
         return
       }
       setMagic(true)
-      setInfo(`Enviamos um link de acesso para ${email.trim()}.`)
+      setInfo(t('landing.magicSent', { email: email.trim() }))
     } finally {
       setIsLoading(false)
     }
@@ -139,23 +132,19 @@ export function LandingPage() {
   return (
     <div className="app app--welcome" data-screen-label="Welcome">
       <div className="welcome">
-        <section className="welcome__hero" aria-label="Apresentação">
+        <section className="welcome__hero" aria-label={t('landing.heroAria')}>
           <div className="welcome__brand">
             <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
             <span className="brand-word">Creo</span>
+            <LanguageSwitcher className="welcome__lang" />
           </div>
 
           <h1 className="welcome__title">
-            Sua comunidade
-            <br />
-            unida em oração,
-            <br />
-            <em>todos os dias.</em>
+            <span dangerouslySetInnerHTML={{ __html: t('landing.title') }} />
           </h1>
 
           <p className="welcome__lede">
-            Compartilhe intenções, acompanhe pedidos de amigos e grupos e fortaleça sua comunidade
-            de fé — católica ou evangélica — em um ambiente moderno e acolhedor.
+            {t('landing.lede')}
           </p>
 
           <ul className="welcome__features">
@@ -172,13 +161,13 @@ export function LandingPage() {
 
           <figure className="welcome__quote">
             <blockquote>
-              "Onde dois ou três estiverem reunidos em meu nome, ali estarei eu, no meio deles."
+              {t('landing.quote')}
             </blockquote>
-            <figcaption>Mateus 18,20</figcaption>
+            <figcaption>{t('landing.quoteRef')}</figcaption>
           </figure>
         </section>
 
-        <section className="welcome__auth" aria-label="Acesso">
+        <section className="welcome__auth" aria-label={t('landing.authAria')}>
           <div className="welcome__auth-card">
             <div className="welcome__tabs" ref={tabsRef} role="tablist">
               <button
@@ -189,7 +178,7 @@ export function LandingPage() {
                 role="tab"
                 aria-selected={tab === 'entrar'}
               >
-                Entrar
+                {t('landing.signIn')}
               </button>
               <button
                 type="button"
@@ -199,7 +188,7 @@ export function LandingPage() {
                 role="tab"
                 aria-selected={tab === 'criar'}
               >
-                Criar conta
+                {t('landing.signUp')}
               </button>
               <span
                 className="welcome__tab-ink"
@@ -209,17 +198,17 @@ export function LandingPage() {
 
             {tab === 'entrar' ? (
               <>
-                <h2 className="welcome__auth-title">Bem-vindo de volta.</h2>
+                <h2 className="welcome__auth-title">{t('landing.signInTitle')}</h2>
                 <p className="welcome__auth-sub">
-                  Acesse com e-mail e senha — ou receba um link único por e-mail.
+                  {t('landing.signInSub')}
                 </p>
 
                 <form className="welcome__form" onSubmit={onSignIn}>
                   <label className="welcome__field">
-                    <span className="welcome__label">E-mail</span>
+                    <span className="welcome__label">{t('landing.email')}</span>
                     <input
                       type="email"
-                      placeholder="voce@exemplo.com"
+                      placeholder={t('landing.emailPlaceholder')}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -228,9 +217,9 @@ export function LandingPage() {
 
                   <label className="welcome__field">
                     <div className="welcome__label-row">
-                      <span className="welcome__label">Senha</span>
+                      <span className="welcome__label">{t('landing.password')}</span>
                       <Link className="welcome__link-quiet" to="/auth?reset=1">
-                        Esqueceu a senha?
+                        {t('landing.forgotPassword')}
                       </Link>
                     </div>
                     <input
@@ -243,11 +232,11 @@ export function LandingPage() {
                   </label>
 
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
-                    {isLoading ? 'Entrando…' : 'Entrar'}
+                    {isLoading ? t('landing.signingIn') : t('landing.signIn')}
                   </button>
 
                   <div className="welcome__or">
-                    <span>ou</span>
+                    <span>{t('landing.or')}</span>
                   </div>
 
                   <button
@@ -267,7 +256,7 @@ export function LandingPage() {
                         />
                       </svg>
                     </span>
-                    {magic ? 'Link enviado — confira sua caixa de entrada' : 'Receber link de acesso por e-mail'}
+                    {magic ? t('landing.magicSentShort') : t('landing.magicCta')}
                   </button>
                 </form>
 
@@ -283,7 +272,7 @@ export function LandingPage() {
                 )}
 
                 <p className="welcome__foot">
-                  Ainda não tem conta?{' '}
+                  {t('landing.noAccount')}{' '}
                   <a
                     href="#"
                     onClick={(e) => {
@@ -291,43 +280,43 @@ export function LandingPage() {
                       setTab('criar')
                     }}
                   >
-                    Crie a sua.
+                    {t('landing.createOne')}
                   </a>
                 </p>
               </>
             ) : (
               <>
-                <h2 className="welcome__auth-title">Crie sua conta.</h2>
+                <h2 className="welcome__auth-title">{t('landing.signUpTitle')}</h2>
                 <p className="welcome__auth-sub">
-                  Em menos de um minuto. Você pode começar a rezar com a comunidade ainda hoje.
+                  {t('landing.signUpSub')}
                 </p>
 
                 <form className="welcome__form" onSubmit={onSignUp}>
                   <label className="welcome__field">
-                    <span className="welcome__label">Nome</span>
+                    <span className="welcome__label">{t('landing.name')}</span>
                     <input
                       type="text"
-                      placeholder="Como você quer ser chamado"
+                      placeholder={t('landing.namePlaceholder')}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
                     />
                   </label>
                   <label className="welcome__field">
-                    <span className="welcome__label">E-mail</span>
+                    <span className="welcome__label">{t('landing.email')}</span>
                     <input
                       type="email"
-                      placeholder="voce@exemplo.com"
+                      placeholder={t('landing.emailPlaceholder')}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
                     />
                   </label>
                   <label className="welcome__field">
-                    <span className="welcome__label">Senha</span>
+                    <span className="welcome__label">{t('landing.password')}</span>
                     <input
                       type="password"
-                      placeholder="Mínimo de 8 caracteres"
+                      placeholder={t('landing.passwordPlaceholder')}
                       value={pass}
                       onChange={(e) => setPass(e.target.value)}
                       required
@@ -335,15 +324,15 @@ export function LandingPage() {
                   </label>
 
                   <div className="welcome__field">
-                    <span className="welcome__label">Tradição</span>
+                    <span className="welcome__label">{t('landing.tradition')}</span>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
-                      {(['CATHOLIC', 'EVANGELICAL'] as const).map((t) => {
-                        const active = tradition === t
+                      {(['CATHOLIC', 'EVANGELICAL'] as const).map((trad) => {
+                        const active = tradition === trad
                         return (
                           <button
-                            key={t}
+                            key={trad}
                             type="button"
-                            onClick={() => setTradition(t)}
+                            onClick={() => setTradition(trad)}
                             aria-pressed={active}
                             style={{
                               padding: '10px 12px',
@@ -359,7 +348,7 @@ export function LandingPage() {
                               transition: 'border-color 0.15s, background 0.15s, color 0.15s'
                             }}
                           >
-                            {t === 'CATHOLIC' ? 'Católico' : 'Evangélico'}
+                            {t(`traditions.${trad}.label`)}
                           </button>
                         )
                       })}
@@ -367,11 +356,11 @@ export function LandingPage() {
                   </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
-                    {isLoading ? 'Criando…' : 'Criar conta'}
+                    {isLoading ? t('landing.creating') : t('landing.signUp')}
                   </button>
 
                   <p className="welcome__terms">
-                    Ao continuar, você concorda com os termos e a política de privacidade.
+                    {t('landing.terms')}
                   </p>
                 </form>
 
@@ -387,7 +376,7 @@ export function LandingPage() {
                 )}
 
                 <p className="welcome__foot">
-                  Já tem conta?{' '}
+                  {t('landing.haveAccount')}{' '}
                   <a
                     href="#"
                     onClick={(e) => {
@@ -395,7 +384,7 @@ export function LandingPage() {
                       setTab('entrar')
                     }}
                   >
-                    Entrar.
+                    {t('landing.signInDot')}
                   </a>
                 </p>
               </>
@@ -404,7 +393,7 @@ export function LandingPage() {
 
           <div className="welcome__assure">
             <span className="welcome__assure-dot" aria-hidden />
-            Suas intenções são privadas por padrão.
+            {t('landing.assure')}
           </div>
         </section>
       </div>
