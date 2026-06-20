@@ -52,6 +52,7 @@ const (
 	PrayerActionFasting      PrayerActionType = "FASTING"
 	PrayerActionGratitude    PrayerActionType = "GRATITUDE"
 	PrayerActionCryingOut    PrayerActionType = "CRYING_OUT"
+	PrayerActionPurpose      PrayerActionType = "PURPOSE"
 )
 
 const (
