@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
@@ -10,6 +11,7 @@ import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { api } from '@/lib/api'
+import i18n from '@/lib/i18n'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
 import {
   ImageUploadError,
@@ -67,27 +69,19 @@ type GroupFeedResponse = {
   pagination: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
-const roleLabel: Record<Role, string> = {
-  ADMIN: 'Admin',
-  MODERATOR: 'Moderador',
-  MEMBER: 'Membro'
-}
+const roleLabel = (role: Role): string => i18n.t(`group.role.${role}`)
 
-const policyLabel: Record<JoinPolicy, string> = {
-  OPEN: 'Entrada livre',
-  REQUEST: 'Por solicitação',
-  INVITE_ONLY: 'Somente convite'
-}
+const policyLabel = (policy: JoinPolicy): string => i18n.t(`group.policy.${policy}`)
 
 const ROLE_RANK: Record<Role, number> = { ADMIN: 3, MODERATOR: 2, MEMBER: 1 }
 
 type Tab = 'mural' | 'members' | 'requests' | 'settings'
 
-const tabs: Array<{ key: Tab; label: string; needsRole?: Role }> = [
-  { key: 'mural', label: 'Mural' },
-  { key: 'members', label: 'Membros' },
-  { key: 'requests', label: 'Solicitações', needsRole: 'MODERATOR' },
-  { key: 'settings', label: 'Configurações', needsRole: 'ADMIN' }
+const tabs: Array<{ key: Tab; labelKey: string; needsRole?: Role }> = [
+  { key: 'mural', labelKey: 'nav.mural' },
+  { key: 'members', labelKey: 'group.tabMembers' },
+  { key: 'requests', labelKey: 'group.tabRequests', needsRole: 'MODERATOR' },
+  { key: 'settings', labelKey: 'group.tabSettings', needsRole: 'ADMIN' }
 ]
 
 function canSee(role: Role | null | undefined, needs: Role | undefined): boolean {
@@ -99,19 +93,11 @@ function canSee(role: Role | null | undefined, needs: Role | undefined): boolean
 function formatDate(value: string): string {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d)
-}
-
-const categoryLabel: Record<string, string> = {
-  HEALTH: 'Saúde',
-  FAMILY: 'Família',
-  WORK: 'Trabalho',
-  GRIEF: 'Luto',
-  THANKSGIVING: 'Ação de graças',
-  OTHER: 'Outros'
+  return new Intl.DateTimeFormat(i18n.language || 'pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(d)
 }
 
 export function GroupPage() {
+  const { t } = useTranslation()
   const { id = '' } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
@@ -131,8 +117,8 @@ export function GroupPage() {
   const details = detailsQuery.data
   const myRole = details?.myRole ?? null
 
-  const visibleTabs = tabs.filter((t) => canSee(myRole, t.needsRole))
-  const tab: Tab = visibleTabs.some((t) => t.key === tabParam) ? tabParam : 'mural'
+  const visibleTabs = tabs.filter((tabItem) => canSee(myRole, tabItem.needsRole))
+  const tab: Tab = visibleTabs.some((tabItem) => tabItem.key === tabParam) ? tabParam : 'mural'
 
   const setTab = (next: Tab) => setSearchParams({ tab: next })
 
@@ -142,15 +128,15 @@ export function GroupPage() {
 
       <div className="pv-panel mt-5 overflow-hidden rounded-3xl">
         <nav className="flex overflow-x-auto border-b border-primary/20 px-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {visibleTabs.map((t) => (
+          {visibleTabs.map((tabItem) => (
             <button
-              key={t.key}
+              key={tabItem.key}
               type="button"
-              className={`pv-tab-underline ${tab === t.key ? 'pv-tab-underline-active' : ''}`}
-              onClick={() => setTab(t.key)}
-              aria-current={tab === t.key ? 'page' : undefined}
+              className={`pv-tab-underline ${tab === tabItem.key ? 'pv-tab-underline-active' : ''}`}
+              onClick={() => setTab(tabItem.key)}
+              aria-current={tab === tabItem.key ? 'page' : undefined}
             >
-              {t.label}
+              {t(tabItem.labelKey)}
             </button>
           ))}
         </nav>
@@ -179,6 +165,7 @@ export function GroupPage() {
 }
 
 function GroupHeader({ details, loading }: { details?: GroupDetails; loading: boolean }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   const requestJoin = useMutation({
@@ -219,7 +206,7 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
 
   const initials = details.name.slice(0, 2).toUpperCase()
   const actionLabel = leave.error
-    ? (leave.error as any)?.response?.data?.error?.message || 'Não foi possível sair'
+    ? (leave.error as any)?.response?.data?.error?.message || t('group.leaveError')
     : null
 
   return (
@@ -252,7 +239,7 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
             </span>
           )}
           <div className="min-w-0 flex-1 pb-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Grupo</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('group.eyebrow')}</p>
             <h1 className="pv-title mt-0.5 text-2xl font-bold leading-tight text-secondary sm:text-3xl">
               {details.name}
             </h1>
@@ -260,12 +247,12 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
         </div>
 
         <div className="pv-muted mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>{details.memberCount} {details.memberCount === 1 ? 'membro' : 'membros'}</span>
+          <span>{t('group.memberCount', { count: details.memberCount })}</span>
           <span aria-hidden>·</span>
-          <span>{policyLabel[details.joinPolicy]}</span>
+          <span>{policyLabel(details.joinPolicy)}</span>
           {details.myRole && (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] text-primary">
-              Você é {roleLabel[details.myRole]}
+              {t('group.youAre', { role: roleLabel(details.myRole) })}
             </span>
           )}
         </div>
@@ -277,17 +264,17 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
         <div className="mt-4 flex flex-wrap gap-2">
           {!details.isMember && !details.hasPendingJoin && details.joinPolicy !== 'INVITE_ONLY' && (
             <Button onClick={() => requestJoin.mutate()} disabled={requestJoin.isPending}>
-              {details.joinPolicy === 'OPEN' ? 'Entrar' : 'Solicitar entrada'}
+              {details.joinPolicy === 'OPEN' ? t('group.join') : t('group.requestJoin')}
             </Button>
           )}
           {details.hasPendingJoin && (
             <span className="inline-flex items-center rounded-full border border-primary px-3 py-1.5 text-xs font-semibold text-primary">
-              Solicitação pendente
+              {t('group.pendingRequest')}
             </span>
           )}
           {details.isMember && (
             <Button variant="secondary" onClick={() => leave.mutate()} disabled={leave.isPending}>
-              {leave.isPending ? 'Saindo…' : 'Sair do grupo'}
+              {leave.isPending ? t('group.leaving') : t('group.leave')}
             </Button>
           )}
         </div>
@@ -313,6 +300,7 @@ function GroupMural({
   queryClient: ReturnType<typeof useQueryClient>
   myRole: Role | null
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const canPostAnnouncement = !!myRole && ROLE_RANK[myRole] >= ROLE_RANK.MODERATOR
   const [page, setPage] = useState(1)
@@ -387,7 +375,7 @@ function GroupMural({
             className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-onPrimary"
           >
             <span aria-hidden>📣</span>
-            <span>Criar anúncio</span>
+            <span>{t('group.createAnnouncement')}</span>
           </button>
           <button
             type="button"
@@ -395,7 +383,7 @@ function GroupMural({
             className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary"
           >
             <span aria-hidden>🙏</span>
-            <span>Criar pedido</span>
+            <span>{t('feed.createRequest')}</span>
           </button>
         </div>
       )}
@@ -403,13 +391,13 @@ function GroupMural({
       {!feedQuery.isLoading && items.length === 0 && (
         <div className="px-5 py-10 text-center">
           <p className="text-3xl" aria-hidden>🕊️</p>
-          <p className="mt-2 text-sm font-semibold text-secondary">Ainda não há posts neste grupo.</p>
+          <p className="mt-2 text-sm font-semibold text-secondary">{t('group.noPosts')}</p>
           <button
             type="button"
             onClick={() => setComposerOpen(true)}
             className="mt-3 inline-block text-xs font-semibold text-primary hover:underline"
           >
-            Criar pedido
+            {t('feed.createRequest')}
           </button>
         </div>
       )}
@@ -429,13 +417,12 @@ function GroupMural({
           isPrayPending={prayMutation.isPending}
           lastPrayerHit={lastHit}
           groupNameById={groupNameById}
-          categoryLabel={categoryLabel}
           formatDate={formatDate}
         />
       ))}
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-primary/20 px-5 py-3 text-xs">
-          <span className="text-primary">Página {page} de {totalPages}</span>
+          <span className="text-primary">{t('group.pageOf', { page, total: totalPages })}</span>
           <div className="flex gap-2">
             <button
               className="rounded-full border border-primary/40 px-3 py-1 text-primary disabled:opacity-40"
@@ -443,7 +430,7 @@ function GroupMural({
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               type="button"
             >
-              ← Anterior
+              ← {t('common.previous')}
             </button>
             <button
               className="rounded-full border border-primary/40 px-3 py-1 text-primary disabled:opacity-40"
@@ -451,7 +438,7 @@ function GroupMural({
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               type="button"
             >
-              Próxima →
+              {t('common.next')} →
             </button>
           </div>
         </div>
@@ -461,6 +448,7 @@ function GroupMural({
 }
 
 function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Role | null; viewerId?: string }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const membersQuery = useQuery({
     queryKey: ['group', groupId, 'members'],
@@ -501,7 +489,7 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
     return <FeedSkeleton count={4} />
   }
   if (membersQuery.error) {
-    return <p className="px-5 py-6 text-sm text-secondary">Não foi possível carregar membros.</p>
+    return <p className="px-5 py-6 text-sm text-secondary">{t('group.membersLoadError')}</p>
   }
 
   const items = membersQuery.data?.items ?? []
@@ -518,13 +506,13 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
             <Avatar user={m} size="md" linkToProfile />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <Link to={`/u/${m.username}`} className="truncate text-sm font-semibold text-secondary hover:text-primary">{m.displayName || 'Membro'}</Link>
+                <Link to={`/u/${m.username}`} className="truncate text-sm font-semibold text-secondary hover:text-primary">{m.displayName || t('card.member')}</Link>
                 <span className="truncate text-xs text-primary/80">@{m.username}</span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] ${m.role === 'ADMIN' ? 'bg-primary text-onPrimary' : m.role === 'MODERATOR' ? 'bg-primary/15 text-primary' : 'bg-primary/5 text-primary/80'}`}>
-                  {roleLabel[m.role]}
+                  {roleLabel(m.role)}
                 </span>
               </div>
-              <p className="pv-muted text-[11px]">Entrou em {formatDate(m.joinedAt)}</p>
+              <p className="pv-muted text-[11px]">{t('group.joinedOn', { date: formatDate(m.joinedAt) })}</p>
             </div>
             {canChangeRole && (
               <select
@@ -532,38 +520,39 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
                 value={m.role}
                 onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as Role })}
                 disabled={changeRole.isPending}
-                aria-label="Mudar papel"
+                aria-label={t('group.changeRole')}
               >
-                <option value="MEMBER">Membro</option>
-                <option value="MODERATOR">Moderador</option>
-                <option value="ADMIN">Admin</option>
+                <option value="MEMBER">{t('group.role.MEMBER')}</option>
+                <option value="MODERATOR">{t('group.role.MODERATOR')}</option>
+                <option value="ADMIN">{t('group.role.ADMIN')}</option>
               </select>
             )}
             {canRemove && (
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm(`Remover ${m.displayName || m.username} do grupo?`)) {
+                  if (window.confirm(t('group.removeConfirm', { name: m.displayName || m.username }))) {
                     removeMember.mutate(m.userId)
                   }
                 }}
                 disabled={removeMember.isPending}
                 className="rounded-full border border-primary/40 px-3 py-1 text-xs text-primary hover:bg-primary/10"
               >
-                Remover
+                {t('group.remove')}
               </button>
             )}
           </li>
         )
       })}
       {items.length === 0 && (
-        <li className="px-5 py-8 text-center text-sm text-secondary">Sem membros ainda.</li>
+        <li className="px-5 py-8 text-center text-sm text-secondary">{t('group.noMembers')}</li>
       )}
     </ul>
   )
 }
 
 function RequestsTab({ groupId }: { groupId: string }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const requests = useQuery({
     queryKey: ['group', groupId, 'join-requests'],
@@ -598,7 +587,7 @@ function RequestsTab({ groupId }: { groupId: string }) {
   if (requests.isLoading) return <FeedSkeleton count={2} />
   const items = requests.data ?? []
   if (items.length === 0) {
-    return <p className="px-5 py-8 text-center text-sm text-secondary">Nenhuma solicitação pendente.</p>
+    return <p className="px-5 py-8 text-center text-sm text-secondary">{t('group.noRequests')}</p>
   }
   return (
     <ul className="divide-y divide-primary/20">
@@ -610,15 +599,15 @@ function RequestsTab({ groupId }: { groupId: string }) {
               <div className="min-w-0">
                 <Link to={`/u/${req.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">{req.displayName || req.username}</Link>
                 <p className="truncate text-xs text-primary/80">@{req.username}</p>
-                <p className="pv-muted text-[11px]">Solicitado em {formatDate(req.requestedAt)}</p>
+                <p className="pv-muted text-[11px]">{t('group.requestedOn', { date: formatDate(req.requestedAt) })}</p>
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
               <Button variant="secondary" onClick={() => reject.mutate(req.id)} disabled={pending}>
-                Recusar
+                {t('group.reject')}
               </Button>
               <Button onClick={() => approve.mutate(req.id)} disabled={pending}>
-                Aprovar
+                {t('group.approve')}
               </Button>
             </div>
           </li>
@@ -629,6 +618,7 @@ function RequestsTab({ groupId }: { groupId: string }) {
 }
 
 function SettingsTab({ details }: { details: GroupDetails }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [name, setName] = useState(details.name)
   const [description, setDescription] = useState(details.description)
@@ -658,12 +648,12 @@ function SettingsTab({ details }: { details: GroupDetails }) {
   const update = useMutation({
     mutationFn: async () => persistGroup.mutateAsync({}),
     onSuccess: async () => {
-      setStatus('Grupo atualizado.')
+      setStatus(t('group.groupUpdated'))
       setError('')
     },
     onError: (err: any) => {
       setStatus('')
-      setError(err?.response?.data?.error?.message || 'Não foi possível atualizar.')
+      setError(err?.response?.data?.error?.message || t('group.updateError'))
     }
   })
 
@@ -676,14 +666,14 @@ function SettingsTab({ details }: { details: GroupDetails }) {
     onSuccess: (url) => {
       setImageUrl(url)
       setPhotoError('')
-      setPhotoStatus('Foto atualizada.')
+      setPhotoStatus(t('group.photoUpdated'))
     },
     onError: (err: unknown) => {
       setPhotoStatus('')
       if (err instanceof ImageUploadError) {
         setPhotoError(err.message)
       } else {
-        setPhotoError('Não foi possível salvar a foto.')
+        setPhotoError(t('group.photoSaveError'))
       }
     }
   })
@@ -693,11 +683,11 @@ function SettingsTab({ details }: { details: GroupDetails }) {
     onSuccess: () => {
       setImageUrl(null)
       setPhotoError('')
-      setPhotoStatus('Foto removida.')
+      setPhotoStatus(t('group.photoRemoved'))
     },
     onError: () => {
       setPhotoStatus('')
-      setPhotoError('Não foi possível remover a foto.')
+      setPhotoError(t('group.photoRemoveError'))
     }
   })
 
@@ -724,8 +714,8 @@ function SettingsTab({ details }: { details: GroupDetails }) {
   return (
     <form onSubmit={onSubmit} className="space-y-5 px-5 py-5">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Foto do grupo</p>
-        <p className="pv-muted mt-1 text-[11px]">JPG, PNG ou WEBP até {maxMb} MB. Aparece no header do grupo e na lista.</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('group.photoLabel')}</p>
+        <p className="pv-muted mt-1 text-[11px]">{t('group.photoHelp', { max: maxMb })}</p>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {imageUrl ? (
             <img
@@ -745,14 +735,14 @@ function SettingsTab({ details }: { details: GroupDetails }) {
             accept={acceptAttr}
             className="hidden"
             onChange={onFileChange}
-            aria-label="Selecionar foto do grupo"
+            aria-label={t('group.selectPhoto')}
           />
           <Button
             type="button"
             disabled={photoBusy}
             onClick={() => fileInputRef.current?.click()}
           >
-            {uploadPhoto.isPending ? 'Enviando…' : imageUrl ? 'Trocar foto' : 'Enviar foto'}
+            {uploadPhoto.isPending ? t('profile.uploading') : imageUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
           </Button>
           {imageUrl && (
             <Button
@@ -761,7 +751,7 @@ function SettingsTab({ details }: { details: GroupDetails }) {
               disabled={photoBusy}
               onClick={() => removePhoto.mutate()}
             >
-              Remover foto
+              {t('group.removePhoto')}
             </Button>
           )}
         </div>
@@ -770,29 +760,29 @@ function SettingsTab({ details }: { details: GroupDetails }) {
       </div>
 
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        Nome
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do grupo" />
+        {t('group.nameLabel')}
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('group.namePlaceholder')} />
       </label>
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        Descrição
-        <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descrição do grupo" />
+        {t('group.descriptionLabel')}
+        <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('group.descriptionPlaceholder')} />
       </label>
       <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        Política de entrada
+        {t('group.joinPolicyLabel')}
         <select
           className="mt-1 block w-full rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
           value={joinPolicy}
           onChange={(e) => setJoinPolicy(e.target.value as JoinPolicy)}
         >
-          <option value="OPEN">Entrada livre</option>
-          <option value="REQUEST">Por solicitação (admin aprova)</option>
-          <option value="INVITE_ONLY">Somente convite</option>
+          <option value="OPEN">{t('group.policy.OPEN')}</option>
+          <option value="REQUEST">{t('group.policyRequestAdmin')}</option>
+          <option value="INVITE_ONLY">{t('group.policy.INVITE_ONLY')}</option>
         </select>
       </label>
       {status && <p className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{status}</p>}
       {error && <p className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
       <Button type="submit" disabled={update.isPending}>
-        {update.isPending ? 'Salvando…' : 'Salvar alterações'}
+        {update.isPending ? t('common.saving') : t('profile.saveChanges')}
       </Button>
     </form>
   )
