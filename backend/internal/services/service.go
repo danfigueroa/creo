@@ -29,6 +29,7 @@ var ErrInvalidJoinPolicy = errors.New("invalid joinPolicy")
 var ErrInvalidUsername = errors.New("invalid username")
 var ErrInvalidPrayerActionType = errors.New("invalid prayer action type")
 var ErrInvalidTradition = errors.New("invalid tradition")
+var ErrInvalidLanguage = errors.New("invalid language")
 var ErrPermissionDenied = errors.New("permission denied")
 var ErrLastAdmin = errors.New("cannot remove the last admin")
 var ErrCannotTargetSelf = errors.New("cannot target self for this action")
@@ -304,6 +305,13 @@ func (s *Service) SetUserTradition(ctx context.Context, userID string, tradition
 		return models.User{}, ErrInvalidTradition
 	}
 	return s.repo.SetUserTradition(ctx, userID, tradition)
+}
+
+func (s *Service) SetUserLanguage(ctx context.Context, userID string, language models.Language) (models.User, error) {
+	if !isValidLanguage(language) {
+		return models.User{}, ErrInvalidLanguage
+	}
+	return s.repo.SetUserLanguage(ctx, userID, language)
 }
 
 func (s *Service) DefaultPrayerActionFor(ctx context.Context, userID string) models.PrayerActionType {
@@ -644,6 +652,15 @@ func isValidPrayerActionTypeFor(tradition models.Tradition, actionType models.Pr
 func isValidTradition(tradition models.Tradition) bool {
 	switch tradition {
 	case models.TraditionCatholic, models.TraditionEvangelical:
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidLanguage(language models.Language) bool {
+	switch language {
+	case models.LanguagePtBr, models.LanguageEn, models.LanguageEs:
 		return true
 	default:
 		return false
