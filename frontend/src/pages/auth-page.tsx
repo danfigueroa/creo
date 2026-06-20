@@ -1,57 +1,41 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/input'
 import { Button } from '@/components/button'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { api } from '@/lib/api'
+import i18n from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/language-switcher'
 import { Tradition, traditionOptions } from '@/lib/traditions'
 
 type AuthMode = 'signin' | 'signup'
 
 function translateAuthError(raw: string): string {
   const message = (raw || '').toLowerCase()
-  if (message.includes('email not confirmed')) {
-    return 'Você ainda não confirmou seu e-mail. Abra o link que enviamos na sua caixa de entrada — ou peça um novo abaixo.'
-  }
-  if (message.includes('invalid login credentials') || message.includes('invalid credentials')) {
-    return 'E-mail ou senha incorretos.'
-  }
-  if (message.includes('user already registered') || message.includes('already registered')) {
-    return 'Já existe uma conta com este e-mail. Tente entrar em vez de criar.'
-  }
-  if (message.includes('password should be at least')) {
-    return 'A senha precisa ter ao menos 6 caracteres.'
-  }
-  if (message.includes('rate limit') || message.includes('too many')) {
-    return 'Muitas tentativas. Aguarde um instante e tente de novo.'
-  }
-  if (message.includes('signup') && message.includes('disabled')) {
-    return 'Cadastros estão desativados no momento.'
-  }
-  if (message.includes('otp') && (message.includes('expired') || message.includes('invalid'))) {
-    return 'Este link expirou ou já foi usado. Peça um novo abaixo.'
-  }
-  return raw || 'Algo deu errado. Tente novamente em instantes.'
+  if (message.includes('email not confirmed')) return i18n.t('authPage.errEmailNotConfirmed')
+  if (message.includes('invalid login credentials') || message.includes('invalid credentials')) return i18n.t('authErrors.invalidCredentials')
+  if (message.includes('user already registered') || message.includes('already registered')) return i18n.t('authPage.errAlreadyRegistered')
+  if (message.includes('password should be at least')) return i18n.t('authErrors.passwordTooShort')
+  if (message.includes('rate limit') || message.includes('too many')) return i18n.t('authPage.errRateLimit')
+  if (message.includes('signup') && message.includes('disabled')) return i18n.t('authPage.errSignupDisabled')
+  if (message.includes('otp') && (message.includes('expired') || message.includes('invalid'))) return i18n.t('authPage.errOtpExpired')
+  return raw || i18n.t('authErrors.generic')
 }
 
 function translateCallbackError(code: string, description: string): string {
   const desc = (description || '').toLowerCase()
   const c = (code || '').toLowerCase()
-  if (desc.includes('expired') || c.includes('expired')) {
-    return 'Este link expirou. Peça um novo abaixo e tente novamente.'
-  }
-  if (desc.includes('already') || desc.includes('used') || c === 'access_denied') {
-    return 'Este link já foi usado ou não é mais válido. Se já confirmou sua conta, tente entrar.'
-  }
-  if (description) {
-    return decodeURIComponent(description.replace(/\+/g, ' '))
-  }
-  return 'O link de e-mail não pôde ser validado. Peça um novo abaixo.'
+  if (desc.includes('expired') || c.includes('expired')) return i18n.t('authPage.errCallbackExpired')
+  if (desc.includes('already') || desc.includes('used') || c === 'access_denied') return i18n.t('authPage.errCallbackUsed')
+  if (description) return decodeURIComponent(description.replace(/\+/g, ' '))
+  return i18n.t('authPage.errCallbackInvalid')
 }
 
 export function AuthPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
 
@@ -65,6 +49,7 @@ export function AuthPage() {
   const [info, setInfo] = useState('')
   const [error, setError] = useState('')
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null)
+  const [linkExpired, setLinkExpired] = useState(false)
   const supabase = getSupabaseClient()
 
   const nextPath = searchParams.get('next') || '/feed'
@@ -77,6 +62,7 @@ export function AuthPage() {
       searchParams.get('error_description') || hashParams.get('error_description') || ''
     if (errorCode || errorDescription) {
       setError(translateCallbackError(errorCode, errorDescription))
+      setLinkExpired(true)
       if (window.location.hash) {
         window.history.replaceState({}, '', window.location.pathname + window.location.search)
       }
@@ -123,22 +109,22 @@ export function AuthPage() {
 
     try {
       if (!supabase) {
-        setError('Configuração do Supabase ausente. Avise o time pra conferir as variáveis de ambiente.')
+        setError(t('authPage.supabaseMissingEnv'))
         return
       }
       if (mode === 'signup') {
         const normalizedUsername = username.trim().replace(/^@+/, '').toLowerCase()
         const normalizedDisplayName = displayName.trim()
         if (normalizedDisplayName.length < 2 || normalizedDisplayName.length > 80) {
-          setError('Informe um nome de exibição entre 2 e 80 caracteres.')
+          setError(t('authPage.invalidDisplayName'))
           return
         }
         if (!/^[a-z0-9_]{3,30}$/.test(normalizedUsername)) {
-          setError('Use um @username de 3 a 30 caracteres, apenas letras minúsculas, números e _.')
+          setError(t('authPage.invalidUsername'))
           return
         }
         if (!email.trim() || password.length < 6) {
-          setError('Informe um e-mail válido e uma senha com ao menos 6 caracteres.')
+          setError(t('authPage.invalidEmailPassword'))
           return
         }
 
@@ -147,7 +133,7 @@ export function AuthPage() {
             params: { username: normalizedUsername }
           })
           if (!availability.data.available) {
-            setError('Este @username já está em uso.')
+            setError(t('authPage.usernameTaken'))
             return
           }
         } catch {
@@ -171,9 +157,7 @@ export function AuthPage() {
           return
         }
         setPendingConfirmEmail(email.trim())
-        setInfo(
-          `Conta criada. Enviamos um link de confirmação para ${email.trim()}. Confira sua caixa de entrada (e a pasta de spam) e clique no botão para ativar sua conta.`
-        )
+        setInfo(t('authPage.accountCreated', { email: email.trim() }))
         return
       }
 
@@ -188,7 +172,7 @@ export function AuthPage() {
 
       const token = data.session?.access_token
       if (!token) {
-        setError('Não foi possível iniciar sessão. Tente novamente em instantes.')
+        setError(t('authPage.cannotStartSession'))
         return
       }
 
@@ -197,9 +181,9 @@ export function AuthPage() {
     } catch (err: any) {
       const message = err?.message || ''
       if (message.toLowerCase().includes('network')) {
-        setError('Não conseguimos falar com o servidor. Verifique sua conexão e tente de novo.')
+        setError(t('authPage.networkError'))
       } else {
-        setError('Algo deu errado. Tente novamente em instantes.')
+        setError(t('authErrors.generic'))
       }
     } finally {
       setIsLoading(false)
@@ -210,11 +194,11 @@ export function AuthPage() {
     setError('')
     setInfo('')
     if (!email) {
-      setError('Informe seu e-mail para receber o link de acesso.')
+      setError(t('authPage.emailForLink'))
       return
     }
     if (!supabase) {
-      setError('Configuração do Supabase ausente no frontend.')
+      setError(t('authPage.supabaseMissingFrontend'))
       return
     }
 
@@ -230,7 +214,7 @@ export function AuthPage() {
         setError(translateAuthError(otpError.message))
         return
       }
-      setInfo('Enviamos um e-mail com link de acesso único.')
+      setInfo(t('authPage.magicSent'))
     } finally {
       setIsLoading(false)
     }
@@ -240,11 +224,11 @@ export function AuthPage() {
     setError('')
     setInfo('')
     if (!email) {
-      setError('Informe seu e-mail para redefinir a senha.')
+      setError(t('authPage.emailForReset'))
       return
     }
     if (!supabase) {
-      setError('Configuração do Supabase ausente no frontend.')
+      setError(t('authPage.supabaseMissingFrontend'))
       return
     }
 
@@ -257,7 +241,7 @@ export function AuthPage() {
         setError(translateAuthError(resetError.message))
         return
       }
-      setInfo('E-mail de redefinição enviado. Confira sua caixa de entrada (e o spam).')
+      setInfo(t('authPage.resetSent'))
     } finally {
       setIsLoading(false)
     }
@@ -266,12 +250,12 @@ export function AuthPage() {
   async function onResendConfirmation() {
     setError('')
     if (!supabase) {
-      setError('Configuração do Supabase ausente no frontend.')
+      setError(t('authPage.supabaseMissingFrontend'))
       return
     }
     const target = pendingConfirmEmail || email.trim()
     if (!target) {
-      setError('Informe seu e-mail para reenviarmos o link de confirmação.')
+      setError(t('authPage.emailForResend'))
       return
     }
     setIsLoading(true)
@@ -285,16 +269,16 @@ export function AuthPage() {
         setError(translateAuthError(resendError.message))
         return
       }
-      setInfo(`Reenviamos o link de confirmação para ${target}. Pode levar até 1 minuto.`)
+      setInfo(t('authPage.resendSent', { email: target }))
     } finally {
       setIsLoading(false)
     }
   }
 
   const heroFeatures = [
-    { title: 'Pedidos de oração', body: 'Compartilhe intenções com amigos e grupos.' },
-    { title: 'Comunidade unida', body: 'Pastorais, células e movimentos em um só espaço.' },
-    { title: 'Ambiente acolhedor', body: 'Moderação ativa para conviver em paz.' }
+    { title: t('authPage.hero1Title'), body: t('authPage.hero1Body') },
+    { title: t('authPage.hero2Title'), body: t('authPage.hero2Body') },
+    { title: t('authPage.hero3Title'), body: t('authPage.hero3Body') }
   ]
 
   return (
@@ -310,15 +294,18 @@ export function AuthPage() {
         />
 
         <div className="relative">
-          <Link to="/" className="inline-flex items-center gap-2.5" aria-label="Creo — ir para o início">
-            <img src="/creo-icon.png" alt="" className="h-12 w-12 rounded-xl shadow-sm" />
-            <span className="text-2xl font-bold tracking-tight text-secondary">Creo</span>
-          </Link>
+          <div className="flex items-center justify-between gap-3">
+            <Link to="/" className="inline-flex items-center gap-2.5" aria-label={t('shell.brandAria')}>
+              <img src="/creo-icon.png" alt="" className="h-12 w-12 rounded-xl shadow-sm" />
+              <span className="text-2xl font-bold tracking-tight text-secondary">Creo</span>
+            </Link>
+            <LanguageSwitcher />
+          </div>
           <h1 className="pv-title mt-7 text-3xl font-bold leading-[1.05] text-secondary sm:text-4xl lg:text-[46px]">
-            Sua comunidade unida em oração, todos os dias.
+            {t('authPage.heroTitle')}
           </h1>
           <p className="pv-muted mt-5 max-w-md text-base leading-relaxed">
-            Compartilhe intenções, acompanhe pedidos de amigos e grupos e fortaleça sua comunidade de fé — católica ou evangélica — em um ambiente moderno e acolhedor.
+            {t('authPage.heroLede')}
           </p>
         </div>
 
@@ -338,9 +325,9 @@ export function AuthPage() {
 
         <blockquote className="relative mt-auto rounded-2xl border border-primary/40 bg-panel/60 px-5 py-4 backdrop-blur">
           <p className="pv-title text-sm leading-relaxed text-secondary sm:text-base">
-            “Onde dois ou três estiverem reunidos em meu nome, ali estarei eu, no meio deles.”
+            {t('landing.quote')}
           </p>
-          <p className="pv-muted mt-2 text-[11px] font-semibold uppercase tracking-[0.18em]">Mateus 18,20</p>
+          <p className="pv-muted mt-2 text-[11px] font-semibold uppercase tracking-[0.18em]">{t('landing.quoteRef')}</p>
         </blockquote>
       </section>
 
@@ -351,41 +338,39 @@ export function AuthPage() {
             onClick={() => setMode('signin')}
             type="button"
           >
-            Entrar
+            {t('landing.signIn')}
           </button>
           <button
             className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${mode === 'signup' ? 'bg-primary text-onPrimary shadow-[0_8px_18px_-10px_var(--fx-ring)]' : 'text-primary hover:bg-primary/5'}`}
             onClick={() => setMode('signup')}
             type="button"
           >
-            Criar conta
+            {t('landing.signUp')}
           </button>
         </div>
 
         <h2 className="pv-title mt-7 text-2xl font-semibold text-secondary sm:text-3xl">
-          {mode === 'signin' ? 'Bem-vindo de volta' : 'Crie sua conta'}
+          {mode === 'signin' ? t('authPage.welcomeBack') : t('authPage.createYourAccount')}
         </h2>
         <p className="pv-muted mt-2 text-sm">
-          {mode === 'signin'
-            ? 'Acesse com e-mail e senha — ou receba um link único por e-mail.'
-            : 'Em poucos passos você se conecta à sua comunidade de oração.'}
+          {mode === 'signin' ? t('authPage.signinSub') : t('authPage.signupSub')}
         </p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           {mode === 'signup' && (
             <>
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Nome de exibição</span>
-                <Input className="mt-1.5" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Como quer ser chamado(a)" />
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('authPage.displayName')}</span>
+                <Input className="mt-1.5" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t('authPage.displayNamePlaceholder')} />
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">@username</span>
-                <Input className="mt-1.5" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} placeholder="apelido único, sem espaços" />
+                <Input className="mt-1.5" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} placeholder={t('authPage.usernamePlaceholder')} />
               </label>
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">Tradição</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.tradition')}</p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {traditionOptions.map((option) => {
+                  {traditionOptions().map((option) => {
                     const active = tradition === option.value
                     return (
                       <button
@@ -409,15 +394,15 @@ export function AuthPage() {
           )}
 
           <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">E-mail</span>
-            <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@exemplo.com" type="email" autoComplete="email" />
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
+            <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
           </label>
           <label className="block">
             <span className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              <span>Senha</span>
+              <span>{t('landing.password')}</span>
               {mode === 'signin' && (
                 <button className="text-[11px] font-semibold normal-case tracking-normal text-primary hover:text-secondary" onClick={onResetPassword} type="button">
-                  Esqueceu a senha?
+                  {t('landing.forgotPassword')}
                 </button>
               )}
             </span>
@@ -425,18 +410,18 @@ export function AuthPage() {
           </label>
 
           <Button className="w-full" disabled={isLoading} type="submit">
-            {isLoading ? 'Carregando…' : mode === 'signin' ? 'Entrar' : 'Criar conta'}
+            {isLoading ? t('common.loading') : mode === 'signin' ? t('landing.signIn') : t('landing.signUp')}
           </Button>
         </form>
 
         <div className="my-6 flex items-center gap-3" aria-hidden>
           <span className="h-px flex-1 bg-primary/30" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">ou</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('landing.or')}</span>
           <span className="h-px flex-1 bg-primary/30" />
         </div>
 
         <Button className="w-full" disabled={isLoading} onClick={onPasswordlessEmail} type="button" variant="secondary">
-          Receber link de acesso por e-mail
+          {t('landing.magicCta')}
         </Button>
 
         {(error || info) && (
@@ -446,22 +431,22 @@ export function AuthPage() {
           </div>
         )}
 
-        {(pendingConfirmEmail || (error && error.toLowerCase().includes('expirou'))) && (
+        {(pendingConfirmEmail || linkExpired) && (
           <button
             type="button"
             onClick={onResendConfirmation}
             disabled={isLoading}
             className="mt-3 text-xs font-semibold text-primary hover:text-secondary disabled:opacity-60"
           >
-            Reenviar e-mail de confirmação
+            {t('authPage.resendConfirmation')}
           </button>
         )}
 
         <p className="pv-muted mt-auto pt-8 text-center text-xs">
           {mode === 'signin' ? (
-            <>Ainda não tem conta? <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signup')} type="button">Crie a sua</button>.</>
+            <>{t('landing.noAccount')} <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signup')} type="button">{t('authPage.createYours')}</button>.</>
           ) : (
-            <>Já tem conta? <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signin')} type="button">Entrar</button>.</>
+            <>{t('landing.haveAccount')} <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signin')} type="button">{t('landing.signIn')}</button>.</>
           )}
         </p>
       </section>
