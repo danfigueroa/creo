@@ -50,6 +50,8 @@ type Repository interface {
 	CreatePrayerRequest(ctx context.Context, in models.CreatePrayerRequestInput) (models.PrayerRequest, error)
 	UpdatePrayerRequest(ctx context.Context, in models.UpdatePrayerRequestInput) (models.PrayerRequest, error)
 	DeletePrayerRequest(ctx context.Context, userID, requestID string) error
+	MarkPrayerRequestAnswered(ctx context.Context, in models.AnswerPrayerRequestInput) (models.PrayerRequest, error)
+	ClearPrayerRequestAnswered(ctx context.Context, userID, requestID string) (models.PrayerRequest, error)
 	GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error)
 	ListPublicPrayerRequests(ctx context.Context, viewerUserID string, limit, offset int) ([]models.PrayerRequest, error)
 	CountPublicPrayerRequests(ctx context.Context, viewerUserID string) (int64, error)
@@ -541,6 +543,60 @@ func (r *PostgresRepository) DeletePrayerRequest(ctx context.Context, userID, re
 		return ErrPrayerRequestNotFound
 	}
 	return nil
+}
+
+func (r *PostgresRepository) MarkPrayerRequestAnswered(ctx context.Context, in models.AnswerPrayerRequestInput) (models.PrayerRequest, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return models.PrayerRequest{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var testimony *string
+	if in.Testimony != "" {
+		testimony = &in.Testimony
+	}
+	ct, err := tx.Exec(ctx, `
+		UPDATE prayer_requests
+		SET answered_at = COALESCE(answered_at, NOW()),
+			testimony = $3,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND author_id = $2
+		  AND deleted_at IS NULL
+	`, in.RequestID, in.ActorUserID, testimony)
+	if err != nil {
+		return models.PrayerRequest{}, err
+	}
+	if ct.RowsAffected() == 0 {
+		return models.PrayerRequest{}, ErrPrayerRequestNotFound
+	}
+
+	r.notifyPrayersOfRequestAnswered(ctx, tx, in.RequestID, in.ActorUserID)
+
+	if err = tx.Commit(ctx); err != nil {
+		return models.PrayerRequest{}, err
+	}
+	return r.GetPrayerRequestByID(ctx, in.ActorUserID, in.RequestID)
+}
+
+func (r *PostgresRepository) ClearPrayerRequestAnswered(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
+	ct, err := r.db.Exec(ctx, `
+		UPDATE prayer_requests
+		SET answered_at = NULL,
+			testimony = NULL,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND author_id = $2
+		  AND deleted_at IS NULL
+	`, requestID, userID)
+	if err != nil {
+		return models.PrayerRequest{}, err
+	}
+	if ct.RowsAffected() == 0 {
+		return models.PrayerRequest{}, ErrPrayerRequestNotFound
+	}
+	return r.GetPrayerRequestByID(ctx, userID, requestID)
 }
 
 func (r *PostgresRepository) GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
@@ -1359,6 +1415,36 @@ func (r *PostgresRepository) enrichPrayerRequests(ctx context.Context, userID st
 		items[i].AuthorUsername = author.username
 		items[i].AuthorDisplayName = author.displayName
 		items[i].AuthorAvatarURL = author.avatarURL
+	}
+
+	answeredRows, err := r.db.Query(ctx, `
+		SELECT id::text, answered_at, testimony
+		FROM prayer_requests
+		WHERE id = ANY($1::uuid[])
+		  AND answered_at IS NOT NULL
+	`, ids)
+	if err != nil {
+		return err
+	}
+	defer answeredRows.Close()
+
+	for answeredRows.Next() {
+		var requestID string
+		var answeredAt time.Time
+		var testimony *string
+		if err = answeredRows.Scan(&requestID, &answeredAt, &testimony); err != nil {
+			return err
+		}
+		idx, ok := indexByID[requestID]
+		if !ok {
+			continue
+		}
+		at := answeredAt
+		items[idx].AnsweredAt = &at
+		items[idx].Testimony = testimony
+	}
+	if err = answeredRows.Err(); err != nil {
+		return err
 	}
 
 	groupRows, err := r.db.Query(ctx, `
@@ -2897,6 +2983,19 @@ func (r *PostgresRepository) ListPrayerRequestUpdates(ctx context.Context, reque
 // notifyPrayersOfRequestUpdate emits a REQUEST_UPDATED notification for every
 // distinct user who has prayed for the request, except the author. Best-effort.
 func (r *PostgresRepository) notifyPrayersOfRequestUpdate(ctx context.Context, exec notifyExec, requestID, authorID string) {
+	r.notifyPrayersOfRequest(ctx, exec, requestID, authorID, models.NotificationTypeRequestUpdated)
+}
+
+// notifyPrayersOfRequestAnswered emits a REQUEST_ANSWERED notification for every
+// distinct user who has prayed for the request, except the author. Best-effort.
+func (r *PostgresRepository) notifyPrayersOfRequestAnswered(ctx context.Context, exec notifyExec, requestID, authorID string) {
+	r.notifyPrayersOfRequest(ctx, exec, requestID, authorID, models.NotificationTypeRequestAnswered)
+}
+
+// notifyPrayersOfRequest fans out a PRAYER_REQUEST-scoped notification of the
+// given type to every distinct user who prayed for the request, except the
+// author. Best-effort.
+func (r *PostgresRepository) notifyPrayersOfRequest(ctx context.Context, exec notifyExec, requestID, authorID string, notifType models.NotificationType) {
 	rows, err := r.db.Query(ctx, `
 		SELECT DISTINCT user_id::text
 		FROM prayer_actions
@@ -2920,7 +3019,7 @@ func (r *PostgresRepository) notifyPrayersOfRequestUpdate(ctx context.Context, e
 	for _, pid := range prayerIDs {
 		_ = insertNotificationOn(ctx, exec, models.CreateNotificationInput{
 			UserID:      pid,
-			Type:        models.NotificationTypeRequestUpdated,
+			Type:        notifType,
 			ActorUserID: &actor,
 			SubjectType: models.NotificationSubjectPrayerRequest,
 			SubjectID:   requestID,

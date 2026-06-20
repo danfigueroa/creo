@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -268,6 +269,67 @@ func (h *PrayerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"status": "deleted"})
+}
+
+type answerRequest struct {
+	Testimony string `json:"testimony"`
+}
+
+func (h *PrayerHandler) Answer(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	var req answerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
+		return
+	}
+	prayer, err := h.service.AnswerPrayerRequest(r.Context(), models.AnswerPrayerRequestInput{
+		RequestID:   chi.URLParam(r, "id"),
+		ActorUserID: userID,
+		Testimony:   req.Testimony,
+	})
+	if err != nil {
+		if errors.Is(err, repositories.ErrPrayerRequestNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "REQUEST_NOT_FOUND", "Prayer request not found", nil)
+			return
+		}
+		if errors.Is(err, services.ErrPermissionDenied) {
+			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Only the author can mark a request as answered", nil)
+			return
+		}
+		if errors.Is(err, services.ErrInvalidUpdateBody) {
+			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Testimony must be at most 2000 characters", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, prayer)
+}
+
+func (h *PrayerHandler) Unanswer(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
+	if err := ensureAuthUser(h.service, r); err != nil {
+		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		return
+	}
+	prayer, err := h.service.UnanswerPrayerRequest(r.Context(), userID, chi.URLParam(r, "id"))
+	if err != nil {
+		if errors.Is(err, repositories.ErrPrayerRequestNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "REQUEST_NOT_FOUND", "Prayer request not found", nil)
+			return
+		}
+		if errors.Is(err, services.ErrPermissionDenied) {
+			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Only the author can change this", nil)
+			return
+		}
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, prayer)
 }
 
 func (h *PrayerHandler) ListActions(w http.ResponseWriter, r *http.Request) {

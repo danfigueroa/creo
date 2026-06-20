@@ -294,6 +294,39 @@ func (s *Service) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, re
 	return updates, nil
 }
 
+const requestTestimonyMaxBody = 2000
+
+// AnswerPrayerRequest marks the request as a "grace answered" (graça
+// alcançada) with an optional testimony. Only the author may do it. Everyone
+// who prayed (except the author) gets a REQUEST_ANSWERED notification.
+func (s *Service) AnswerPrayerRequest(ctx context.Context, in models.AnswerPrayerRequestInput) (models.PrayerRequest, error) {
+	in.Testimony = strings.TrimSpace(in.Testimony)
+	if len([]rune(in.Testimony)) > requestTestimonyMaxBody {
+		return models.PrayerRequest{}, ErrInvalidUpdateBody
+	}
+	req, err := s.repo.GetPrayerRequestByID(ctx, in.ActorUserID, in.RequestID)
+	if err != nil {
+		return models.PrayerRequest{}, err
+	}
+	if req.AuthorID != in.ActorUserID {
+		return models.PrayerRequest{}, ErrPermissionDenied
+	}
+	return s.repo.MarkPrayerRequestAnswered(ctx, in)
+}
+
+// UnanswerPrayerRequest reverts a request out of the answered state. Only the
+// author may do it.
+func (s *Service) UnanswerPrayerRequest(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
+	req, err := s.repo.GetPrayerRequestByID(ctx, userID, requestID)
+	if err != nil {
+		return models.PrayerRequest{}, err
+	}
+	if req.AuthorID != userID {
+		return models.PrayerRequest{}, ErrPermissionDenied
+	}
+	return s.repo.ClearPrayerRequestAnswered(ctx, userID, requestID)
+}
+
 // GetUserStats returns ProfileStats for the given user (used by /profile/stats
 // for the authenticated user; the public profile flow has its own gating).
 func (s *Service) GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error) {

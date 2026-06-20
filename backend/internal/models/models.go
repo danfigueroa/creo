@@ -148,8 +148,16 @@ type PrayerRequest struct {
 	GroupNames        []string         `json:"groupNames,omitempty"`
 	PrayerTypeCounts  map[string]int64 `json:"prayerTypeCounts,omitempty"`
 	MyPrayerTypes     []string         `json:"myPrayerTypes,omitempty"`
+	AnsweredAt        *time.Time       `json:"answeredAt,omitempty"`
+	Testimony         *string          `json:"testimony,omitempty"`
 	CreatedAt         time.Time        `json:"createdAt"`
 	UpdatedAt         time.Time        `json:"updatedAt"`
+}
+
+type AnswerPrayerRequestInput struct {
+	RequestID   string
+	ActorUserID string
+	Testimony   string
 }
 
 type CreatePrayerRequestInput struct {
@@ -332,6 +340,7 @@ const (
 	NotificationTypeRequestChangesAsked   NotificationType = "REQUEST_CHANGES_ASKED"
 	NotificationTypeGroupAnnouncementPosted NotificationType = "GROUP_ANNOUNCEMENT_POSTED"
 	NotificationTypeRequestUpdated          NotificationType = "REQUEST_UPDATED"
+	NotificationTypeRequestAnswered         NotificationType = "REQUEST_ANSWERED"
 	NotificationTypeMilestonePrayed         NotificationType = "MILESTONE_PRAYED"
 	NotificationTypeMilestoneCreated        NotificationType = "MILESTONE_CREATED"
 	NotificationTypeMilestoneStreak         NotificationType = "MILESTONE_STREAK"
