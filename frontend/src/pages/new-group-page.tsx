@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
@@ -20,29 +21,18 @@ const NAME_MIN = 3
 const NAME_MAX = 80
 const DESCRIPTION_MAX = 500
 
-const policyOptions: Array<{ value: JoinPolicy; label: string; description: string; mark: string }> = [
-  {
-    value: 'OPEN',
-    mark: 'AB',
-    label: 'Aberto',
-    description: 'Qualquer pessoa pode entrar diretamente sem aprovação.'
-  },
-  {
-    value: 'REQUEST',
-    mark: 'SO',
-    label: 'Por solicitação',
-    description: 'Pessoas pedem para entrar e os admins aprovam.'
-  },
-  {
-    value: 'INVITE_ONLY',
-    mark: 'CV',
-    label: 'Somente convite',
-    description: 'Apenas pessoas convidadas pelos admins podem participar.'
-  }
-]
+const POLICY_MARKS: Record<JoinPolicy, string> = { OPEN: 'AB', REQUEST: 'SO', INVITE_ONLY: 'CV' }
+const POLICY_ORDER: JoinPolicy[] = ['OPEN', 'REQUEST', 'INVITE_ONLY']
 
 export function NewGroupPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
+  const policyOptions = POLICY_ORDER.map((value) => ({
+    value,
+    mark: POLICY_MARKS[value],
+    label: t(`newGroup.policy.${value}.label`),
+    description: t(`newGroup.policy.${value}.description`)
+  }))
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>('REQUEST')
@@ -63,14 +53,14 @@ export function NewGroupPage() {
     },
     onError: (err: any) => {
       if (err?.response?.status === 401) {
-        setError('Sua sessão expirou. Entre novamente para criar o grupo.')
+        setError(t('newGroup.sessionExpired'))
         return
       }
       if (!err?.response) {
-        setError('Backend indisponível. Verifique se a API está rodando em http://localhost:8080.')
+        setError(t('request.errorBackendDown'))
         return
       }
-      setError(err?.response?.data?.error?.message || 'Não foi possível criar o grupo.')
+      setError(err?.response?.data?.error?.message || t('newGroup.createError'))
     }
   })
 
@@ -87,11 +77,11 @@ export function NewGroupPage() {
     e.preventDefault()
     setError('')
     if (!nameValid) {
-      setError(`O nome do grupo precisa ter entre ${NAME_MIN} e ${NAME_MAX} caracteres.`)
+      setError(t('newGroup.nameRange', { min: NAME_MIN, max: NAME_MAX }))
       return
     }
     if (!descriptionValid) {
-      setError(`A descrição precisa ter no máximo ${DESCRIPTION_MAX} caracteres.`)
+      setError(t('newGroup.descriptionMax', { max: DESCRIPTION_MAX }))
       return
     }
     createGroup.mutate()
@@ -100,18 +90,17 @@ export function NewGroupPage() {
   return (
     <PageShell>
       <section className="pv-panel rounded-3xl p-6 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Novo grupo</p>
-        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">Crie uma comunidade de oração</h1>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('newGroup.eyebrow')}</p>
+        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('newGroup.title')}</h1>
         <p className="pv-muted mt-2 max-w-2xl text-sm">
-          Defina um espaço próprio para reunir intenções da sua pastoral, célula ou grupo de amigos. Você pode mudar essas
-          configurações depois nas opções do grupo.
+          {t('newGroup.sub')}
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-8">
           <div>
             <div className="flex items-baseline justify-between gap-3">
               <label htmlFor="pv-group-name" className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-                Nome <span className="text-secondary/60">·</span> como o grupo aparece
+                {t('group.nameLabel')} <span className="text-secondary/60">·</span> {t('newGroup.nameHint')}
               </label>
               <span className={`text-[11px] tabular-nums ${trimmedName.length > NAME_MAX ? 'text-primary' : 'pv-muted'}`}>{nameCounter}</span>
             </div>
@@ -120,16 +109,16 @@ export function NewGroupPage() {
               className="mt-1.5"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex.: Pastoral Familiar - Paróquia São José"
+              placeholder={t('newGroup.namePlaceholder')}
               maxLength={NAME_MAX + 20}
             />
-            <p className="pv-muted mt-1.5 text-xs">Entre {NAME_MIN} e {NAME_MAX} caracteres. Aparece no card e no cabeçalho.</p>
+            <p className="pv-muted mt-1.5 text-xs">{t('newGroup.nameHelp', { min: NAME_MIN, max: NAME_MAX })}</p>
           </div>
 
           <div>
             <div className="flex items-baseline justify-between gap-3">
               <label htmlFor="pv-group-description" className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-                Descrição <span className="text-secondary/60">·</span> apresente o grupo
+                {t('group.descriptionLabel')} <span className="text-secondary/60">·</span> {t('newGroup.descriptionHint')}
               </label>
               <span className={`text-[11px] tabular-nums ${trimmedDescription.length > DESCRIPTION_MAX ? 'text-primary' : 'pv-muted'}`}>{descriptionCounter}</span>
             </div>
@@ -138,14 +127,14 @@ export function NewGroupPage() {
               className="mt-1.5 min-h-[140px]"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Conte de forma breve o propósito do grupo, quem pode participar e o que será compartilhado por aqui."
+              placeholder={t('newGroup.descriptionPlaceholder')}
             />
-            <p className="pv-muted mt-1.5 text-xs">Opcional, mas ajuda quem decide se quer entrar.</p>
+            <p className="pv-muted mt-1.5 text-xs">{t('newGroup.descriptionHelp')}</p>
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Política de entrada</p>
-            <p className="pv-muted mt-1 text-xs">Define como novos membros podem se juntar ao grupo.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('group.joinPolicyLabel')}</p>
+            <p className="pv-muted mt-1 text-xs">{t('newGroup.policyHelp')}</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {policyOptions.map((option) => {
                 const active = joinPolicy === option.value
@@ -173,13 +162,13 @@ export function NewGroupPage() {
           </div>
 
           <div className="flex flex-col gap-3 border-t border-primary/30 pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="pv-muted text-xs">Você será admin do grupo recém-criado.</p>
+            <p className="pv-muted text-xs">{t('newGroup.adminNote')}</p>
             <div className="flex gap-2 sm:justify-end">
               <Button type="button" variant="secondary" onClick={() => navigate('/groups')} disabled={createGroup.isPending}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={!canSubmit}>
-                {createGroup.isPending ? 'Criando…' : 'Criar grupo'}
+                {createGroup.isPending ? t('newGroup.creating') : t('nav.createGroup')}
               </Button>
             </div>
           </div>
