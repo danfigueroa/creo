@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { api } from '@/lib/api'
 import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
@@ -8,6 +9,7 @@ import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
+import i18n from '@/lib/i18n'
 
 type FeedScope = 'home' | 'public' | 'groups' | 'friends'
 type ProfileMini = { id: string; displayName?: string; username?: string; avatarUrl?: string | null; tradition?: Tradition }
@@ -16,21 +18,12 @@ type FeedPagination = { page: number; pageSize: number; total: number; totalPage
 type RawFeedResponse = { items: Parameters<typeof flattenFeedItem>[0][]; pagination: FeedPagination }
 type FeedResponse = { items: FeedCardItem[]; pagination: FeedPagination }
 
-const tabs: Array<{ scope: FeedScope; label: string; endpoint: string; requiresAuth: boolean }> = [
-  { scope: 'home', label: 'Principal', endpoint: '/feed/home', requiresAuth: true },
-  { scope: 'groups', label: 'Grupos', endpoint: '/feed/groups', requiresAuth: true },
-  { scope: 'friends', label: 'Amigos', endpoint: '/feed/friends', requiresAuth: true },
-  { scope: 'public', label: 'Público', endpoint: '/feed/public', requiresAuth: false }
+const tabs: Array<{ scope: FeedScope; labelKey: string; endpoint: string; requiresAuth: boolean }> = [
+  { scope: 'home', labelKey: 'feed.tabHome', endpoint: '/feed/home', requiresAuth: true },
+  { scope: 'groups', labelKey: 'feed.tabGroups', endpoint: '/feed/groups', requiresAuth: true },
+  { scope: 'friends', labelKey: 'feed.tabFriends', endpoint: '/feed/friends', requiresAuth: true },
+  { scope: 'public', labelKey: 'feed.tabPublic', endpoint: '/feed/public', requiresAuth: false }
 ]
-
-const categoryLabel: Record<string, string> = {
-  HEALTH: 'Saúde',
-  FAMILY: 'Família',
-  WORK: 'Trabalho',
-  GRIEF: 'Luto',
-  THANKSGIVING: 'Ação de graças',
-  OTHER: 'Outros'
-}
 
 const feedPageSize = 10
 
@@ -39,7 +32,7 @@ function formatPostDate(value: string) {
   if (Number.isNaN(date.getTime())) {
     return ''
   }
-  return new Intl.DateTimeFormat('pt-BR', {
+  return new Intl.DateTimeFormat(i18n.language || 'pt-BR', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -49,6 +42,7 @@ function formatPostDate(value: string) {
 }
 
 export function FeedPage() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [lastPrayerHit, setLastPrayerHit] = useState<{ requestID: string; actionType: string; fxID: number } | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
@@ -221,14 +215,14 @@ export function FeedPage() {
     <PageShell>
       <div className="feed">
         <div className="feed__head">
-          <div className="feed__eyebrow">Feed social</div>
-          <h1 className="feed__title">Intenções e pedidos de oração</h1>
+          <div className="feed__eyebrow">{t('feed.eyebrow')}</div>
+          <h1 className="feed__title">{t('feed.title')}</h1>
           <p className="feed__sub">
-            Um espaço sereno para acompanhar quem reza com você — e por você.
+            {t('feed.sub')}
           </p>
         </div>
 
-        <div className="tabs" role="tablist" aria-label="Escopo do feed">
+        <div className="tabs" role="tablist" aria-label={t('feed.scopeAria')}>
           {tabs.map((tab) => (
             <button
               key={tab.scope}
@@ -238,7 +232,7 @@ export function FeedPage() {
               className={`tab ${tab.scope === scope ? 'is-on' : ''}`}
               onClick={() => changeScope(tab.scope)}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
           <div
@@ -264,15 +258,15 @@ export function FeedPage() {
                 size="md"
               />
               <div className="composer__field">
-                <span className="composer__placeholder">Compartilhe uma intenção…</span>
+                <span className="composer__placeholder">{t('feed.composerPlaceholder')}</span>
               </div>
             </div>
             <div className="composer__foot">
               <div className="composer__cats">
-                <span className="composer__hint">Pedido de oração</span>
+                <span className="composer__hint">{t('feed.composerHint')}</span>
               </div>
               <div className="composer__actions">
-                <span className="btn btn--primary">Postar pedido</span>
+                <span className="btn btn--primary">{t('feed.composerPost')}</span>
               </div>
             </div>
           </button>
@@ -283,17 +277,17 @@ export function FeedPage() {
 
           {isUnauthorized && activeTab.requiresAuth && (
             <div className="py-6 text-sm" style={{ color: 'var(--muted)' }}>
-              Você precisa entrar para visualizar o feed de {activeTab.label.toLowerCase()}.
+              {t('feed.needLogin', { scope: t(activeTab.labelKey).toLowerCase() })}
             </div>
           )}
 
           {!query.isLoading && !isUnauthorized && items.length === 0 && (
             <div className="py-10 text-center">
               <p className="feed__title" style={{ fontSize: 24 }}>
-                Ainda não há pedidos neste feed.
+                {t('feed.emptyTitle')}
               </p>
               <p className="feed__sub mt-2" style={{ margin: '8px auto 0' }}>
-                Seja o primeiro a compartilhar uma intenção.
+                {t('feed.emptySub')}
               </p>
               <button
                 type="button"
@@ -301,7 +295,7 @@ export function FeedPage() {
                 className="btn btn--primary"
                 style={{ marginTop: 16 }}
               >
-                Criar pedido
+                {t('feed.createRequest')}
               </button>
             </div>
           )}
@@ -316,7 +310,6 @@ export function FeedPage() {
               isPrayPending={prayMutation.isPending}
               lastPrayerHit={lastPrayerHit}
               groupNameById={groupNameById}
-              categoryLabel={categoryLabel}
               formatDate={formatPostDate}
             />
           ))}
@@ -330,7 +323,7 @@ export function FeedPage() {
               disabled={page <= 1 || query.isFetching}
               onClick={() => goToPage(page - 1)}
             >
-              <span aria-hidden>←</span> Anterior
+              <span aria-hidden>←</span> {t('common.previous')}
             </button>
             <div className="pager__nums">
               {pageNumbers.map((pageNumber) => (
@@ -351,7 +344,7 @@ export function FeedPage() {
               disabled={page >= totalPages || query.isFetching}
               onClick={() => goToPage(page + 1)}
             >
-              Próxima <span aria-hidden>→</span>
+              {t('common.next')} <span aria-hidden>→</span>
             </button>
           </div>
         )}
