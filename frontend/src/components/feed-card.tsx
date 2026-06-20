@@ -1,10 +1,15 @@
 import { ReactNode, memo, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import type { PrayerAction } from '@/lib/traditions'
 import { Avatar } from '@/components/avatar'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
+import { categoryLabel } from '@/lib/categories'
+import i18n from '@/lib/i18n'
+
+const intlLocale = () => i18n.language || 'pt-BR'
 
 // Category palette — tinted oklch pills for each prayer category badge.
 const CATEGORY_PALETTE: Record<string, { bg: string; fg: string }> = {
@@ -81,7 +86,6 @@ type FeedCardProps = {
   isPrayPending: boolean
   lastPrayerHit: PrayerHit
   groupNameById: Map<string, string>
-  categoryLabel: Record<string, string>
   formatDate: (value: string) => string
 }
 
@@ -89,31 +93,31 @@ function relativeTime(iso: string): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''
   const diff = Date.now() - then
-  if (diff < 0) return 'agora'
+  if (diff < 0) return i18n.t('time.now')
   const s = Math.floor(diff / 1000)
-  if (s < 45) return 'agora'
+  if (s < 45) return i18n.t('time.now')
   const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m`
+  if (m < 60) return i18n.t('time.minute', { count: m })
   const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h`
+  if (h < 24) return i18n.t('time.hour', { count: h })
   const d = Math.floor(h / 24)
-  if (d < 7) return `${d}d`
+  if (d < 7) return i18n.t('time.day', { count: d })
   const w = Math.floor(d / 7)
-  if (w < 5) return `${w}sem`
+  if (w < 5) return i18n.t('time.week', { count: w })
   const mo = Math.floor(d / 30)
-  if (mo < 12) return `${mo}mês`
+  if (mo < 12) return i18n.t('time.month', { count: mo })
   const y = Math.floor(d / 365)
-  return `${y}a`
+  return i18n.t('time.year', { count: y })
 }
 
 function shortMonth(d: Date): string {
-  // pt-BR `month: 'short'` returns "mai." — drop the trailing period and uppercase.
-  const raw = new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(d)
+  // `month: 'short'` returns "mai." in some locales — drop the trailing period and uppercase.
+  const raw = new Intl.DateTimeFormat(intlLocale(), { month: 'short' }).format(d)
   return raw.replace(/\.$/, '').toUpperCase()
 }
 
 function shortWeekday(d: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(d).replace(/\.$/, '')
+  return new Intl.DateTimeFormat(intlLocale(), { weekday: 'short' }).format(d).replace(/\.$/, '')
 }
 
 function pad2(n: number): string {
@@ -134,37 +138,25 @@ function relativeFromNow(iso: string): string {
 
   if (dayDiff === 0) {
     const minDiff = Math.round((d.getTime() - now.getTime()) / 60000)
-    if (minDiff > 0 && minDiff < 60) return `em ${minDiff} min`
-    if (minDiff < 0 && minDiff > -60) return `há ${Math.abs(minDiff)} min`
+    if (minDiff > 0 && minDiff < 60) return i18n.t('time.inMin', { count: minDiff })
+    if (minDiff < 0 && minDiff > -60) return i18n.t('time.agoMin', { count: Math.abs(minDiff) })
     const hourDiff = Math.round(minDiff / 60)
-    if (hourDiff > 0) return `em ${hourDiff} h`
-    if (hourDiff < 0) return `há ${Math.abs(hourDiff)} h`
-    return 'hoje'
+    if (hourDiff > 0) return i18n.t('time.inHour', { count: hourDiff })
+    if (hourDiff < 0) return i18n.t('time.agoHour', { count: Math.abs(hourDiff) })
+    return i18n.t('time.today')
   }
-  if (dayDiff === 1) return 'amanhã'
-  if (dayDiff === -1) return 'ontem'
+  if (dayDiff === 1) return i18n.t('time.tomorrow')
+  if (dayDiff === -1) return i18n.t('time.yesterday')
   if (dayDiff > 0) {
-    if (dayDiff < 7) return `daqui a ${dayDiff} dias`
-    if (dayDiff < 30) {
-      const w = Math.round(dayDiff / 7)
-      return w === 1 ? 'em 1 semana' : `em ${w} semanas`
-    }
-    if (dayDiff < 365) {
-      const m = Math.round(dayDiff / 30)
-      return m === 1 ? 'em 1 mês' : `em ${m} meses`
-    }
+    if (dayDiff < 7) return i18n.t('time.inDays', { count: dayDiff })
+    if (dayDiff < 30) return i18n.t('time.inWeeks', { count: Math.round(dayDiff / 7) })
+    if (dayDiff < 365) return i18n.t('time.inMonths', { count: Math.round(dayDiff / 30) })
     return ''
   }
   const past = Math.abs(dayDiff)
-  if (past < 7) return `há ${past} dias`
-  if (past < 30) {
-    const w = Math.round(past / 7)
-    return w === 1 ? 'há 1 semana' : `há ${w} semanas`
-  }
-  if (past < 365) {
-    const m = Math.round(past / 30)
-    return m === 1 ? 'há 1 mês' : `há ${m} meses`
-  }
+  if (past < 7) return i18n.t('time.agoDays', { count: past })
+  if (past < 30) return i18n.t('time.agoWeeks', { count: Math.round(past / 7) })
+  if (past < 365) return i18n.t('time.agoMonths', { count: Math.round(past / 30) })
   return ''
 }
 
@@ -206,9 +198,9 @@ function PrayerCard({
   onPray,
   isPrayPending,
   lastPrayerHit,
-  categoryLabel,
   formatDate
 }: PrayerCardProps) {
+  const { t } = useTranslation()
   const isOwner = viewerId === item.authorId
   const fullDate = formatDate(item.createdAt)
   const authorUser = {
@@ -229,10 +221,10 @@ function PrayerCard({
           <div className="post__line">
             {item.authorUsername ? (
               <Link to={`/u/${item.authorUsername}`} className="post__name">
-                {item.authorDisplayName || 'Membro'}
+                {item.authorDisplayName || t('card.member')}
               </Link>
             ) : (
-              <span className="post__name">{item.authorDisplayName || 'Membro'}</span>
+              <span className="post__name">{item.authorDisplayName || t('card.member')}</span>
             )}
             {item.authorUsername && (
               <>
@@ -244,20 +236,20 @@ function PrayerCard({
               {relativeTime(item.createdAt)}
             </time>
             {isOwner && item.allowAnonymous && (
-              <span className="anon-flag" title="Você publicou esta intenção como anônima — outras pessoas veem como Anônimo.">
-                anônimo
+              <span className="anon-flag" title={t('card.anonymousTitle')}>
+                {t('card.anonymousFlag')}
               </span>
             )}
           </div>
           <div className="post__line post__line--meta">
             <span className="cat-pill" style={categoryStyle(item.category)}>
-              {categoryLabel[item.category] || item.category}
+              {categoryLabel(item.category)}
             </span>
           </div>
         </div>
         {isOwner && (
-          <Link to={`/requests/${item.id}`} className="post__edit" aria-label="Editar pedido">
-            Editar
+          <Link to={`/requests/${item.id}`} className="post__edit" aria-label={t('card.editRequest')}>
+            {t('card.edit')}
           </Link>
         )}
       </header>
@@ -282,9 +274,9 @@ function PrayerCard({
           ))}
         </div>
         {total > 0 && (
-          <div className="post__total" aria-label={`${total} orações ao todo`}>
+          <div className="post__total" aria-label={t('card.prayingTotalAria', { count: total })}>
             <span className="post__total-num">{total}</span>
-            <span className="post__total-label">em oração</span>
+            <span className="post__total-label">{t('card.praying')}</span>
           </div>
         )}
       </footer>
@@ -383,6 +375,7 @@ type AnnouncementCardLayoutProps = {
 // announcement form preview. When `interactive` is false, links collapse to <div>
 // and the manage menu is hidden.
 export function AnnouncementCardLayout({ item, interactive = true, manageMenu }: AnnouncementCardLayoutProps) {
+  const { t } = useTranslation()
   const authorUser = {
     displayName: item.authorDisplayName,
     username: item.authorUsername,
@@ -418,7 +411,7 @@ export function AnnouncementCardLayout({ item, interactive = true, manageMenu }:
             className="cat-pill"
             style={{ background: 'oklch(0.93 0.03 220)', color: 'oklch(0.38 0.08 220)' }}
           >
-            Anúncio
+            {t('card.announcement')}
           </span>
           {item.groupName && (
             <MaybeLink
@@ -465,10 +458,10 @@ export function AnnouncementCardLayout({ item, interactive = true, manageMenu }:
             <Avatar user={authorUser} size="sm" />
             <div className="min-w-0 text-xs leading-tight">
               <span className="block truncate font-semibold" style={{ color: 'var(--ink)' }}>
-                {item.authorDisplayName || 'Membro'}
+                {item.authorDisplayName || t('card.member')}
               </span>
               <span className="block truncate" style={{ color: 'var(--muted)' }}>
-                @{item.authorUsername || 'usuario'} · {relativeTime(item.createdAt)}
+                @{item.authorUsername || t('card.user')} · {relativeTime(item.createdAt)}
               </span>
             </div>
           </MaybeLink>
@@ -488,6 +481,7 @@ function ManageMenu({
   onDelete: () => void
   busy: boolean
 }) {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -511,7 +505,7 @@ function ManageMenu({
     <div className="relative" ref={ref}>
       <button
         type="button"
-        aria-label="Mais opções"
+        aria-label={t('card.moreOptions')}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -538,7 +532,7 @@ function ManageMenu({
             }}
             className="block w-full px-3 py-2 text-left text-xs font-semibold text-secondary hover:bg-primary/10"
           >
-            Editar
+            {t('card.edit')}
           </button>
           <button
             type="button"
@@ -549,7 +543,7 @@ function ManageMenu({
             }}
             className="block w-full px-3 py-2 text-left text-xs font-semibold text-primary hover:bg-primary/10"
           >
-            Excluir
+            {t('card.delete')}
           </button>
         </div>
       )}
@@ -558,6 +552,7 @@ function ManageMenu({
 }
 
 function AnnouncementCard({ item, viewerId }: { item: AnnouncementFeedItem; viewerId?: string }) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const confirm = useConfirm()
@@ -577,9 +572,9 @@ function AnnouncementCard({ item, viewerId }: { item: AnnouncementFeedItem; view
 
   async function handleDelete() {
     const ok = await confirm({
-      title: 'Excluir anúncio?',
-      description: 'Esta ação não pode ser desfeita.',
-      confirmLabel: 'Excluir',
+      title: t('card.deleteAnnouncementTitle'),
+      description: t('card.deleteAnnouncementDesc'),
+      confirmLabel: t('card.delete'),
       destructive: true
     })
     if (ok) deleteMutation.mutate()
