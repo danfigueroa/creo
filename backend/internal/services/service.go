@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"parish-viva/backend/internal/models"
@@ -13,7 +14,50 @@ import (
 )
 
 type Service struct {
-	repo repositories.Repository
+	repo       repositories.Repository
+	feedCounts *ttlCounts
+}
+
+// feedCountTTL limita a frequência dos COUNT(*) de feed, que reexecutam a CTE
+// inteira do feed só para preencher pagination.total. O total pode ficar até
+// 30s defasado — aceitável, ele só alimenta o pager.
+const feedCountTTL = 30 * time.Second
+
+type ttlCountEntry struct {
+	value     int64
+	expiresAt time.Time
+}
+
+type ttlCounts struct {
+	mu      sync.Mutex
+	entries map[string]ttlCountEntry
+}
+
+func (s *Service) cachedCount(ctx context.Context, key string, fetch func(context.Context) (int64, error)) (int64, error) {
+	now := time.Now()
+	s.feedCounts.mu.Lock()
+	if e, ok := s.feedCounts.entries[key]; ok && now.Before(e.expiresAt) {
+		s.feedCounts.mu.Unlock()
+		return e.value, nil
+	}
+	s.feedCounts.mu.Unlock()
+
+	value, err := fetch(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	s.feedCounts.mu.Lock()
+	if len(s.feedCounts.entries) > 4096 {
+		for k, e := range s.feedCounts.entries {
+			if now.After(e.expiresAt) {
+				delete(s.feedCounts.entries, k)
+			}
+		}
+	}
+	s.feedCounts.entries[key] = ttlCountEntry{value: value, expiresAt: now.Add(feedCountTTL)}
+	s.feedCounts.mu.Unlock()
+	return value, nil
 }
 
 var ErrInvalidDisplayName = errors.New("invalid displayName")
@@ -42,7 +86,10 @@ var ErrAnnouncementInvalidBody = errors.New("invalid announcement body")
 var ErrAnnouncementInvalidEventAt = errors.New("invalid announcement event date")
 
 func NewService(repo repositories.Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo:       repo,
+		feedCounts: &ttlCounts{entries: map[string]ttlCountEntry{}},
+	}
 }
 
 func (s *Service) GetProfile(ctx context.Context, userID string) (models.User, error) {
@@ -212,7 +259,9 @@ func (s *Service) ListPublicPrayerRequests(ctx context.Context, viewerUserID str
 }
 
 func (s *Service) CountPublicPrayerRequests(ctx context.Context, viewerUserID string) (int64, error) {
-	return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
+	return s.cachedCount(ctx, "public:"+viewerUserID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
+	})
 }
 
 func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error {
@@ -369,7 +418,9 @@ func (s *Service) ListFriendsPrayerRequests(ctx context.Context, userID string, 
 }
 
 func (s *Service) CountFriendsPrayerRequests(ctx context.Context, userID string) (int64, error) {
-	return s.repo.CountFriendsPrayerRequests(ctx, userID)
+	return s.cachedCount(ctx, "friends:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountFriendsPrayerRequests(ctx, userID)
+	})
 }
 
 func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]models.Group, error) {
@@ -900,11 +951,15 @@ func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID strin
 	if err != nil {
 		return nil, 0, err
 	}
-	prayerCount, err := s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
+	prayerCount, err := s.cachedCount(ctx, "group-req:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	announcementCount, err := s.repo.CountAnnouncementsByGroup(ctx, groupID)
+	announcementCount, err := s.cachedCount(ctx, "group-ann:"+groupID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountAnnouncementsByGroup(ctx, groupID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -930,11 +985,15 @@ func (s *Service) ListHomeFeed(ctx context.Context, userID string, limit, offset
 	if err != nil {
 		return nil, 0, err
 	}
-	prayerCount, err := s.repo.CountHomePrayerRequests(ctx, userID)
+	prayerCount, err := s.cachedCount(ctx, "home:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountHomePrayerRequests(ctx, userID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	announcementCount, err := s.repo.CountAnnouncementsForUser(ctx, userID)
+	announcementCount, err := s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountAnnouncementsForUser(ctx, userID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -960,11 +1019,15 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 	if err != nil {
 		return nil, 0, err
 	}
-	prayerCount, err := s.repo.CountGroupsPrayerRequests(ctx, userID)
+	prayerCount, err := s.cachedCount(ctx, "groups:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountGroupsPrayerRequests(ctx, userID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
-	announcementCount, err := s.repo.CountAnnouncementsForUser(ctx, userID)
+	announcementCount, err := s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountAnnouncementsForUser(ctx, userID)
+	})
 	if err != nil {
 		return nil, 0, err
 	}
