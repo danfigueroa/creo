@@ -82,10 +82,12 @@ export function AuthPage() {
       if (pendingTradition) {
         try {
           await api.patch('/profile/tradition', { tradition: pendingTradition })
+          // Só limpa em sucesso: se o PATCH falhar (rede, backend frio), a
+          // escolha fica guardada e é reaplicada no próximo login.
+          window.localStorage.removeItem('creo-pending-tradition')
         } catch {
           // best-effort
         }
-        window.localStorage.removeItem('creo-pending-tradition')
       }
       navigate(nextPath, { replace: true })
     }
