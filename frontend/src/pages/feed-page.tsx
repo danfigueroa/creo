@@ -112,7 +112,9 @@ export function FeedPage() {
       }
     },
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['feed'] })
+      // Só a página visível: o optimistic já atualizou a UI e as demais
+      // páginas/abas em cache revalidam sozinhas pelo staleTime.
+      await queryClient.invalidateQueries({ queryKey: ['feed', scope, page] })
     }
   })
   const groupsLookupQuery = useQuery({
