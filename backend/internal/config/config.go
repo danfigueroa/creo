@@ -11,6 +11,10 @@ import (
 type Config struct {
 	HTTPAddr             string
 	DatabaseURL          string
+	DBMaxConns           int
+	DBMinConns           int
+	DBMaxConnLifetime    time.Duration
+	DBMaxConnIdleTime    time.Duration
 	JWTIssuer            string
 	JWKSURL              string
 	JWKSCacheTTL         time.Duration
@@ -25,6 +29,10 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:             resolveHTTPAddr(),
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		DBMaxConns:           intOrDefault("DB_MAX_CONNS", 8),
+		DBMinConns:           intOrDefault("DB_MIN_CONNS", 0),
+		DBMaxConnLifetime:    durationOrDefault("DB_MAX_CONN_LIFETIME", 30*time.Minute),
+		DBMaxConnIdleTime:    durationOrDefault("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
 		JWTIssuer:            os.Getenv("JWT_ISSUER"),
 		JWKSURL:              os.Getenv("JWKS_URL"),
 		JWKSCacheTTL:         durationOrDefault("JWKS_CACHE_TTL", 10*time.Minute),
