@@ -120,7 +120,7 @@ export function PageShell({ children }: PropsWithChildren) {
   const searchRef = useRef<HTMLDivElement | null>(null)
 
   const profileQuery = useQuery({
-    queryKey: ['profile', 'shell'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => (await api.get<ProfileMini>('/profile')).data
   })
 

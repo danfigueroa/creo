@@ -109,7 +109,7 @@ export function RequestDetailPage() {
   })
 
   const profileQuery = useQuery({
-    queryKey: ['profile', 'minimal'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => (await api.get<Profile>('/profile')).data
   })
 

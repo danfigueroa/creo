@@ -73,7 +73,7 @@ export function FeedPage() {
     gcTime: 5 * 60_000
   })
   const profileQuery = useQuery({
-    queryKey: ['profile', 'feed'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => {
       const res = await api.get<ProfileMini>('/profile')
       return res.data

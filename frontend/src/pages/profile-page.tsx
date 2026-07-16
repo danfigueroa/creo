@@ -43,7 +43,7 @@ export function ProfilePage() {
   const [traditionStatus, setTraditionStatus] = useState('')
 
   const profile = useQuery({
-    queryKey: ['profile'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => {
       const res = await api.get<Profile>('/profile')
       return res.data
@@ -69,9 +69,9 @@ export function ProfilePage() {
   }, [profile.data])
 
   const invalidateProfileEverywhere = async () => {
+    // Todas as telas compartilham a key ['profile', 'me'] — uma invalidação basta.
     await Promise.all([
-      profile.refetch(),
-      queryClient.invalidateQueries({ queryKey: ['profile', 'shell'] }),
+      queryClient.invalidateQueries({ queryKey: ['profile', 'me'] }),
       queryClient.invalidateQueries({ queryKey: ['profile', 'public'] })
     ])
   }
@@ -85,7 +85,6 @@ export function ProfilePage() {
       setTraditionStatus(t('profile.traditionUpdated'))
       await Promise.all([
         invalidateProfileEverywhere(),
-        queryClient.invalidateQueries({ queryKey: ['profile', 'feed'] }),
         queryClient.invalidateQueries({ queryKey: ['feed'] })
       ])
     },

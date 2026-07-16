@@ -104,7 +104,7 @@ export function GroupPage() {
   const tabParam = (searchParams.get('tab') as Tab) || 'mural'
 
   const profileQuery = useQuery({
-    queryKey: ['profile', 'feed'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => (await api.get<ProfileMini>('/profile')).data
   })
 

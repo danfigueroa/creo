@@ -84,7 +84,7 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
   })
 
   const profileQuery = useQuery({
-    queryKey: ['profile', 'feed'],
+    queryKey: ['profile', 'me'],
     queryFn: async () => (await api.get<ProfileMini>('/profile')).data
   })
 
