@@ -149,6 +149,7 @@ export function PageShell({ children }: PropsWithChildren) {
 
   const composerOpen = useComposerStore((s) => s.open)
   const composerDefaultGroupId = useComposerStore((s) => s.defaultGroupId)
+  const composerOnCreated = useComposerStore((s) => s.onCreated)
   const openComposer = useComposerStore((s) => s.openComposer)
   const closeComposer = useComposerStore((s) => s.closeComposer)
 
@@ -529,6 +530,7 @@ export function PageShell({ children }: PropsWithChildren) {
         open={composerOpen}
         onClose={closeComposer}
         defaultGroupId={composerDefaultGroupId ?? undefined}
+        onCreated={composerOnCreated ?? undefined}
       />
     </div>
   )

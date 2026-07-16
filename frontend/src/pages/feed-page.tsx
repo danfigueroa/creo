@@ -7,7 +7,7 @@ import { api } from '@/lib/api'
 import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
-import { NewRequestModal } from '@/components/new-request-modal'
+import { useComposerStore } from '@/state/composer-store'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
 import i18n from '@/lib/i18n'
 
@@ -45,7 +45,7 @@ export function FeedPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [lastPrayerHit, setLastPrayerHit] = useState<{ requestID: string; actionType: string; fxID: number } | null>(null)
-  const [composerOpen, setComposerOpen] = useState(false)
+  const openComposer = useComposerStore((s) => s.openComposer)
   const [searchParams, setSearchParams] = useSearchParams()
   const rawScope = searchParams.get('scope') as FeedScope | null
   const scope: FeedScope = rawScope && tabs.some((tab) => tab.scope === rawScope) ? rawScope : 'home'
@@ -196,6 +196,21 @@ export function FeedPage() {
     setSearchParams({ scope: nextScope, page: '1' })
   }
 
+  const handleCreated = useCallback(
+    (visibility: 'GROUP_ONLY' | 'PRIVATE' | 'PUBLIC') => {
+      if (visibility === 'PUBLIC') {
+        setSearchParams({ scope: 'public', page: '1' })
+      } else {
+        setSearchParams({ scope: 'home', page: '1' })
+      }
+    },
+    [setSearchParams]
+  )
+
+  const openFeedComposer = useCallback(() => {
+    openComposer(undefined, handleCreated)
+  }, [openComposer, handleCreated])
+
   const goToPage = (target: number) => {
     const nextPage = Math.min(Math.max(target, 1), totalPages)
     setSearchParams({ scope, page: String(nextPage) })
@@ -252,7 +267,7 @@ export function FeedPage() {
         {profileQuery.data?.id && (
           <button
             type="button"
-            onClick={() => setComposerOpen(true)}
+            onClick={openFeedComposer}
             className="composer"
             style={{ width: '100%', textAlign: 'left' }}
           >
@@ -299,7 +314,7 @@ export function FeedPage() {
               </p>
               <button
                 type="button"
-                onClick={() => setComposerOpen(true)}
+                onClick={openFeedComposer}
                 className="btn btn--primary"
                 style={{ marginTop: 16 }}
               >
@@ -357,17 +372,6 @@ export function FeedPage() {
           </div>
         )}
       </div>
-      <NewRequestModal
-        open={composerOpen}
-        onClose={() => setComposerOpen(false)}
-        onCreated={(visibility) => {
-          if (visibility === 'PUBLIC') {
-            setSearchParams({ scope: 'public', page: '1' })
-          } else {
-            setSearchParams({ scope: 'home', page: '1' })
-          }
-        }}
-      />
     </PageShell>
   )
 }
