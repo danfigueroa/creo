@@ -70,8 +70,13 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
     },
     onSuccess: async () => {
       setError('')
-      await queryClient.invalidateQueries({ queryKey: ['feed'] })
-      await queryClient.invalidateQueries({ queryKey: ['group-feed'] })
+      const targetGroupIds = visibility === 'GROUP_ONLY' ? groupIds : []
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['feed'] }),
+        ...targetGroupIds.map((gid) =>
+          queryClient.invalidateQueries({ queryKey: ['group', gid, 'feed'] })
+        )
+      ])
       onCreated?.(visibility)
       onClose()
     },
