@@ -153,22 +153,26 @@ export function FeedPage() {
     return () => window.clearTimeout(timer)
   }, [lastPrayerHit])
 
-  useEffect(() => {
-    const canPrefetchProtectedTabs = Boolean(profileQuery.data?.id)
-    for (const tab of tabs) {
-      if (tab.scope === scope) {
-        continue
+  // Prefetch de outra aba só quando o usuário sinaliza intenção (hover/focus),
+  // em vez de disparar 3 GETs extras a cada mount/troca de página.
+  // Trocar de aba sempre volta pra página 1 (ver changeScope).
+  const prefetchScope = useCallback(
+    (targetScope: FeedScope) => {
+      if (targetScope === scope) {
+        return
       }
-      if (tab.requiresAuth && !canPrefetchProtectedTabs) {
-        continue
+      const targetTab = tabs.find((tab) => tab.scope === targetScope)
+      if (!targetTab || (targetTab.requiresAuth && !profileQuery.data?.id)) {
+        return
       }
       queryClient.prefetchQuery({
-        queryKey: ['feed', tab.scope, page],
-        queryFn: () => fetchFeed(tab.scope, page),
+        queryKey: ['feed', targetScope, 1],
+        queryFn: () => fetchFeed(targetScope, 1),
         staleTime: 30_000
       })
-    }
-  }, [scope, page, profileQuery.data?.id, queryClient])
+    },
+    [scope, profileQuery.data?.id, queryClient]
+  )
 
   useEffect(() => {
     if (isUnauthorized) {
@@ -233,6 +237,8 @@ export function FeedPage() {
               aria-selected={tab.scope === scope}
               className={`tab ${tab.scope === scope ? 'is-on' : ''}`}
               onClick={() => changeScope(tab.scope)}
+              onMouseEnter={() => prefetchScope(tab.scope)}
+              onFocus={() => prefetchScope(tab.scope)}
             >
               {t(tab.labelKey)}
             </button>
