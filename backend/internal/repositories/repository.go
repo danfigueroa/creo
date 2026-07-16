@@ -61,6 +61,7 @@ type Repository interface {
 	CountFriendsPrayerRequests(ctx context.Context, userID string) (int64, error)
 	ListHomePrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error)
 	CountHomePrayerRequests(ctx context.Context, userID string) (int64, error)
+	EnrichPrayerRequests(ctx context.Context, viewerUserID string, items []*models.PrayerRequest) error
 	RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error
 	ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error)
 	ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error)
@@ -890,14 +891,9 @@ func (r *PostgresRepository) ListGroupsPrayerRequests(ctx context.Context, userI
 		return nil, err
 	}
 	defer rows.Close()
-	items, err := scanPrayerRequests(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.enrichPrayerRequests(ctx, userID, items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	// Sem enrich aqui: o feed mesclado (service.ListGroupsFeed) fatia a página
+	// antes e enriquece só os itens retornados via EnrichPrayerRequests.
+	return scanPrayerRequests(rows)
 }
 
 func (r *PostgresRepository) CountGroupsPrayerRequests(ctx context.Context, userID string) (int64, error) {
@@ -1020,14 +1016,9 @@ func (r *PostgresRepository) ListHomePrayerRequests(ctx context.Context, userID 
 		return nil, err
 	}
 	defer rows.Close()
-	items, err := scanPrayerRequests(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.enrichPrayerRequests(ctx, userID, items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	// Sem enrich aqui: o feed mesclado (service.ListHomeFeed) fatia a página
+	// antes e enriquece só os itens retornados via EnrichPrayerRequests.
+	return scanPrayerRequests(rows)
 }
 
 func (r *PostgresRepository) CountHomePrayerRequests(ctx context.Context, userID string) (int64, error) {
@@ -1344,6 +1335,17 @@ func scanPrayerRequests(rows pgx.Rows) ([]models.PrayerRequest, error) {
 }
 
 func (r *PostgresRepository) enrichPrayerRequests(ctx context.Context, userID string, items []models.PrayerRequest) error {
+	refs := make([]*models.PrayerRequest, len(items))
+	for i := range items {
+		refs[i] = &items[i]
+	}
+	return r.EnrichPrayerRequests(ctx, userID, refs)
+}
+
+// EnrichPrayerRequests preenche autor, answered, grupos e contagens de reação em lote.
+// Exposto para os feeds mesclados (home/groups/mural), que fatiam a página no service
+// e só então enriquecem os itens que serão de fato retornados.
+func (r *PostgresRepository) EnrichPrayerRequests(ctx context.Context, userID string, items []*models.PrayerRequest) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -1986,14 +1988,9 @@ func (r *PostgresRepository) ListPrayerRequestsByGroup(ctx context.Context, view
 		return nil, err
 	}
 	defer rows.Close()
-	items, err := scanPrayerRequests(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.enrichPrayerRequests(ctx, viewerUserID, items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	// Sem enrich aqui: o mural do grupo (service.ListGroupFeed) fatia a página
+	// antes e enriquece só os itens retornados via EnrichPrayerRequests.
+	return scanPrayerRequests(rows)
 }
 
 func (r *PostgresRepository) CountPrayerRequestsByGroup(ctx context.Context, viewerUserID, groupID string) (int64, error) {

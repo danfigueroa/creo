@@ -930,6 +930,18 @@ func sliceFeed(items []models.FeedItem, offset, limit int) []models.FeedItem {
 	return items[offset:end]
 }
 
+// enrichFeedPage enriquece (autor, grupos, contagens de reação) apenas os pedidos
+// presentes na página final — os List* dos feeds mesclados retornam linhas cruas.
+func (s *Service) enrichFeedPage(ctx context.Context, viewerUserID string, page []models.FeedItem) error {
+	refs := make([]*models.PrayerRequest, 0, len(page))
+	for i := range page {
+		if page[i].PrayerRequest != nil {
+			refs = append(refs, page[i].PrayerRequest)
+		}
+	}
+	return s.repo.EnrichPrayerRequests(ctx, viewerUserID, refs)
+}
+
 // ListGroupFeed returns the merged feed (prayer requests + announcements) for a group's mural.
 // Pagination strategy: fetch limit+offset from each stream, merge, slice. OK for small offsets.
 func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.FeedItem, int64, error) {
@@ -964,7 +976,11 @@ func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID strin
 		return nil, 0, err
 	}
 	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
-	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
+	page := sliceFeed(merged, offset, limit)
+	if err := s.enrichFeedPage(ctx, viewerUserID, page); err != nil {
+		return nil, 0, err
+	}
+	return page, prayerCount + announcementCount, nil
 }
 
 // ListHomeFeed returns the merged home feed (prayer requests from self/friends/groups + announcements
@@ -998,7 +1014,11 @@ func (s *Service) ListHomeFeed(ctx context.Context, userID string, limit, offset
 		return nil, 0, err
 	}
 	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
-	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
+	page := sliceFeed(merged, offset, limit)
+	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
+		return nil, 0, err
+	}
+	return page, prayerCount + announcementCount, nil
 }
 
 // ListGroupsFeed returns the merged "all groups" feed (all prayer requests from groups
@@ -1032,7 +1052,11 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 		return nil, 0, err
 	}
 	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
-	return sliceFeed(merged, offset, limit), prayerCount + announcementCount, nil
+	page := sliceFeed(merged, offset, limit)
+	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
+		return nil, 0, err
+	}
+	return page, prayerCount + announcementCount, nil
 }
 
 func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
