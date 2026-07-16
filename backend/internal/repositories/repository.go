@@ -2705,38 +2705,23 @@ func (r *PostgresRepository) SoftDeleteAnnouncement(ctx context.Context, announc
 
 func (r *PostgresRepository) notifyGroupMembersOfAnnouncement(ctx context.Context, exec notifyExec, groupID, announcementID, authorID, title string) {
 	// Best-effort: failure to notify must not fail the announcement create.
-	rows, err := r.db.Query(ctx, `
-		SELECT user_id::text
-		FROM group_memberships
-		WHERE group_id = $1::uuid AND deleted_at IS NULL AND user_id <> $2::uuid
-	`, groupID, authorID)
+	// Fan-out em um único INSERT ... SELECT em vez de 1 INSERT por membro.
+	payloadBytes, err := json.Marshal(map[string]any{
+		"announcementId": announcementID,
+		"title":          title,
+	})
 	if err != nil {
+		log.Printf("notification insert failed: payload marshal type=%s group=%s err=%v", models.NotificationTypeGroupAnnouncementPosted, groupID, err)
 		return
 	}
-	memberIDs := make([]string, 0)
-	for rows.Next() {
-		var mid string
-		if err := rows.Scan(&mid); err != nil {
-			rows.Close()
-			return
-		}
-		memberIDs = append(memberIDs, mid)
-	}
-	rows.Close()
-
-	actor := authorID
-	for _, mid := range memberIDs {
-		_ = insertNotificationOn(ctx, exec, models.CreateNotificationInput{
-			UserID:      mid,
-			Type:        models.NotificationTypeGroupAnnouncementPosted,
-			ActorUserID: &actor,
-			SubjectType: models.NotificationSubjectGroup,
-			SubjectID:   groupID,
-			Payload: map[string]any{
-				"announcementId": announcementID,
-				"title":          title,
-			},
-		})
+	_, err = exec.Exec(ctx, `
+		INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
+		SELECT gm.user_id, $3, $2::uuid, $4, $1::uuid, $5::jsonb
+		FROM group_memberships gm
+		WHERE gm.group_id = $1::uuid AND gm.deleted_at IS NULL AND gm.user_id <> $2::uuid
+	`, groupID, authorID, string(models.NotificationTypeGroupAnnouncementPosted), string(models.NotificationSubjectGroup), string(payloadBytes))
+	if err != nil {
+		log.Printf("notification insert failed: announcement fan-out group=%s announcement=%s err=%v", groupID, announcementID, err)
 	}
 }
 
