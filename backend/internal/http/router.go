@@ -30,6 +30,9 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 	announcementHandler := handlers.NewAnnouncementHandler(service)
 
 	r.Use(chimiddleware.Recoverer)
+	// Atrás do proxy da Vercel, RemoteAddr é o IP do proxy; RealIP resolve
+	// X-Forwarded-For/X-Real-IP para o rate-limit por IP funcionar de verdade.
+	r.Use(chimiddleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logging(logger))
 	r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
