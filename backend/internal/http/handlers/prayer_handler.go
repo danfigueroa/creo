@@ -73,6 +73,12 @@ func (h *PrayerHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
+	if viewerUserID == "" {
+		// O feed público anônimo é idêntico para qualquer visitante: o CDN pode
+		// absorver os acessos por alguns segundos sem cachear no browser.
+		w.Header().Set("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60")
+		w.Header().Set("Vary", "Authorization")
+	}
 	writeFeedResponse(w, models.WrapPrayerRequests(items), page, limit, total)
 }
 
