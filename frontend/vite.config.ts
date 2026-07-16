@@ -8,5 +8,28 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Separa as deps pesadas do vendor único: chunks estáveis cacheiam
+        // independentemente e carregam em paralelo.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+          if (id.includes('@supabase')) {
+            return 'supabase'
+          }
+          if (id.includes('i18next')) {
+            return 'i18n'
+          }
+          if (id.includes('@tanstack')) {
+            return 'query'
+          }
+          return 'vendor'
+        }
+      }
+    }
   }
 })
