@@ -181,9 +181,17 @@ Sistema in-app, **best-effort**: `_ = insertNotificationOn(ctx, exec, in)` — f
 
 - `insertNotificationOn(ctx, exec, in)` — exec = `pool` ou `tx` (ambos satisfazem `notifyExec` interface local).
 - `r.notifyGroupAdminsOfJoinRequest(ctx, requesterUserID, groupID)` — itera admins.
+- `r.notifyGroupMembersOfAnnouncement(...)` — fan-out em um único `INSERT ... SELECT` (não iterar membros).
 - Self-notification é evitada (skip `if actor == recipient`).
-- Eventos suportados: `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`.
-- `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP}` — `subject_id` permite o front navegar.
+- Eventos suportados (lista completa em `models.go`, `NotificationType*`): `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`, `REQUEST_APPROVED`, `REQUEST_REJECTED`, `REQUEST_CHANGES_ASKED`, `REQUEST_UPDATED`, `REQUEST_ANSWERED`, `GROUP_ANNOUNCEMENT_POSTED`, `MILESTONE_PRAYED`, `MILESTONE_CREATED`, `MILESTONE_STREAK`.
+- `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP, MILESTONE}` — `subject_id` permite o front navegar.
+
+### Performance de feed (convenções)
+
+- **Feeds mesclados** (home, groups, mural do grupo) buscam `limit+offset` linhas **cruas** de pedidos + anúncios, mesclam/fatiam no service e só então chamam `repo.EnrichPrayerRequests` na página final. Não voltar a enriquecer dentro de `ListHomePrayerRequests`/`ListGroupsPrayerRequests`/`ListPrayerRequestsByGroup`.
+- **COUNTs de feed** passam por `Service.cachedCount` (TTL 30s, `feedCountTTL`). Novos counts de feed devem usar o mesmo helper.
+- `prayer_actions` tem índice `(prayer_request_id, action_type)` (migration 000016) para a agregação de reações do enrich — preservar esse padrão de acesso.
+- Feed público **anônimo** responde `Cache-Control: s-maxage=30` (CDN). Não adicionar cache em resposta autenticada sem `Vary`/cuidado.
 
 ### Tradition (catolica/evangélica)
 
@@ -236,18 +244,18 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 
 ### Telas e shell
 
-- **`/`** (`pages/landing-page.tsx`) — Welcome screen 2-col com hero editorial à esquerda (brand mark, título serif gigante com itálico, lede, 3 features numeradas, citação Mt 18,20) e auth card à direita (tabs Entrar/Criar com underline animado, magic-link). Sign-in bem-sucedido roteia pra `/onboarding` se `localStorage.creo-onboarded` não existe, senão `/feed`.
-- **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais.
-- **`/onboarding`** (`pages/onboarding-page.tsx`) — wizard de 6 passos (welcome, denominação, interesses, amigos sugeridos, primeira intenção, tour). Salva `creo-onboarded=true` ao concluir. Tradição vai pra backend via PATCH `/profile/tradition`. Interesses ficam em `localStorage.creo-interests` (sem backend ainda).
+- **`/`** (`pages/landing-page.tsx`) — Welcome screen 2-col com hero editorial à esquerda (brand mark, título serif gigante com itálico, lede, 3 features numeradas, citação Mt 18,20) e auth card à direita (tabs Entrar/Criar com underline animado, magic-link). Sign-in bem-sucedido roteia pra `/feed`. A tradição escolhida antes do login fica em `localStorage.creo-pending-tradition` e é aplicada pós-login via PATCH `/profile/tradition` (a chave só é removida quando o PATCH tem sucesso).
+- **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais. (O onboarding wizard foi **removido** — não existe `/onboarding`.)
 - **`/feed`** (`pages/feed-page.tsx`) — canvas `.feed` 720px, headline serif, tabs com `tabs__ink`, composer quiet (abre modal global), posts.
-- **`/requests/:id`** (`pages/request-detail-page.tsx`) — IntentionDetail editorial: header + body em serif, total de orações destacado, reactions row, "Quem rezou" agrupado, "Atualizações do autor" (placeholder), "Compartilhar com" (PATCH /requests/:id).
+- **`/requests/:id`** (`pages/request-detail-page.tsx`) — IntentionDetail editorial: header + body em serif, total de orações destacado, reactions row, "Quem rezou" agrupado, "Atualizações do autor" (**funcional**: `GET/POST /requests/:id/updates`), marcar como atendido com testemunho (`POST/DELETE /requests/:id/answer`), "Compartilhar com" (PATCH /requests/:id — visibilidade por grupo, não é share externo).
 - **`/notifications`** (`pages/notifications-page.tsx`) — página completa com agrupamento por tipo (orações, comunidade, grupos, outros). Sino na topbar **navega pra cá** (não tem mais dropdown). Sidebar tem item "Notificações" com pip vermelho idem.
 - **`/groups`, `/groups/:id`, `/profile`, `/u/:username`, `/friends`, `/moderation`, `/groups/:id/announcements/*`** — visual existente, retokenizado pelos aliases.
 
 ### Componentes-chave
 
 - `components/page-shell.tsx` — `.app` grid (sidebar 248px + stage). Sidebar tem brand + nav (Mural, Notificações, Amigos, Grupos, Criar grupo) + "Em oração agora" (top friends do `/friends`) + `side__me` no rodapé. Topbar com search pill + **botão "+ Nova intenção"** (`btn btn--ghost-out top__compose`) + sino linkando pra `/notifications`.
-- `state/composer-store.ts` — Zustand store global pro modal de nova intenção. PageShell renderiza o `<NewRequestModal>` controlado por essa store; qualquer página pode chamar `openComposer()`.
+- `state/composer-store.ts` — Zustand store global pro modal de nova intenção. PageShell renderiza o **único** `<NewRequestModal>` controlado por essa store; qualquer página chama `openComposer(defaultGroupId?, onCreated?)` (não montar um segundo modal local). O feed passa `onCreated` pra navegar pra aba correspondente à visibilidade criada.
+- **Query key de perfil**: todas as telas usam `['profile', 'me']` pro `GET /profile` (dedupe entre PageShell e páginas). Não criar variações (`['profile','shell']`, `['profile','feed']`, ... foram unificadas).
 - `components/feed-card.tsx` — `PrayerCard` com total no head + Editar; reactions no rodapé. `AnnouncementCard` com hero image + event date badge.
 - `components/glyph.tsx` — 5 marcas geométricas (rose/sun/diamond/beads/ring) usadas pelas reaction pills.
 - `lib/traditions.ts` — `Tradition` agora é `'CATHOLIC' | 'EVANGELICAL' | 'BOTH' | 'NONE'` (TS). Cada `PrayerAction` tem `denoms[]` que limita visibilidade. `toSavedTradition(t)` colapsa BOTH/NONE pra CATHOLIC (backend ainda não tem os 4 valores).

@@ -24,7 +24,7 @@ Tudo é deployado num único projeto Vercel usando a feature **experimentalServi
   - `anon public key`
   - `Connection string — Transaction pooler` (porta **6543**) → vira `DATABASE_URL` em produção
   - `Connection string — Direct` (porta **5432**) → só para rodar migrações da sua máquina
-- Migrações já estão em v6 no Supabase (confirme com `migrate ... version`).
+- Migrações: a versão em produção deve refletir a maior `NNNNNN_` em `backend/internal/db/migrations/` (confirme com `migrate ... version`).
 
 ---
 

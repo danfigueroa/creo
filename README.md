@@ -68,32 +68,37 @@ Creo combines social graph and community feeds with prayer-specific privacy and 
   - `POST /api/v1/friends/requests/{requestId}/accept`
   - `GET /api/v1/users/search`
   - username-first friend request flow (`@username`)
+- Moderation:
+  - `GET /api/v1/moderation/queue` + approve / reject / request-changes with audit log (`moderation_actions`)
+  - moderation history per request, author notifications on every action
+- Notifications (in-app):
+  - `GET /api/v1/notifications`, `/unread-count`, `POST /{id}/read`, `/read-all`
+  - events: prayed, friend request received/accepted, group join requested/approved,
+    request approved/rejected/changes-asked/updated/answered, group announcement,
+    prayed/created milestones and prayer streaks
+- Prayer request lifecycle: edit, soft-delete, author updates, answered with testimony
+- User blocks (`/api/v1/blocks`) affecting feeds and profiles
+- Group announcements (CRUD + feed overlay + member fan-out notification)
+- i18n (pt-BR / en) with per-user language persisted in the backend
 - Frontend:
   - Supabase auth page with sign in, sign up, passwordless, reset password
   - protected routes and logout flow
-  - redesigned dark UI system across key pages
-  - pages: feed, groups, friends, new request, profile, moderation, auth
-  - profile form improved with clear field purpose and username validation
-  - feed action "Eu orei" connected to API
-- Database migrations:
-  - initial schema
-  - social tables (`friendships`, `group_join_requests`)
-  - auth profile sync trigger
-  - username column and uniqueness support
-  - username trigger conflict fix
+  - editorial cream/teal UI system across all pages
+  - pages: feed, groups, group detail, friends, profile, public profile, request detail, notifications, moderation, auth
+  - optimistic "Eu orei" reactions with per-tradition action sets
+- Database migrations: `000001`–`000017` (see `backend/internal/db/migrations/`)
 
 ### Partially Implemented
 
-- Moderation queue API exists but returns empty placeholder
-- Public prayer moderation state (`PENDING_REVIEW`) exists, but moderator actions are not complete
-- UI for moderation exists, but no full moderation workflow yet
+- Moderation `remove` action exists in the service layer but has no HTTP route; `ban` has schema (`bans` table) but no implementation
 
 ### Not Implemented Yet
 
-- Full moderation action pipeline (`approve`, `reject`, `request_changes`, `remove`, `ban`)
-- Notifications domain (email outcomes and in-app)
+- Email notifications (`sent_email_at` column exists, never written)
 - Comment system
-- Search and pagination in all feeds
+- Prayer request search (`/users/search` and `/groups/search` exist; requests do not)
+- Group invites for `INVITE_ONLY` groups (policy enforced, invite flow missing)
+- Data export / account deletion (LGPD)
 - Automated deployment and infra environments
 - Full automated test coverage (unit/integration/e2e)
 
