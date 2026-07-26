@@ -539,7 +539,11 @@ export function PageShell({ children }: PropsWithChildren) {
 
       <div className="stage">
         <div className="top">
-          <div aria-hidden />
+          {/* Mobile only: the sidebar that normally carries the brand is hidden. */}
+          <Link to="/feed" className="top__brand" aria-label={t('shell.brandAria')}>
+            <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
+            <span className="brand-word">Creo</span>
+          </Link>
           <div className="top__search" ref={searchRef}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
               <circle cx="6" cy="6" r="4.2" stroke="currentColor" strokeWidth="1.3" />
@@ -572,7 +576,7 @@ export function PageShell({ children }: PropsWithChildren) {
                 <line x1="11.8" y1="11.8" x2="15" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
             </button>
-            <button type="button" className="btn btn--primary" onClick={() => openComposer()}>
+            <button type="button" className="btn btn--primary top__new" onClick={() => openComposer()}>
               {t('shell.newIntention')}
             </button>
             <Link to="/notifications" className="iconbtn" aria-label={unreadQuery.data ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}>

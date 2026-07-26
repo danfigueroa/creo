@@ -647,11 +647,24 @@ textarea::placeholder {
   z-index: 5;
 }
 
+/* Mobile-only topbar pieces: the brand takes over the empty left grid cell
+   (the sidebar that normally carries it is hidden), and the magnifier replaces
+   the search pill. Both stay out of the way on desktop. */
+.top__brand {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.top__brand .brand-mark { width: 24px; height: 24px; border-radius: 7px; }
+.top__brand .brand-word { font-size: 19px; }
+
 /* Compound selector on purpose: .iconbtn { display: grid } is declared further
    down the file and would otherwise win on source order. */
 .iconbtn.top__searchbtn { display: none; }
 
 .top__search {
+  position: relative; /* anchors the results dropdown — see comment below */
   display: flex;
   width: 100%;
   align-items: center;
@@ -664,6 +677,9 @@ textarea::placeholder {
   max-width: 520px;
   transition: border-color 160ms ease, background 160ms ease;
 }
+/* The dropdown used to anchor on .top by accident (its sticky position made it
+   the only positioned ancestor). Mobile turns .top static, which would have
+   dropped that anchor, so the pill owns it explicitly now. */
 .top__search:focus-within {
   border-color: var(--ink-3);
   background: var(--card-2);
@@ -1288,10 +1304,30 @@ textarea::placeholder {
 
   .app { grid-template-columns: 1fr; }
   .side { display: none; }
+  /* With the sidebar gone this divider is just a stray 1px at the screen edge,
+     and it also skewed the tab width math below by a pixel. */
+  .stage { border-left: 0; }
   .feed { padding: 28px 20px 60px; }
-  .top { padding: 14px 20px; grid-template-columns: minmax(0, 1fr) auto; }
-  .top__search { grid-column: 1 / -1; }
-  .top__actions { grid-column: 1 / -1; justify-self: end; }
+
+  /* The topbar scrolls away with the page: the fixed bottom tab bar is the only
+     persistent chrome. It also collapses to a single opaque row — the previous
+     rules put .top__search and .top__actions on `grid-column: 1 / -1`, which
+     auto-flowed them onto separate rows and made a ~140px sticky bar whose
+     translucent background showed the content sliding underneath. */
+  .top {
+    position: static;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--bg);
+    backdrop-filter: none;
+  }
+  .top__brand { display: flex; }
+  .top__search { display: none; }
+  .top__new { display: none; }
+  .iconbtn.top__searchbtn { display: grid; }
+  .top__actions { grid-column: 2; justify-self: end; }
+
   .stage > main { padding: 22px 20px 60px; }
   .stage > main:has(> .feed) { padding: 4px 20px 40px; }
 }
