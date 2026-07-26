@@ -310,6 +310,10 @@ type UserSummary struct {
 	Username    string  `json:"username"`
 	DisplayName string  `json:"displayName"`
 	AvatarURL   *string `json:"avatarUrl,omitempty"`
+	// Preenchido só por SearchUsersForFriendship, pra UI renderizar o vínculo
+	// existente em vez de esconder o usuário. Vazio (omitido) em payloads que
+	// não calculam isso, como UserSuggestion.
+	FriendshipStatus PublicFriendshipState `json:"friendshipStatus,omitempty"`
 }
 
 type UserSuggestion struct {

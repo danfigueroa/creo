@@ -1752,8 +1752,24 @@ func (r *PostgresRepository) SearchUsersForFriendship(ctx context.Context, userI
 	if limit <= 0 || limit > 30 {
 		limit = 20
 	}
+	// Um pedido de amizade e uma amizade aceita são a mesma linha de
+	// friendships, distintas só pelo status. Filtrar por existência de linha
+	// escondia da busca justamente quem o usuário acabou de adicionar, então o
+	// vínculo vira um estado devolvido no payload em vez de um filtro.
 	rows, err := r.db.Query(ctx, `
-		SELECT u.id::text, u.username, u.display_name, u.avatar_url
+		SELECT u.id::text, u.username, u.display_name, u.avatar_url,
+		       COALESCE((
+			       SELECT CASE
+					WHEN f.status = 'ACCEPTED' THEN 'FRIEND'
+					WHEN f.status = 'PENDING' AND f.user_id = $1 THEN 'PENDING_OUT'
+					WHEN f.status = 'PENDING' THEN 'PENDING_IN'
+					ELSE 'NONE'
+				      END
+			       FROM friendships f
+			       WHERE (f.user_id = $1 AND f.friend_user_id = u.id)
+			          OR (f.user_id = u.id AND f.friend_user_id = $1)
+			       LIMIT 1
+		       ), 'NONE') AS friendship_status
 		FROM users u
 		WHERE u.id <> $1
 		  AND u.deleted_at IS NULL
@@ -1764,8 +1780,9 @@ func (r *PostgresRepository) SearchUsersForFriendship(ctx context.Context, userI
 		  AND NOT EXISTS (
 			  SELECT 1
 			  FROM friendships f
-			  WHERE (f.user_id = $1 AND f.friend_user_id = u.id)
-			     OR (f.user_id = u.id AND f.friend_user_id = $1)
+			  WHERE ((f.user_id = $1 AND f.friend_user_id = u.id)
+			      OR (f.user_id = u.id AND f.friend_user_id = $1))
+			    AND f.status = 'BLOCKED'
 		  )
 		  AND NOT EXISTS (
 			  SELECT 1 FROM user_blocks ub
@@ -1783,10 +1800,12 @@ func (r *PostgresRepository) SearchUsersForFriendship(ctx context.Context, userI
 	items := make([]models.UserSummary, 0)
 	for rows.Next() {
 		var item models.UserSummary
-		err = rows.Scan(&item.UserID, &item.Username, &item.DisplayName, &item.AvatarURL)
+		var friendshipStatus string
+		err = rows.Scan(&item.UserID, &item.Username, &item.DisplayName, &item.AvatarURL, &friendshipStatus)
 		if err != nil {
 			return nil, err
 		}
+		item.FriendshipStatus = models.PublicFriendshipState(friendshipStatus)
 		items = append(items, item)
 	}
 	return items, rows.Err()
