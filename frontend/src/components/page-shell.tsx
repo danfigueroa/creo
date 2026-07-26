@@ -105,12 +105,138 @@ function NavIcon({ kind }: { kind: NavKind }) {
   }
 }
 
+type SearchResultsProps = {
+  term: string
+  notice: string
+  users?: SearchUser[]
+  usersLoaded: boolean
+  groups?: SearchGroup[]
+  groupsLoaded: boolean
+  groupsFailed: boolean
+  requestedUsers: Record<string, boolean>
+  requestedGroups: Record<string, boolean>
+  addPending: boolean
+  joinPending: boolean
+  onAddFriend: (username: string) => void
+  onJoinGroup: (groupID: string) => void
+  onPick: () => void
+}
+
+/** Shared by the desktop dropdown and the mobile full-screen search sheet. */
+function SearchResults({
+  term,
+  notice,
+  users,
+  usersLoaded,
+  groups,
+  groupsLoaded,
+  groupsFailed,
+  requestedUsers,
+  requestedGroups,
+  addPending,
+  joinPending,
+  onAddFriend,
+  onJoinGroup,
+  onPick
+}: SearchResultsProps) {
+  const { t } = useTranslation()
+
+  return (
+    <>
+      {term.length < 2 && <p className="text-xs text-[var(--muted)]">{t('shell.searchHint')}</p>}
+
+      {notice && (
+        <p className="mb-2 rounded-lg border border-[var(--line-2)] bg-[var(--card-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
+          {notice}
+        </p>
+      )}
+
+      {term.length >= 2 && (
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">
+              {t('nav.friends')}
+            </p>
+            <div className="space-y-1.5">
+              {(users ?? []).map((user) => {
+                const alreadyRequested = requestedUsers[user.username.toLowerCase()]
+                return (
+                  <div
+                    key={user.userId}
+                    className="flex items-center gap-2 rounded-xl border border-[var(--line)] px-2.5 py-2"
+                  >
+                    <Avatar user={user} size="xs" linkToProfile />
+                    <Link to={`/u/${user.username}`} className="min-w-0 flex-1" onClick={onPick}>
+                      <p className="truncate text-sm font-semibold text-[var(--ink)]">{user.displayName}</p>
+                      <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
+                    </Link>
+                    <button
+                      className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
+                      disabled={alreadyRequested || addPending}
+                      onClick={() => onAddFriend(user.username)}
+                      type="button"
+                    >
+                      {alreadyRequested ? t('shell.sent') : t('shell.add')}
+                    </button>
+                  </div>
+                )
+              })}
+              {usersLoaded && (users ?? []).length === 0 && (
+                <p className="text-xs text-[var(--muted)]">{t('shell.noFriendsFound')}</p>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">
+              {t('nav.groups')}
+            </p>
+            <div className="space-y-1.5">
+              {(groups ?? []).map((group) => {
+                const alreadyRequested = requestedGroups[group.id]
+                return (
+                  <div
+                    key={group.id}
+                    className="flex items-center justify-between rounded-xl border border-[var(--line)] px-2.5 py-2"
+                  >
+                    <Link to={`/groups/${group.id}`} onClick={onPick} className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[var(--ink)]">{group.name}</p>
+                      <p className="truncate text-xs text-[var(--muted)]">{group.joinPolicy}</p>
+                    </Link>
+                    <button
+                      className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
+                      disabled={group.isMember || alreadyRequested || joinPending}
+                      onClick={() => onJoinGroup(group.id)}
+                      type="button"
+                    >
+                      {group.isMember ? t('shell.inGroup') : alreadyRequested ? t('shell.requested') : t('shell.join')}
+                    </button>
+                  </div>
+                )
+              })}
+              {groupsLoaded && (groups ?? []).length === 0 && (
+                <p className="text-xs text-[var(--muted)]">{t('shell.noGroupsFound')}</p>
+              )}
+              {groupsFailed && (
+                <p className="rounded-lg border border-[var(--line-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
+                  {t('shell.groupsSearchError')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export function PageShell({ children }: PropsWithChildren) {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
   const [menuOpen, setMenuOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [searchNotice, setSearchNotice] = useState('')
@@ -248,6 +374,24 @@ export function PageShell({ children }: PropsWithChildren) {
     return profile.displayName || profile.email.split('@')[0] || t('shell.myAccount')
   }, [profileQuery.data, t])
 
+  // Everything the results list needs, minus onPick — the dropdown and the
+  // mobile sheet dismiss differently.
+  const searchResultProps = {
+    term: normalizedSearch,
+    notice: searchNotice,
+    users: usersSearchQuery.data,
+    usersLoaded: usersSearchQuery.isSuccess,
+    groups: groupsSearchQuery.data,
+    groupsLoaded: groupsSearchQuery.isSuccess,
+    groupsFailed: groupsSearchQuery.isError,
+    requestedUsers,
+    requestedGroups,
+    addPending: sendFriendRequest.isPending,
+    joinPending: requestGroupJoin.isPending,
+    onAddFriend: (username: string) => sendFriendRequest.mutate(username),
+    onJoinGroup: (groupID: string) => requestGroupJoin.mutate(groupID)
+  }
+
   const handle = profileQuery.data?.username ? `@${profileQuery.data.username}` : ''
   const profileForAvatar = {
     displayName,
@@ -288,6 +432,22 @@ export function PageShell({ children }: PropsWithChildren) {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [menuOpen, searchOpen])
+
+  // The mobile search sheet covers the whole viewport, so it locks the page
+  // behind it and closes on Escape (same pattern as NewRequestModal).
+  useEffect(() => {
+    if (!sheetOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setSheetOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [sheetOpen])
 
   useEffect(() => {
     if (!searchNotice) return
@@ -394,101 +554,24 @@ export function PageShell({ children }: PropsWithChildren) {
             <span className="top__kbd">⌘K</span>
 
             {searchOpen && (
-              <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]">
-                {normalizedSearch.length < 2 && (
-                  <p className="text-xs text-[var(--muted)]">{t('shell.searchHint')}</p>
-                )}
-
-                {searchNotice && (
-                  <p className="mb-2 rounded-lg border border-[var(--line-2)] bg-[var(--card-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
-                    {searchNotice}
-                  </p>
-                )}
-
-                {normalizedSearch.length >= 2 && (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('nav.friends')}</p>
-                      <div className="space-y-1.5">
-                        {(usersSearchQuery.data ?? []).map((user) => {
-                          const alreadyRequested = requestedUsers[user.username.toLowerCase()]
-                          return (
-                            <div
-                              key={user.userId}
-                              className="flex items-center gap-2 rounded-xl border border-[var(--line)] px-2.5 py-2"
-                            >
-                              <Avatar user={user} size="xs" linkToProfile />
-                              <Link
-                                to={`/u/${user.username}`}
-                                className="min-w-0 flex-1"
-                                onClick={() => setSearchOpen(false)}
-                              >
-                                <p className="truncate text-sm font-semibold text-[var(--ink)]">{user.displayName}</p>
-                                <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
-                              </Link>
-                              <button
-                                className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
-                                disabled={alreadyRequested || sendFriendRequest.isPending}
-                                onClick={() => sendFriendRequest.mutate(user.username)}
-                                type="button"
-                              >
-                                {alreadyRequested ? t('shell.sent') : t('shell.add')}
-                              </button>
-                            </div>
-                          )
-                        })}
-                        {usersSearchQuery.isSuccess && (usersSearchQuery.data ?? []).length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">{t('shell.noFriendsFound')}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-3)]">{t('nav.groups')}</p>
-                      <div className="space-y-1.5">
-                        {(groupsSearchQuery.data ?? []).map((group) => {
-                          const alreadyRequested = requestedGroups[group.id]
-                          return (
-                            <div
-                              key={group.id}
-                              className="flex items-center justify-between rounded-xl border border-[var(--line)] px-2.5 py-2"
-                            >
-                              <Link
-                                to={`/groups/${group.id}`}
-                                onClick={() => setSearchOpen(false)}
-                                className="min-w-0 flex-1"
-                              >
-                                <p className="truncate text-sm font-semibold text-[var(--ink)]">{group.name}</p>
-                                <p className="truncate text-xs text-[var(--muted)]">{group.joinPolicy}</p>
-                              </Link>
-                              <button
-                                className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
-                                disabled={group.isMember || alreadyRequested || requestGroupJoin.isPending}
-                                onClick={() => requestGroupJoin.mutate(group.id)}
-                                type="button"
-                              >
-                                {group.isMember ? t('shell.inGroup') : alreadyRequested ? t('shell.requested') : t('shell.join')}
-                              </button>
-                            </div>
-                          )
-                        })}
-                        {groupsSearchQuery.isSuccess && (groupsSearchQuery.data ?? []).length === 0 && (
-                          <p className="text-xs text-[var(--muted)]">{t('shell.noGroupsFound')}</p>
-                        )}
-                        {groupsSearchQuery.isError && (
-                          <p className="rounded-lg border border-[var(--line-2)] px-2 py-1 text-xs text-[var(--ink-2)]">
-                            {t('shell.groupsSearchError')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
+              <div className="absolute left-0 right-0 top-full z-[45] mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]">
+                <SearchResults {...searchResultProps} onPick={() => setSearchOpen(false)} />
               </div>
             )}
           </div>
 
           <div className="top__actions">
+            <button
+              type="button"
+              className="iconbtn top__searchbtn"
+              onClick={() => setSheetOpen(true)}
+              aria-label={t('shell.searchOpen')}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+                <circle cx="8" cy="8" r="5.2" stroke="currentColor" strokeWidth="1.4" />
+                <line x1="11.8" y1="11.8" x2="15" y2="15" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
             <button type="button" className="btn btn--primary" onClick={() => openComposer()}>
               {t('shell.newIntention')}
             </button>
@@ -525,6 +608,38 @@ export function PageShell({ children }: PropsWithChildren) {
           <span>{t('shell.profile')}</span>
         </NavLink>
       </nav>
+
+      {sheetOpen && (
+        <div className="searchsheet" role="dialog" aria-modal="true" aria-label={t('shell.searchPlaceholder')}>
+          <div className="searchsheet__head">
+            <button
+              type="button"
+              className="searchsheet__back"
+              onClick={() => setSheetOpen(false)}
+              aria-label={t('shell.searchClose')}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <div className="searchsheet__field">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <circle cx="6" cy="6" r="4.2" stroke="currentColor" strokeWidth="1.3" />
+                <line x1="9.2" y1="9.2" x2="12" y2="12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+              <input
+                autoFocus
+                placeholder={t('shell.searchPlaceholder')}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="searchsheet__body">
+            <SearchResults {...searchResultProps} onPick={() => setSheetOpen(false)} />
+          </div>
+        </div>
+      )}
 
       <NewRequestModal
         open={composerOpen}

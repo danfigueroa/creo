@@ -611,6 +611,8 @@
     "notificationsAria": "Notificaciones",
     "notificationsAriaUnread": "Notificaciones ({{count}} sin leer)",
     "mobileNav": "Navegación móvil",
+    "searchOpen": "Buscar",
+    "searchClose": "Cerrar búsqueda",
     "profile": "Perfil",
     "friendRequestSent": "Solicitud de amistad enviada.",
     "friendRequestExists": "Ya tienen una solicitud pendiente o una amistad activa.",
