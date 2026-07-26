@@ -2753,8 +2753,10 @@ textarea::placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 6px 4px;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 2px;
   font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.02em;
@@ -2767,11 +2769,24 @@ textarea::placeholder {
   font-family: inherit;
 }
 .mtab__icon {
+  position: relative;
   display: grid;
   place-items: center;
   width: 22px;
   height: 22px;
   color: var(--ink-3);
+}
+/* Unread marker, matching .iconbtn__pip so the bell and the tab agree. */
+.mtab__pip {
+  position: absolute;
+  top: -1px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: oklch(0.65 0.18 30);
+  border: 2px solid var(--bg);
+  box-sizing: content-box;
 }
 .mtab.is-on {
   color: var(--ink);
@@ -2856,19 +2871,53 @@ textarea::placeholder {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ---------- Compose FAB (mobile) ----------------------------------------- */
+
+/* "Nova intenção" lives in the topbar on desktop, but that bar scrolls away on
+   mobile, so the primary action gets a thumb-reachable button instead. */
+.fab {
+  display: none;
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tabbar-h) + var(--safe-b) + 16px);
+  z-index: 41;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease;
+}
+.fab:active { transform: scale(0.94); }
+
 @media (max-width: 900px) {
+  .fab { display: grid; }
+
   .mobile-tabbar {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
+    align-items: stretch;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
     z-index: 40;
-    padding: 8px 4px max(env(safe-area-inset-bottom), 8px);
+    /* Fixed height so --tabbar-h is authoritative; padding-bottom is purely the
+       notch extension, so the bar reads 62px tall on every device. */
+    height: calc(var(--tabbar-h) + var(--safe-b));
+    padding: 0 2px var(--safe-b);
     background: color-mix(in oklab, var(--bg) 94%, transparent);
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--line);
+  }
+  /* backdrop-filter is unsupported on some older Android WebViews; without a
+     solid fallback the bar would be see-through. */
+  @supports not (backdrop-filter: blur(1px)) {
+    .mobile-tabbar { background: var(--bg); }
   }
   .stage > main { padding-bottom: 96px; }
   .stage > main:has(> .feed) { padding-bottom: 80px; }

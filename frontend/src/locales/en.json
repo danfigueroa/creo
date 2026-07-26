@@ -611,6 +611,7 @@
     "notificationsAria": "Notifications",
     "notificationsAriaUnread": "Notifications ({{count}} unread)",
     "mobileNav": "Mobile navigation",
+    "tabNotifs": "Alerts",
     "searchOpen": "Search",
     "searchClose": "Close search",
     "profile": "Profile",

@@ -456,6 +456,7 @@ export function PageShell({ children }: PropsWithChildren) {
   }, [searchNotice])
 
   const friendsTop = (friendsQuery.data ?? []).slice(0, 4)
+  const hasUnread = !!unreadQuery.data && unreadQuery.data > 0
 
   return (
     <div className="app">
@@ -592,10 +593,23 @@ export function PageShell({ children }: PropsWithChildren) {
         <main>{children}</main>
       </div>
 
+      {/* "Criar grupo" is intentionally absent: /groups already carries two CTAs
+          to /groups/new, and a fifth nav slot would crowd a 320px screen. */}
       <nav className="mobile-tabbar" aria-label={t('shell.mobileNav')}>
         <NavLink to="/feed" end className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon"><NavIcon kind="mural" /></span>
           <span>{t('nav.mural')}</span>
+        </NavLink>
+        <NavLink
+          to="/notifications"
+          className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}
+          aria-label={hasUnread ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}
+        >
+          <span className="mtab__icon">
+            <NavIcon kind="notifs" />
+            {hasUnread ? <span className="mtab__pip" aria-hidden /> : null}
+          </span>
+          <span>{t('shell.tabNotifs')}</span>
         </NavLink>
         <NavLink to="/friends" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
           <span className="mtab__icon"><NavIcon kind="amigos" /></span>
@@ -612,6 +626,15 @@ export function PageShell({ children }: PropsWithChildren) {
           <span>{t('shell.profile')}</span>
         </NavLink>
       </nav>
+
+      {/* Mobile counterpart of the topbar's "Nova intenção" button, which scrolls
+          away with the bar. Hidden above 900px by CSS. */}
+      <button type="button" className="fab" onClick={() => openComposer()} aria-label={t('shell.newIntention')}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <line x1="12" y1="6" x2="12" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <line x1="6" y1="12" x2="18" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
 
       {sheetOpen && (
         <div className="searchsheet" role="dialog" aria-modal="true" aria-label={t('shell.searchPlaceholder')}>
