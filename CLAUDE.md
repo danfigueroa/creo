@@ -274,6 +274,21 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
   - Aliases pros nomes antigos (`--primary`, `--panel`, `--secondary`, etc.) apontam pra novos valores — Tailwind utilities (`bg-primary`, `text-onPrimary`, `border-primary/40`) continuam funcionando.
 - **Sem `data-theme`**: dark theme foi dropado. Não use `:root[data-theme=...]`.
 - **Layout shell** (`components/page-shell.tsx`): `.app` grid (sidebar 248px + stage). Sidebar tem brand mark + `.navitem` por rota + "Em oração agora" (top friends do `/friends`) + `.side__me` no rodapé. Topbar (`.top`) com `.top__search` pill + `.iconbtn` do sino.
+
+#### Mobile (≤900px) — chrome e tokens
+
+O breakpoint do shell é **900px** (`max-width: 900px`), não os `sm:`/`lg:` do Tailwind (640/1024px). Para layout que depende da sidebar, o breakpoint certo é o do shell.
+
+- **A única chrome fixa é o `.mobile-tabbar`** (5 abas: Mural · Avisos · Amigos · Grupos · Perfil). A topbar `.top` vira `position: static` e **rola pra fora** — não voltar a deixá-la sticky no mobile: ela ocupava 3 linhas (~140px) e o fundo translúcido fazia o conteúdo aparecer por baixo.
+- **Nunca hardcodar clearance inferior.** Os tokens em `:root` são a fonte da verdade:
+  - `--safe-b` = `env(safe-area-inset-bottom)` (só resolve porque `index.html` tem `viewport-fit=cover` — não remover)
+  - `--tabbar-h` = 0px no desktop, 62px no mobile; `.mobile-tabbar` aplica isso como `height` explícita, então o token é medida real, não estimativa
+  - `--chrome-b` = clearance de canvas (tabbar + safe area + espaço do FAB)
+  - Só o `<main>` do PageShell carrega `padding-bottom: var(--chrome-b)`. `.notifs`/`.detail`/`.profile` são `<main>` **aninhados** dentro dele — se ganharem padding inferior próprio, a folga dobra.
+- **Escala de z-index** (documentada no `:root` do `index.css`): 5 topbar sticky · 40 tabbar · 41 FAB · 45 dropdowns e menus de card · 60 folha de busca · 90 confirm-dialog · 100 modal-veil · 110 toasts. Qualquer overlay novo entra num desses degraus.
+- **`--tab-w` do `.tabs` tem que ser um comprimento, nunca porcentagem.** `.tabs__ink` posiciona por `translateX(calc(var(--idx) * (var(--tab-w) + 4px)))`, e porcentagem dentro de `translateX` resolve contra a largura do próprio ink, não do container — o underline sai do lugar mas as abas continuam parecendo certas, então o bug passa batido. No mobile usa `calc((min(100vw - 40px, 720px) - 12px) / 4)`, onde o `min()` respeita o `max-width: 720px` da `.feed`.
+- **Inputs de mobile em ≥16px**: abaixo disso o Safari do iOS dá zoom na página ao focar.
+- Ao mexer em `.top`, cuidado com a cascata: `.iconbtn { display: grid }` é declarado depois de `.top__searchbtn`, daí o seletor composto `.iconbtn.top__searchbtn`.
 - **Classes do design** (em `index.css`, ported verbatim):
   - `.feed` — canvas central 720px com headline serif
   - `.tabs` + `.tabs__ink` — abas com underline animado via `--idx`
