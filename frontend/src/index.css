@@ -68,6 +68,19 @@
   --serif: "Source Serif 4", "Source Serif Pro", Georgia, serif;
   --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Fixed-chrome metrics. Every page canvas reserves its bottom clearance from
+     --chrome-b instead of hardcoding a number, so the mobile tab bar and the
+     compose FAB only have to be measured in one place. Requires
+     viewport-fit=cover in index.html for --safe-b to resolve to anything. */
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: 0px; /* desktop has no tab bar; the mobile query raises it */
+  --chrome-b: calc(var(--tabbar-h) + var(--safe-b) + 24px);
+
+  /* Stacking scale — keep new overlays on these steps.
+     5 sticky topbar (desktop) · 40 mobile tab bar · 41 compose FAB ·
+     45 dropdowns and card menus · 60 mobile search sheet ·
+     90 confirm dialog · 100 modal veil · 110 toasts */
 }
 
 * {
@@ -1259,6 +1272,16 @@ textarea::placeholder {
 /* ---------- Responsive --------------------------------------------------- */
 
 @media (max-width: 900px) {
+  /* Raising --tabbar-h on :root re-resolves --chrome-b (also declared on :root),
+     so every canvas picks up the tab bar + FAB clearance at once. */
+  :root {
+    /* .mobile-tabbar sets this as an explicit height, so the token is the real
+       measurement rather than a guess — the FAB offset, the toast offset and
+       --chrome-b are all derived from it. */
+    --tabbar-h: 62px;
+    --chrome-b: calc(var(--tabbar-h) + var(--safe-b) + 88px);
+  }
+
   .app { grid-template-columns: 1fr; }
   .side { display: none; }
   .feed { padding: 28px 20px 60px; }
