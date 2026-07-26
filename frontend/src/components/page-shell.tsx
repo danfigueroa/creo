@@ -7,6 +7,7 @@ import { useComposerStore } from '@/state/composer-store'
 import { getSupabaseClient } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { fromBackendLanguage, normalizeLanguage } from '@/lib/i18n'
+import { searchFriendshipLabelCompact, type SearchFriendshipStatus } from '@/lib/friendship'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { Avatar } from '@/components/avatar'
 
@@ -23,6 +24,7 @@ type SearchUser = {
   username: string
   displayName: string
   avatarUrl?: string | null
+  friendshipStatus?: SearchFriendshipStatus
 }
 
 type SearchGroup = {
@@ -159,7 +161,12 @@ function SearchResults({
             </p>
             <div className="space-y-1.5">
               {(users ?? []).map((user) => {
+                // O estado local cobre o pedido recém-enviado, já que este
+                // call site não refaz a busca depois do POST.
                 const alreadyRequested = requestedUsers[user.username.toLowerCase()]
+                const stateLabel = alreadyRequested
+                  ? t('shell.sent')
+                  : searchFriendshipLabelCompact(user.friendshipStatus)
                 return (
                   <div
                     key={user.userId}
@@ -170,14 +177,20 @@ function SearchResults({
                       <p className="truncate text-sm font-semibold text-[var(--ink)]">{user.displayName}</p>
                       <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
                     </Link>
-                    <button
-                      className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
-                      disabled={alreadyRequested || addPending}
-                      onClick={() => onAddFriend(user.username)}
-                      type="button"
-                    >
-                      {alreadyRequested ? t('shell.sent') : t('shell.add')}
-                    </button>
+                    {stateLabel ? (
+                      <span className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--muted)]">
+                        {stateLabel}
+                      </span>
+                    ) : (
+                      <button
+                        className="shrink-0 rounded-full border border-[var(--line-2)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)] hover:border-[var(--ink-3)] hover:text-[var(--ink)] disabled:opacity-50"
+                        disabled={addPending}
+                        onClick={() => onAddFriend(user.username)}
+                        type="button"
+                      >
+                        {t('shell.add')}
+                      </button>
+                    )}
                   </div>
                 )
               })}

@@ -10,12 +10,14 @@ import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/api-error'
+import { searchFriendshipLabel, type SearchFriendshipStatus } from '@/lib/friendship'
 
 type UserSummary = {
   userId: string
   username: string
   displayName: string
   avatarUrl?: string | null
+  friendshipStatus?: SearchFriendshipStatus
 }
 
 type Friend = {
@@ -158,20 +160,29 @@ export function FriendsPage() {
         </form>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {(searchQuery.data ?? []).map((user) => (
-            <article key={user.userId} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
-              <Avatar user={user} size="md" linkToProfile />
-              <div className="min-w-0 flex-1">
-                <Link to={`/u/${user.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">
-                  {user.displayName}
-                </Link>
-                <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
-                <Button className="mt-3 w-full sm:w-auto" disabled={sendRequest.isPending} onClick={() => sendRequest.mutate(user.username)}>
-                  {t('friends.addFriend')}
-                </Button>
-              </div>
-            </article>
-          ))}
+          {(searchQuery.data ?? []).map((user) => {
+            const stateLabel = searchFriendshipLabel(user.friendshipStatus)
+            return (
+              <article key={user.userId} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
+                <Avatar user={user} size="md" linkToProfile />
+                <div className="min-w-0 flex-1">
+                  <Link to={`/u/${user.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">
+                    {user.displayName}
+                  </Link>
+                  <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
+                  {stateLabel ? (
+                    <span className="mt-3 inline-block rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary">
+                      {stateLabel}
+                    </span>
+                  ) : (
+                    <Button className="mt-3 w-full sm:w-auto" disabled={sendRequest.isPending} onClick={() => sendRequest.mutate(user.username)}>
+                      {t('friends.addFriend')}
+                    </Button>
+                  )}
+                </div>
+              </article>
+            )
+          })}
           {query.trim().length >= 2 && !searchQuery.isLoading && (searchQuery.data ?? []).length === 0 && (
             <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm sm:col-span-2">{t('friends.noUsers')}</p>
           )}
