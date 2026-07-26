@@ -1330,6 +1330,23 @@ textarea::placeholder {
 
   .stage > main { padding: 22px 20px 60px; }
   .stage > main:has(> .feed) { padding: 4px 20px 40px; }
+
+  /* Fluid tab widths so the four feed tabs always fit (96px each totalled 408px
+     and got silently clipped by body's overflow-x: hidden on a 375px screen).
+     --tab-w must stay a LENGTH, never a percentage: .tabs__ink translates by
+     calc(var(--idx) * (var(--tab-w) + 4px)), and percentages inside translateX
+     resolve against the ink's own width instead of the container, which would
+     leave the underline far short of its tab. The width tracks the container:
+     100vw less the 20px gutters on .stage > main, capped by .feed's own
+     max-width of 720px (without that min(), viewports over 760px let the tabs
+     flex-shrink while the absolutely positioned ink kept the wider value), less
+     the three 4px gaps, split four ways. flex-shrink: 0 keeps sub-pixel
+     rounding from reintroducing the same drift. */
+  .tabs { --tab-w: calc((min(100vw - 40px, 720px) - 12px) / 4); margin: 20px 0 18px; }
+  .tab { font-size: 12.5px; flex-shrink: 0; }
+  /* Skips .tab--auto (/profile), which sets its own width and padding-right
+     further down the file and would otherwise end up asymmetric. */
+  .tab:not(.tab--auto) { padding: 11px 2px; text-align: center; }
 }
 
 /* ============================================================================
