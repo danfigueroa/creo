@@ -1307,7 +1307,7 @@ textarea::placeholder {
   /* With the sidebar gone this divider is just a stray 1px at the screen edge,
      and it also skewed the tab width math below by a pixel. */
   .stage { border-left: 0; }
-  .feed { padding: 28px 20px 60px; }
+  .feed { padding: 28px 20px var(--chrome-b); }
 
   /* The topbar scrolls away with the page: the fixed bottom tab bar is the only
      persistent chrome. It also collapses to a single opaque row — the previous
@@ -1328,8 +1328,8 @@ textarea::placeholder {
   .iconbtn.top__searchbtn { display: grid; }
   .top__actions { grid-column: 2; justify-self: end; }
 
-  .stage > main { padding: 22px 20px 60px; }
-  .stage > main:has(> .feed) { padding: 4px 20px 40px; }
+  .stage > main { padding: 22px 20px var(--chrome-b); }
+  .stage > main:has(> .feed) { padding: 4px 20px var(--chrome-b); }
 
   /* Fluid tab widths so the four feed tabs always fit (96px each totalled 408px
      and got silently clipped by body's overflow-x: hidden on a 375px screen).
@@ -2936,10 +2936,19 @@ textarea::placeholder {
   @supports not (backdrop-filter: blur(1px)) {
     .mobile-tabbar { background: var(--bg); }
   }
-  .stage > main { padding-bottom: 96px; }
-  .stage > main:has(> .feed) { padding-bottom: 80px; }
-  .feed { padding-bottom: 96px; }
-  .notifs { padding-bottom: 96px; }
-  .detail { padding-bottom: 96px; }
-  .profile { padding-bottom: 96px; }
+  /* One clearance, owned solely by PageShell's <main>. The six rules this
+     replaces disagreed with each other (.feed got 96px, main:has(> .feed) got
+     80) and, worse, .notifs/.detail/.profile are nested <main> elements inside
+     .stage > main — so each of those pages was adding its own 96px on top of
+     main's 96px. Zeroing the inner canvases keeps the gap single. */
+  .stage > main,
+  .stage > main:has(> .feed) {
+    padding-bottom: var(--chrome-b);
+  }
+  .stage > main > .feed,
+  .stage > main > .notifs,
+  .stage > main > .detail,
+  .stage > main > .profile {
+    padding-bottom: 0;
+  }
 }
