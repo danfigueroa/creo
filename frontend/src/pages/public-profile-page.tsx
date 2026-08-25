@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
-import { Button } from '@/components/button'
 import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
@@ -158,19 +157,24 @@ export function PublicProfilePage() {
   if (profileQuery.isLoading) {
     return (
       <PageShell>
-        <section className="pv-panel rounded-3xl p-6 sm:p-7">
-          <div className="flex items-center gap-4">
-            <span className="pv-shimmer h-20 w-20 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <span className="pv-shimmer block h-5 w-48 rounded" />
+        <main className="profile">
+          <div className="profile__cover" />
+          <div className="profile__head">
+            <span className="pv-shimmer h-20 w-20 shrink-0 rounded-full" />
+            <div className="profile__idblock">
+              <span className="pv-shimmer mb-2 block h-8 w-56 rounded" />
               <span className="pv-shimmer block h-4 w-32 rounded" />
             </div>
           </div>
-          <div className="mt-6 space-y-2">
-            <span className="pv-shimmer block h-4 w-full rounded" />
-            <span className="pv-shimmer block h-4 w-3/4 rounded" />
-          </div>
-        </section>
+          <section className="profile__stats">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="stat">
+                <span className="pv-shimmer block h-7 w-12 rounded" />
+                <span className="pv-shimmer mt-2 block h-3 w-20 rounded" />
+              </div>
+            ))}
+          </section>
+        </main>
       </PageShell>
     )
   }
@@ -178,13 +182,17 @@ export function PublicProfilePage() {
   if (profileQuery.isError || !owner) {
     return (
       <PageShell>
-        <section className="pv-panel rounded-3xl p-6 text-center sm:p-8">
-          <h1 className="pv-title text-xl font-bold text-secondary">{t('pubProfile.notFoundTitle')}</h1>
-          <p className="pv-muted mt-2 text-sm">{t('pubProfile.notFoundSub')}</p>
-          <div className="mt-5 flex justify-center">
-            <Button onClick={() => navigate('/feed')}>{t('pubProfile.backToFeed')}</Button>
-          </div>
-        </section>
+        <main className="profile">
+          <section className="pcard" style={{ marginTop: 40, textAlign: 'center' }}>
+            <h1 className="pcard__title">{t('pubProfile.notFoundTitle')}</h1>
+            <p className="pcard__sub" style={{ margin: '0 auto' }}>{t('pubProfile.notFoundSub')}</p>
+            <div className="pcard__body">
+              <button type="button" className="btn btn--primary" onClick={() => navigate('/feed')}>
+                {t('pubProfile.backToFeed')}
+              </button>
+            </div>
+          </section>
+        </main>
       </PageShell>
     )
   }
@@ -199,15 +207,14 @@ export function PublicProfilePage() {
             <h1 className="profile__name">{owner.displayName}</h1>
             <div className="profile__meta">
               <span>@{owner.username}</span>
-              <span className="post__sep">·</span>
-              <span>
-                <span aria-hidden style={{ marginRight: 4 }}>
-                  {owner.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}
-                </span>
+            </div>
+            {owner.bio && <p className="profile__bio">"{owner.bio}"</p>}
+            <div className="profile__chips">
+              <span className="profile__chip">
+                <span aria-hidden>{owner.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}</span>
                 {traditionLabel(owner.tradition)}
               </span>
             </div>
-            {owner.bio && <p className="profile__bio">"{owner.bio}"</p>}
           </div>
           <div className="profile__actions">
           <ProfileActionButton
@@ -440,77 +447,69 @@ function ProfileActionButton({
   if (!status) return null
   if (status === 'SELF') {
     return (
-      <Link to="/profile" className="shrink-0">
-        <Button type="button" variant="secondary">{t('pubProfile.editProfile')}</Button>
+      <Link to="/profile" className="btn btn--ghost-out">
+        {t('pubProfile.editProfile')}
       </Link>
     )
   }
   if (status === 'BLOCKED_BY_ME') {
     return (
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <span className="rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
-          {t('pubProfile.youBlocked')}
-        </span>
-        <Button type="button" variant="secondary" disabled={unblockBusy} onClick={onUnblock}>
+      <div className="profile__actions-stack">
+        <span className="profile__badge profile__badge--warn">{t('pubProfile.youBlocked')}</span>
+        <button type="button" className="btn btn--ghost-out" disabled={unblockBusy} onClick={onUnblock}>
           {unblockBusy ? t('pubProfile.unblocking') : t('profile.unblock')}
-        </Button>
+        </button>
       </div>
     )
   }
   if (status === 'BLOCKED_BY_THEM') {
-    return (
-      <span className="shrink-0 rounded-full border border-accent/60 bg-panel px-3 py-1.5 text-xs font-semibold text-accent">
-        {t('pubProfile.unavailable')}
-      </span>
-    )
+    return <span className="profile__badge profile__badge--warn">{t('pubProfile.unavailable')}</span>
   }
   if (status === 'FRIEND') {
     return (
-      <div className="flex shrink-0 flex-col items-end gap-2">
-        <span className="rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary">
-          ✓ {t('pubProfile.friends')}
-        </span>
-        <Button type="button" variant="secondary" disabled={removeBusy} onClick={() => onRemoveFriend(ownerId)}>
+      <div className="profile__actions-stack">
+        <span className="profile__badge">✓ {t('pubProfile.friends')}</span>
+        <button type="button" className="btn btn--ghost-out" disabled={removeBusy} onClick={() => onRemoveFriend(ownerId)}>
           {removeBusy ? t('pubProfile.removing') : t('pubProfile.removeFriend')}
-        </Button>
-        <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
+        </button>
+        <button type="button" className="btn btn--ghost" disabled={blockBusy} onClick={onBlock}>
           {blockBusy ? t('pubProfile.blocking') : t('pubProfile.block')}
-        </Button>
+        </button>
       </div>
     )
   }
   if (status === 'PENDING_OUT') {
     return (
-      <div className="flex shrink-0 flex-col gap-2">
-        <Button type="button" variant="secondary" disabled className="cursor-default">{t('pubProfile.requestSentLabel')}</Button>
+      <div className="profile__actions-stack">
+        <span className="profile__badge">{t('pubProfile.requestSentLabel')}</span>
         {outgoingId && (
-          <Button type="button" variant="secondary" disabled={cancelBusy} onClick={() => onCancelFriendRequest(outgoingId)}>
+          <button type="button" className="btn btn--ghost-out" disabled={cancelBusy} onClick={() => onCancelFriendRequest(outgoingId)}>
             {cancelBusy ? t('pubProfile.canceling') : t('pubProfile.cancelRequest')}
-          </Button>
+          </button>
         )}
       </div>
     )
   }
   if (status === 'PENDING_IN' && incomingId) {
     return (
-      <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-        <Button type="button" disabled={acceptBusy} onClick={() => onAcceptFriendRequest(incomingId)}>
+      <div className="profile__actions-stack">
+        <button type="button" className="btn btn--primary" disabled={acceptBusy} onClick={() => onAcceptFriendRequest(incomingId)}>
           {acceptBusy ? t('pubProfile.accepting') : t('pubProfile.accept')}
-        </Button>
-        <Button type="button" variant="secondary" disabled={rejectBusy} onClick={() => onRejectFriendRequest(incomingId)}>
+        </button>
+        <button type="button" className="btn btn--ghost-out" disabled={rejectBusy} onClick={() => onRejectFriendRequest(incomingId)}>
           {rejectBusy ? t('pubProfile.rejecting') : t('group.reject')}
-        </Button>
+        </button>
       </div>
     )
   }
   return (
-    <div className="flex shrink-0 flex-col gap-2">
-      <Button type="button" disabled={sendBusy} onClick={onSendFriendRequest}>
+    <div className="profile__actions-stack">
+      <button type="button" className="btn btn--primary" disabled={sendBusy} onClick={onSendFriendRequest}>
         {sendBusy ? t('pubProfile.sending') : t('pubProfile.addFriend')}
-      </Button>
-      <Button type="button" variant="secondary" disabled={blockBusy} onClick={onBlock}>
+      </button>
+      <button type="button" className="btn btn--ghost" disabled={blockBusy} onClick={onBlock}>
         {blockBusy ? t('pubProfile.blocking') : t('pubProfile.block')}
-      </Button>
+      </button>
     </div>
   )
 }
