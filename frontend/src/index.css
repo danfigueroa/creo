@@ -643,8 +643,9 @@ textarea::placeholder {
   align-items: center;
   padding: 14px 36px;
   border-bottom: 1px solid var(--line);
-  background: color-mix(in oklab, var(--bg) 88%, transparent);
-  backdrop-filter: blur(10px);
+  /* Opaca de propósito: sticky com fundo translúcido deixa o conteúdo passar
+     borrado por baixo, e a barra parece colada na frente da página. */
+  background: var(--bg);
   position: sticky;
   top: 0;
   z-index: 5;
