@@ -533,7 +533,7 @@ export function PageShell({ children }: PropsWithChildren) {
                 {t('shell.viewProfile')}
               </Link>
               <Link
-                to="/profile#idioma"
+                to="/profile?s=prefs"
                 onClick={() => setMenuOpen(false)}
                 className="block px-4 py-2.5 text-sm text-[var(--ink-2)] hover:bg-[rgba(14,74,83,0.06)] hover:text-[var(--ink)]"
               >
