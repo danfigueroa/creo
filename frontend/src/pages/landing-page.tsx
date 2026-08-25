@@ -5,8 +5,9 @@ import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { translateAuthError } from '@/lib/auth-errors'
 import { LanguageSwitcher } from '@/components/language-switcher'
+import { Glyph } from '@/components/glyph'
 import { api } from '@/lib/api'
-import { traditionOptions, type Tradition } from '@/lib/traditions'
+import { prayerActionsFor, traditionOptions, type Tradition } from '@/lib/traditions'
 
 type AuthTab = 'entrar' | 'criar'
 type UsernameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
@@ -75,6 +76,15 @@ export function LandingPage() {
   const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
 
   const usernameState = useUsernameAvailability(username)
+  const howRef = useRef<HTMLElement | null>(null)
+  const authRef = useRef<HTMLElement | null>(null)
+
+  // O CTA do rodapé fica muito abaixo do card: trocar a aba sem subir a página
+  // não teria efeito visível nenhum.
+  function startSignUp() {
+    setTab('criar')
+    authRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const tabsRef = useRef<HTMLDivElement | null>(null)
   const [ink, setInk] = useState({ x: 0, w: 0 })
@@ -244,6 +254,15 @@ export function LandingPage() {
             ))}
           </ul>
 
+          <button
+            type="button"
+            className="welcome__more"
+            onClick={() => howRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            {t('landing.seeHow')}
+            <span aria-hidden>↓</span>
+          </button>
+
           <figure className="welcome__quote">
             <blockquote>
               {t('landing.quote')}
@@ -252,7 +271,7 @@ export function LandingPage() {
           </figure>
         </section>
 
-        <section className="welcome__auth" aria-label={t('landing.authAria')}>
+        <section className="welcome__auth" aria-label={t('landing.authAria')} ref={authRef}>
           <div className="welcome__auth-card">
             <div className="welcome__tabs" ref={tabsRef} role="tablist">
               <button
@@ -538,6 +557,143 @@ export function LandingPage() {
           </div>
         </section>
       </div>
+
+      <LandingSections howRef={howRef} onStart={startSignUp} />
+    </div>
+  )
+}
+
+function LandingSections({
+  howRef,
+  onStart
+}: {
+  howRef: React.MutableRefObject<HTMLElement | null>
+  onStart: () => void
+}) {
+  const { t } = useTranslation()
+
+  const steps = [
+    { n: '01', title: t('landing.step1Title'), text: t('landing.step1Text') },
+    { n: '02', title: t('landing.step2Title'), text: t('landing.step2Text') },
+    { n: '03', title: t('landing.step3Title'), text: t('landing.step3Text') }
+  ]
+
+  const cards = [
+    { mark: '🕯️', title: t('landing.do1Title'), text: t('landing.do1Text') },
+    { mark: '📿', title: t('landing.do2Title'), text: t('landing.do2Text') },
+    { mark: '⛪', title: t('landing.do3Title'), text: t('landing.do3Text') },
+    { mark: '🤝', title: t('landing.do4Title'), text: t('landing.do4Text') },
+    { mark: '📣', title: t('landing.do5Title'), text: t('landing.do5Text') },
+    { mark: '🔔', title: t('landing.do6Title'), text: t('landing.do6Text') }
+  ]
+
+  const visibilities = ['PUBLIC', 'GROUP_ONLY', 'PRIVATE'] as const
+
+  return (
+    <div className="lp">
+      <section className="lp-section" ref={howRef}>
+        <p className="lp-section__eyebrow">{t('landing.howEyebrow')}</p>
+        <h2 className="lp-section__title">{t('landing.howTitle')}</h2>
+        <p className="lp-section__sub">{t('landing.howSub')}</p>
+
+        <div className="lp-section__body lp-steps">
+          {steps.map((step) => (
+            <article key={step.n} className="lp-step">
+              <span className="lp-step__n">{step.n}</span>
+              <h3 className="lp-step__title">{step.title}</h3>
+              <p className="lp-step__text">{step.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-section">
+        <p className="lp-section__eyebrow">{t('landing.doEyebrow')}</p>
+        <h2 className="lp-section__title">{t('landing.doTitle')}</h2>
+        <p className="lp-section__sub">{t('landing.doSub')}</p>
+
+        <div className="lp-section__body lp-grid">
+          {cards.map((card) => (
+            <article key={card.title} className="lp-card">
+              <span className="lp-card__mark" aria-hidden>{card.mark}</span>
+              <h3 className="lp-card__title">{card.title}</h3>
+              <p className="lp-card__text">{card.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-section">
+        <p className="lp-section__eyebrow">{t('landing.tradsEyebrow')}</p>
+        <h2 className="lp-section__title">{t('landing.tradsTitle')}</h2>
+        <p className="lp-section__sub">{t('landing.tradsSub')}</p>
+
+        <div className="lp-section__body lp-trads">
+          {traditionOptions().map((option) => (
+            <article key={option.value} className="lp-trad">
+              <div className="lp-trad__head">
+                <span className="lp-trad__mark" aria-hidden>{option.emoji}</span>
+                <h3 className="lp-trad__title">{option.label}</h3>
+              </div>
+              <p className="lp-trad__text">{t(`landing.trad${option.value === 'CATHOLIC' ? 'Catholic' : 'Evangelical'}Text`)}</p>
+              <div className="lp-trad__actions">
+                {/* As mesmas ações que o feed oferece — vêm de lib/traditions.ts,
+                    então esta vitrine não desatualiza sozinha. */}
+                {prayerActionsFor(option.value).map((action) => (
+                  <span
+                    key={action.type}
+                    className="lp-rx"
+                    style={{
+                      ['--rx-bg' as any]: action.bg,
+                      ['--rx-border' as any]: action.border,
+                      ['--rx-fg' as any]: action.fg
+                    }}
+                  >
+                    <Glyph kind={action.glyph} size={12} color={action.dot} />
+                    {action.label}
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-section">
+        <p className="lp-section__eyebrow">{t('landing.privacyEyebrow')}</p>
+        <h2 className="lp-section__title">{t('landing.privacyTitle')}</h2>
+        <p className="lp-section__sub">{t('landing.privacySub')}</p>
+
+        <div className="lp-section__body lp-privacy">
+          {visibilities.map((level) => (
+            <article key={level} className="lp-card">
+              <h3 className="lp-card__title">{t(`visibility.${level}.label`)}</h3>
+              <p className="lp-card__text">{t(`visibility.${level}.description`)}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-section">
+        <p className="lp-section__eyebrow">{t('landing.langsEyebrow')}</p>
+        <h2 className="lp-section__title">{t('landing.langsTitle')}</h2>
+        <p className="lp-section__sub">{t('landing.langsSub')}</p>
+
+        <div className="lp-section__body lp-langs">
+          <LanguageSwitcher />
+          <button type="button" className="btn btn--primary" onClick={onStart}>
+            {t('landing.signUp')}
+          </button>
+        </div>
+      </section>
+
+      <footer className="lp-foot">
+        <span className="lp-foot__brand">
+          <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
+          <span className="brand-word">Creo</span>
+        </span>
+        <p className="lp-foot__note">{t('landing.terms')}</p>
+      </footer>
     </div>
   )
 }
