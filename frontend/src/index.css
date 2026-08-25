@@ -634,8 +634,11 @@ textarea::placeholder {
 /* ---------- Topbar ------------------------------------------------------- */
 
 .top {
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 520px) 1fr;
+  /* Flex, não grade: .top__brand é display:none no desktop e desaparecia da
+     grade de três colunas, deixando uma coluna 1fr vazia à direita. A busca
+     ficava presa na primeira coluna, com metade do espaço livre ocioso entre
+     ela e as ações. Agora ela é o item elástico e cresce até as ações. */
+  display: flex;
   gap: 16px;
   align-items: center;
   padding: 14px 36px;
@@ -666,7 +669,8 @@ textarea::placeholder {
 .top__search {
   position: relative; /* anchors the results dropdown — see comment below */
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 10px;
   padding: 9px 14px;
@@ -674,7 +678,6 @@ textarea::placeholder {
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   color: var(--muted);
-  max-width: 520px;
   transition: border-color 160ms ease, background 160ms ease;
 }
 /* The dropdown used to anchor on .top by accident (its sticky position made it
@@ -702,7 +705,7 @@ textarea::placeholder {
   letter-spacing: 0.04em;
 }
 
-.top__actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
+.top__actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 
 .iconbtn {
   position: relative;
@@ -1316,7 +1319,6 @@ textarea::placeholder {
      translucent background showed the content sliding underneath. */
   .top {
     position: static;
-    grid-template-columns: auto 1fr;
     gap: 8px;
     padding: 10px 16px;
     background: var(--bg);
@@ -1326,7 +1328,6 @@ textarea::placeholder {
   .top__search { display: none; }
   .top__new { display: none; }
   .iconbtn.top__searchbtn { display: grid; }
-  .top__actions { grid-column: 2; justify-self: end; }
 
   .stage > main { padding: 22px 20px var(--chrome-b); }
   .stage > main:has(> .feed) { padding: 4px 20px var(--chrome-b); }
