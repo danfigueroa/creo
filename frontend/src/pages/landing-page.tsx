@@ -211,7 +211,9 @@ export function LandingPage() {
     try {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${window.location.origin}/auth` }
+        // Só acesso: sem isto, um e-mail digitado errado criava uma conta nova
+        // com username e tradição padrão.
+        options: { emailRedirectTo: `${window.location.origin}/auth`, shouldCreateUser: false }
       })
       if (otpErr) {
         setError(translateAuthError(otpErr.message))
