@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
@@ -12,7 +12,7 @@ import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { errorMessage } from '@/lib/api-error'
 import { Tradition, traditionOptions } from '@/lib/traditions'
-import { LANGUAGES } from '@/lib/i18n'
+import { LANGUAGES, type BackendLanguage } from '@/lib/i18n'
 import { useLanguage } from '@/lib/use-language'
 import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, getSupabaseClient, uploadAvatar } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
@@ -26,21 +26,57 @@ type Profile = {
   avatarUrl?: string | null
   bio?: string | null
   tradition: Tradition
+  language?: BackendLanguage
+}
+
+type ProfileStats = {
+  requestsCreated: number
+  prayerActionsTotal: number
+  prayerActionsReceived: number
+  streakDays: number
+}
+
+const SECTIONS = ['atividade', 'perfil', 'prefs', 'conta'] as const
+type Section = (typeof SECTIONS)[number]
+
+const SECTION_NAV: Array<{ id: Section; labelKey: string }> = [
+  { id: 'atividade', labelKey: 'profile.navActivity' },
+  { id: 'perfil', labelKey: 'profile.navEdit' },
+  { id: 'prefs', labelKey: 'profile.navPrefs' },
+  { id: 'conta', labelKey: 'profile.navAccount' }
+]
+
+function isSection(value: string | null): value is Section {
+  return value !== null && (SECTIONS as readonly string[]).includes(value)
 }
 
 export function ProfilePage() {
   const { t } = useTranslation()
-  const { current: currentLanguage, change: changeLanguage } = useLanguage()
+  const toast = useToast()
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
   const [bio, setBio] = useState('')
-  const [status, setStatus] = useState('')
   const [error, setError] = useState('')
   const [avatarStatus, setAvatarStatus] = useState('')
   const [avatarError, setAvatarError] = useState('')
-  const [traditionStatus, setTraditionStatus] = useState('')
+
+  const section: Section = isSection(searchParams.get('s')) ? (searchParams.get('s') as Section) : 'atividade'
+
+  function goTo(next: Section) {
+    // 'atividade' é o default, então sai da URL para manter /profile limpo.
+    setSearchParams(next === 'atividade' ? {} : { s: next }, { replace: true })
+  }
+
+  // Compat: /profile#idioma era o atalho do menu do shell antes das seções.
+  useEffect(() => {
+    if (location.hash === '#idioma') {
+      setSearchParams({ s: 'prefs' }, { replace: true })
+    }
+  }, [location.hash, setSearchParams])
 
   const profile = useQuery({
     queryKey: ['profile', 'me'],
@@ -50,12 +86,6 @@ export function ProfilePage() {
     }
   })
 
-  type ProfileStats = {
-    requestsCreated: number
-    prayerActionsTotal: number
-    prayerActionsReceived: number
-    streakDays: number
-  }
   const stats = useQuery({
     queryKey: ['profile', 'stats'],
     queryFn: async () => (await api.get<ProfileStats>('/profile/stats')).data
@@ -76,23 +106,6 @@ export function ProfilePage() {
     ])
   }
 
-  const traditionMutation = useMutation({
-    mutationFn: async (tradition: Tradition) => {
-      const res = await api.patch<Profile>('/profile/tradition', { tradition })
-      return res.data
-    },
-    onSuccess: async () => {
-      setTraditionStatus(t('profile.traditionUpdated'))
-      await Promise.all([
-        invalidateProfileEverywhere(),
-        queryClient.invalidateQueries({ queryKey: ['feed'] })
-      ])
-    },
-    onError: () => {
-      setTraditionStatus(t('profile.traditionError'))
-    }
-  })
-
   const saveProfile = useMutation({
     mutationFn: async () => {
       const trimmedBio = bio.trim()
@@ -104,11 +117,10 @@ export function ProfilePage() {
     },
     onSuccess: async () => {
       setError('')
-      setStatus(t('profile.profileUpdated'))
+      toast.success(t('profile.profileUpdated'))
       await invalidateProfileEverywhere()
     },
     onError: (err: any) => {
-      setStatus('')
       if (err?.response?.status === 401) {
         setError(t('profile.sessionExpired'))
         return
@@ -172,7 +184,6 @@ export function ProfilePage() {
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    setStatus('')
     if (displayName.trim().length < 2) {
       setError(t('profile.displayNameMin'))
       return
@@ -197,6 +208,7 @@ export function ProfilePage() {
   const bioCount = bio.trim().length
   const acceptAttr = AVATAR_ACCEPTED_MIMES.join(',')
   const maxMb = Math.round(AVATAR_MAX_BYTES / (1024 * 1024))
+  const loading = profile.isLoading && !profile.data
 
   return (
     <PageShell>
@@ -205,214 +217,272 @@ export function ProfilePage() {
         <div className="profile__head">
           <Avatar user={previewUser} size="xl" />
           <div className="profile__idblock">
-            <h1 className="profile__name">{displayName || profile.data?.displayName || t('profile.yourProfile')}</h1>
-            <div className="profile__meta">
-              <span>@{username || profile.data?.username || 'username'}</span>
-            </div>
-            {profile.data?.bio && (
-              <p className="profile__bio">"{profile.data.bio}"</p>
+            {loading ? (
+              <>
+                <span className="pv-shimmer mb-2 block h-8 w-56 rounded" />
+                <span className="pv-shimmer block h-4 w-32 rounded" />
+              </>
+            ) : (
+              <>
+                <h1 className="profile__name">{displayName || profile.data?.displayName || t('profile.yourProfile')}</h1>
+                <div className="profile__meta">
+                  <span>@{username || profile.data?.username || 'username'}</span>
+                </div>
+                {profile.data?.bio && <p className="profile__bio">"{profile.data.bio}"</p>}
+              </>
             )}
           </div>
           <div className="profile__actions">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={acceptAttr}
-              className="hidden"
-              onChange={onFileChange}
-              aria-label={t('profile.selectPhoto')}
-            />
-            <button
-              type="button"
-              className="btn btn--ghost-out"
-              disabled={avatarUploadBusy}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploadMutation.isPending ? t('profile.uploading') : profile.data?.avatarUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
+            <button type="button" className="btn btn--ghost-out" onClick={() => goTo('perfil')}>
+              {t('profile.editProfile')}
             </button>
-            {profile.data?.avatarUrl && (
-              <button
-                type="button"
-                className="btn btn--ghost-out"
-                disabled={avatarUploadBusy}
-                onClick={() => {
-                  setAvatarError('')
-                  setAvatarStatus('')
-                  updateAvatar.mutate(null)
-                }}
-                style={{ marginLeft: 8 }}
-              >
-                {t('profile.remove')}
-              </button>
-            )}
           </div>
         </div>
 
-        {(avatarStatus || avatarError) && (
-          <p
-            role={avatarError ? 'alert' : 'status'}
-            style={{
-              marginBottom: 18,
-              padding: '8px 12px',
-              borderRadius: 'var(--r-2)',
-              background: 'var(--card-2)',
-              border: '1px solid var(--line-2)',
-              color: 'var(--ink-2)',
-              fontSize: 13
-            }}
-          >
-            {avatarError || avatarStatus}
-          </p>
+        <nav className="pnav" role="tablist" aria-label={t('profile.yourProfile')}>
+          {SECTION_NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={section === item.id}
+              className={`pnav__item ${section === item.id ? 'is-on' : ''}`}
+              onClick={() => goTo(item.id)}
+            >
+              {t(item.labelKey)}
+            </button>
+          ))}
+        </nav>
+
+        {section === 'atividade' && (
+          <>
+            <section className="profile__stats">
+              <div className="stat">
+                <div className="stat__num">{stats.data?.prayerActionsTotal ?? '—'}</div>
+                <div className="stat__label">{t('profile.statSent')}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__num">{stats.data?.prayerActionsReceived ?? '—'}</div>
+                <div className="stat__label">{t('profile.statReceived')}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__num">{stats.data?.requestsCreated ?? '—'}</div>
+                <div className="stat__label">{t('profile.statShared')}</div>
+              </div>
+              <div className="stat">
+                <div className="stat__num">{stats.data?.streakDays ?? '—'}</div>
+                <div className="stat__label">{t('profile.statStreak')}</div>
+              </div>
+            </section>
+            <ProfileActivityTabs userId={profile.data?.id} />
+          </>
         )}
 
-        <section className="profile__stats">
-          <div className="stat">
-            <div className="stat__num">{stats.data?.prayerActionsTotal ?? '—'}</div>
-            <div className="stat__label">{t('profile.statSent')}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__num">{stats.data?.prayerActionsReceived ?? '—'}</div>
-            <div className="stat__label">{t('profile.statReceived')}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__num">{stats.data?.requestsCreated ?? '—'}</div>
-            <div className="stat__label">{t('profile.statShared')}</div>
-          </div>
-          <div className="stat">
-            <div className="stat__num">{stats.data?.streakDays ?? '—'}</div>
-            <div className="stat__label">{t('profile.statStreak')}</div>
-          </div>
-        </section>
-
-        <ProfileActivityTabs userId={profile.data?.id} />
-
-      <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.accountEyebrow')}</p>
-        <h2 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">{t('profile.accountTitle')}</h2>
-        <p className="pv-muted mt-2 text-sm">{t('profile.accountSub')}</p>
-
-        <form className="mt-6 grid gap-5 lg:grid-cols-2" onSubmit={onSubmit}>
-          <div className="space-y-4">
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              {t('authPage.displayName')}
-              <Input onChange={(e) => setDisplayName(e.target.value)} placeholder={t('profile.displayNamePlaceholder')} value={displayName} />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.displayNameHelp')}</span>
-            </label>
-
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              @username
-              <Input onChange={(e) => setUsername(e.target.value.replace(/@/g, '').toLowerCase())} placeholder="seu_username" value={username} />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.usernameHelp')}</span>
-            </label>
-
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              <span className="flex items-baseline justify-between gap-2">
-                <span>Bio</span>
-                <span className={`text-[11px] tabular-nums ${bioCount > BIO_MAX ? 'text-primary' : 'pv-muted'}`}>{bioCount}/{BIO_MAX}</span>
-              </span>
-              <TextArea
-                className="mt-1.5 min-h-[100px]"
-                onChange={(e) => setBio(e.target.value)}
-                placeholder={t('profile.bioPlaceholder')}
-                value={bio}
-              />
-              <span className="pv-muted mt-1 block text-[11px] normal-case tracking-normal">{t('profile.bioHelp')}</span>
-            </label>
-          </div>
-
-          <div className="rounded-2xl border border-primary bg-panel p-4">
-            <p className="text-sm text-secondary">{t('profile.preview')}</p>
-            <div className="mt-4 flex items-center gap-3">
-              <Avatar user={previewUser} size="lg" />
-              <div className="min-w-0">
-                <p className="truncate text-lg font-semibold text-secondary">{displayName || t('profile.yourName')}</p>
-                <p className="pv-muted truncate text-sm">@{username || 'username'}</p>
+        {section === 'perfil' && (
+          <>
+            <section className="pcard">
+              <h2 className="pcard__title">{t('profile.photoTitle')}</h2>
+              <p className="pcard__sub">{t('profile.photoSub', { max: maxMb })}</p>
+              <div className="pcard__body pcard__row">
+                <Avatar user={previewUser} size="xl" />
+                <div className="pcard__btns">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={acceptAttr}
+                    className="hidden"
+                    onChange={onFileChange}
+                    aria-label={t('profile.selectPhoto')}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--ghost-out"
+                    disabled={avatarUploadBusy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadMutation.isPending
+                      ? t('profile.uploading')
+                      : profile.data?.avatarUrl
+                        ? t('profile.changePhoto')
+                        : t('profile.uploadPhoto')}
+                  </button>
+                  {profile.data?.avatarUrl && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost-out"
+                      disabled={avatarUploadBusy}
+                      onClick={() => {
+                        setAvatarError('')
+                        setAvatarStatus('')
+                        updateAvatar.mutate(null)
+                      }}
+                    >
+                      {t('profile.remove')}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-            {bio.trim() && <p className="pv-muted mt-3 whitespace-pre-line text-sm leading-relaxed text-secondary/90">{bio}</p>}
+              {(avatarStatus || avatarError) && (
+                <p
+                  role={avatarError ? 'alert' : 'status'}
+                  className={`formnote ${avatarError ? 'formnote--err' : ''}`}
+                  style={{ marginTop: 16 }}
+                >
+                  {avatarError || avatarStatus}
+                </p>
+              )}
+            </section>
 
-            {status && <p role="status" className="mt-4 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{status}</p>}
-            {error && <p role="alert" className="mt-4 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
+            <form className="pcard" onSubmit={onSubmit}>
+              <h2 className="pcard__title">{t('profile.accountTitle')}</h2>
+              <p className="pcard__sub">{t('profile.accountSub')}</p>
 
-            <Button className="mt-5 w-full sm:w-auto" disabled={saveProfile.isPending} type="submit">
-              {saveProfile.isPending ? t('common.saving') : t('profile.saveChanges')}
-            </Button>
-          </div>
-        </form>
+              <div className="pcard__body">
+                <label className="field">
+                  <span className="field__label">{t('authPage.displayName')}</span>
+                  <Input
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder={t('profile.displayNamePlaceholder')}
+                    value={displayName}
+                  />
+                  <span className="field__hint">{t('profile.displayNameHelp')}</span>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">@username</span>
+                  <Input
+                    onChange={(e) => setUsername(e.target.value.replace(/@/g, '').toLowerCase())}
+                    placeholder="seu_username"
+                    value={username}
+                  />
+                  <span className="field__hint">{t('profile.usernameHelp')}</span>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">
+                    <span>Bio</span>
+                    <span className={`field__count ${bioCount > BIO_MAX ? 'is-over' : ''}`}>
+                      {bioCount}/{BIO_MAX}
+                    </span>
+                  </span>
+                  <TextArea
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder={t('profile.bioPlaceholder')}
+                    value={bio}
+                  />
+                  <span className="field__hint">{t('profile.bioHelp')}</span>
+                </label>
+              </div>
+
+              {error && (
+                <p role="alert" className="formnote formnote--err" style={{ marginTop: 16 }}>
+                  {error}
+                </p>
+              )}
+
+              <div className="pcard__foot">
+                <Button disabled={saveProfile.isPending} type="submit">
+                  {saveProfile.isPending ? t('common.saving') : t('profile.saveChanges')}
+                </Button>
+              </div>
+            </form>
+          </>
+        )}
+
+        {section === 'prefs' && <PreferencesSection tradition={profile.data?.tradition} />}
+
+        {section === 'conta' && (
+          <>
+            <BlockedUsersSection />
+            <SessionSection />
+          </>
+        )}
+      </main>
+    </PageShell>
+  )
+}
+
+function PreferencesSection({ tradition }: { tradition?: Tradition }) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const queryClient = useQueryClient()
+  const { current: currentLanguage, change: changeLanguage, isSaving } = useLanguage()
+
+  const traditionMutation = useMutation({
+    mutationFn: async (next: Tradition) => {
+      const res = await api.patch<Profile>('/profile/tradition', { tradition: next })
+      return res.data
+    },
+    onSuccess: async () => {
+      toast.success(t('profile.traditionUpdated'))
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['profile', 'me'] }),
+        queryClient.invalidateQueries({ queryKey: ['profile', 'public'] }),
+        queryClient.invalidateQueries({ queryKey: ['feed'] })
+      ])
+    },
+    onError: () => toast.error(t('profile.traditionError'))
+  })
+
+  return (
+    <>
+      <section className="pcard">
+        <p className="pcard__eyebrow">{t('profile.traditionEyebrow')}</p>
+        <h2 className="pcard__title">{t('profile.traditionTitle')}</h2>
+        <p className="pcard__sub">{t('profile.traditionSub')}</p>
+
+        <div className="pcard__body optgrid">
+          {traditionOptions().map((option) => {
+            const active = tradition === option.value
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                disabled={traditionMutation.isPending || active}
+                onClick={() => traditionMutation.mutate(option.value)}
+                className={`opt ${active ? 'is-on' : ''}`}
+              >
+                <span className="opt__mark" aria-hidden>{option.emoji}</span>
+                <span className="min-w-0">
+                  <span className="opt__label">{option.label}</span>
+                  <span className="opt__desc">{option.description}</span>
+                </span>
+                {active && <span className="opt__check" aria-hidden>✓</span>}
+              </button>
+            )
+          })}
+        </div>
       </section>
 
-      <section id="idioma" className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.languageEyebrow')}</p>
-        <h2 className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">{t('profile.languageTitle')}</h2>
-        <p className="pv-muted mt-2 text-sm">{t('profile.languageSub')}</p>
+      <section className="pcard">
+        <p className="pcard__eyebrow">{t('profile.languageEyebrow')}</p>
+        <h2 className="pcard__title">{t('profile.languageTitle')}</h2>
+        <p className="pcard__sub">{t('profile.languageSub')}</p>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="pcard__body optgrid">
           {LANGUAGES.map((lang) => {
             const active = currentLanguage === lang.code
             return (
               <button
                 key={lang.code}
                 type="button"
-                disabled={active}
+                aria-pressed={active}
+                disabled={isSaving || active}
                 onClick={() => changeLanguage(lang.code)}
-                className={`flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-primary bg-primary/10 shadow-[0_10px_24px_-16px_var(--fx-ring)]' : 'border-primary bg-panel hover:bg-primary/5'} disabled:cursor-default`}
-                aria-pressed={active}
+                className={`opt ${active ? 'is-on' : ''}`}
               >
-                <span className="text-2xl leading-none" aria-hidden>{lang.flag}</span>
+                <span className="opt__mark" aria-hidden>{lang.flag}</span>
                 <span className="min-w-0">
-                  <span className={`block text-sm font-semibold ${active ? 'text-primary' : 'text-secondary'}`}>
-                    {lang.nativeLabel}{active ? t('profile.currentSuffix') : ''}
-                  </span>
+                  <span className="opt__label">{lang.nativeLabel}</span>
                 </span>
+                {active && <span className="opt__check" aria-hidden>✓</span>}
               </button>
             )
           })}
         </div>
       </section>
-
-      <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">{t('profile.traditionEyebrow')}</p>
-        <h2 className="pv-title mt-2 text-xl font-bold text-secondary sm:text-2xl">{t('profile.traditionTitle')}</h2>
-        <p className="pv-muted mt-2 text-sm">
-          {t('profile.traditionSub')}
-        </p>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          {traditionOptions().map((option) => {
-            const active = profile.data?.tradition === option.value
-            return (
-              <button
-                key={option.value}
-                type="button"
-                disabled={traditionMutation.isPending || active}
-                onClick={() => {
-                  setTraditionStatus('')
-                  traditionMutation.mutate(option.value)
-                }}
-                className={`flex items-start gap-3 rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-primary bg-primary/10 shadow-[0_10px_24px_-16px_var(--fx-ring)]' : 'border-primary bg-panel hover:bg-primary/5'} disabled:cursor-default`}
-                aria-pressed={active}
-              >
-                <span className="text-2xl leading-none" aria-hidden>{option.emoji}</span>
-                <span className="min-w-0">
-                  <span className={`block text-sm font-semibold ${active ? 'text-primary' : 'text-secondary'}`}>
-                    {option.label}{active ? t('profile.currentSuffix') : ''}
-                  </span>
-                  <span className="block text-[12px] leading-snug text-primary/80">{option.description}</span>
-                </span>
-              </button>
-            )
-          })}
-        </div>
-
-        {traditionStatus && (
-          <p className="mt-4 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{traditionStatus}</p>
-        )}
-      </section>
-
-      <BlockedUsersSection />
-      <SessionSection />
-      </main>
-    </PageShell>
+    </>
   )
 }
 
@@ -618,33 +688,35 @@ function BlockedUsersSection() {
   }
 
   return (
-    <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-      <h2 className="pv-title text-xl font-semibold text-secondary">{t('profile.blockedTitle')}</h2>
-      <p className="pv-muted mt-1 text-sm">
-        {t('profile.blockedSub')}
-      </p>
-      <div className="mt-4 space-y-3">
-        {blocksQuery.isLoading && (
-          [0, 1].map((i) => <span key={i} className="pv-shimmer block h-12 rounded-2xl" />)
-        )}
+    <section className="pcard">
+      <h2 className="pcard__title">{t('profile.blockedTitle')}</h2>
+      <p className="pcard__sub">{t('profile.blockedSub')}</p>
+
+      <div className="pcard__body pcard__list">
+        {blocksQuery.isLoading && [0, 1].map((i) => <span key={i} className="pv-shimmer block h-14 rounded-[10px]" />)}
         {!blocksQuery.isLoading && (blocksQuery.data ?? []).length === 0 && (
-          <p className="pv-muted rounded-2xl border border-primary bg-panel p-4 text-sm">
-            {t('profile.noBlocked')}
-          </p>
+          <p className="private__hint" style={{ margin: 0 }}>{t('profile.noBlocked')}</p>
         )}
         {(blocksQuery.data ?? []).map((user) => (
-          <article key={user.userId} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel p-4">
+          <article key={user.userId} className="pcard__item">
             <Avatar user={user} size="md" />
-            <div className="min-w-0 flex-1">
-              <Link to={`/u/${user.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">
+            <div className="pcard__item-body">
+              <Link to={`/u/${user.username}`} className="private__title">
                 {user.displayName}
               </Link>
-              <p className="pv-muted mt-1 truncate text-xs">@{user.username}</p>
-              <p className="pv-muted mt-1 text-xs">{t('profile.blockedOn', { date: new Date(user.blockedAt).toLocaleDateString(i18n.language) })}</p>
+              <p className="private__who" style={{ margin: '2px 0 0' }}>@{user.username}</p>
+              <p className="private__when" style={{ margin: '2px 0 0' }}>
+                {t('profile.blockedOn', { date: new Date(user.blockedAt).toLocaleDateString(i18n.language) })}
+              </p>
             </div>
-            <Button variant="secondary" disabled={unblock.isPending} onClick={() => handleUnblock(user)}>
+            <button
+              type="button"
+              className="btn btn--ghost-out"
+              disabled={unblock.isPending}
+              onClick={() => handleUnblock(user)}
+            >
               {t('profile.unblock')}
-            </Button>
+            </button>
           </article>
         ))}
       </div>
@@ -673,17 +745,14 @@ function SessionSection() {
   }
 
   return (
-    <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-      <h2 className="pv-title text-lg font-semibold text-secondary">{t('profile.sessionTitle')}</h2>
-      <p className="pv-muted mt-1 text-sm">{t('profile.sessionSub')}</p>
-      <button
-        type="button"
-        onClick={onLogout}
-        disabled={busy}
-        className="btn btn--ghost-out mt-3"
-      >
-        {busy ? t('profile.signingOut') : t('shell.logout')}
-      </button>
+    <section className="pcard">
+      <h2 className="pcard__title">{t('profile.sessionTitle')}</h2>
+      <p className="pcard__sub">{t('profile.sessionSub')}</p>
+      <div className="pcard__body">
+        <button type="button" onClick={onLogout} disabled={busy} className="btn btn--ghost-out">
+          {busy ? t('profile.signingOut') : t('shell.logout')}
+        </button>
+      </div>
     </section>
   )
 }
