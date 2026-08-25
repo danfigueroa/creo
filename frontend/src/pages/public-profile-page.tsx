@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
+import { Glyph } from '@/components/glyph'
 import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
@@ -301,103 +302,93 @@ export function PublicProfilePage() {
       </section>
 
       {stats ? (
-        <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-          <h2 className="pv-title text-xl font-bold text-secondary">{t('pubProfile.activityTitle')}</h2>
-          <p className="pv-muted mt-1 text-sm">
+        <section className="pcard">
+          <p className="pcard__eyebrow">{t('pubProfile.activityTitle')}</p>
+          <h2 className="pcard__title">{t('pubProfile.byPrayerType')}</h2>
+          <p className="pcard__sub">
             {status === 'SELF' ? t('pubProfile.activitySelf') : t('pubProfile.activityFriends')}
           </p>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <StatCard label={t('pubProfile.requestsCreated')} value={stats.requestsCreated} />
-            <StatCard label={t('pubProfile.prayersLogged')} value={stats.prayerActionsTotal} />
-          </div>
-
-          <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('pubProfile.byPrayerType')}</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {prayerActions.map((action) => {
-                const count = stats.prayerActionsByType[action.type] ?? 0
-                if (count === 0) return null
-                return (
-                  <div key={action.type} className="flex items-center justify-between rounded-2xl border border-primary/40 bg-panel px-3 py-2.5">
-                    <span className="flex items-center gap-2 text-sm text-secondary">
-                      <span aria-hidden>{action.emoji}</span>
-                      {action.label}
-                    </span>
-                    <span className="tabular-nums text-sm font-semibold text-primary">{count}</span>
-                  </div>
-                )
-              })}
-            </div>
-            {prayerActions.every((a) => (stats.prayerActionsByType[a.type] ?? 0) === 0) && (
-              <p className="pv-muted mt-2 text-xs">{t('pubProfile.noPrayersLogged')}</p>
-            )}
-          </div>
-
-          <div className="mt-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{t('pubProfile.byCategory')}</p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {prayerCategoryOptions().map((option) => {
-                const count = stats.prayerActionsByCategory[option.value] ?? 0
-                if (count === 0) return null
-                return (
-                  <div key={option.value} className="flex items-center justify-between rounded-2xl border border-primary/40 bg-panel px-3 py-2.5">
-                    <span className="flex items-center gap-2 text-sm text-secondary">
-                      <span aria-hidden>{option.emoji}</span>
-                      {option.label}
-                    </span>
-                    <span className="tabular-nums text-sm font-semibold text-primary">{count}</span>
-                  </div>
-                )
-              })}
-              {Object.keys(stats.prayerActionsByCategory).length === 0 && (
-                <p className="pv-muted text-xs sm:col-span-2">{t('pubProfile.noCategories')}</p>
-              )}
-            </div>
-            {/* Render any unknown category fallback (defensive) */}
-            <UnknownCategoriesList byCategory={stats.prayerActionsByCategory} />
+          <div className="pcard__body bd">
+            {(() => {
+              const rows = prayerActions
+                .map((action) => ({ action, count: stats.prayerActionsByType[action.type] ?? 0 }))
+                .filter((row) => row.count > 0)
+              if (rows.length === 0) {
+                return <p className="private__hint" style={{ margin: 0 }}>{t('pubProfile.noPrayersLogged')}</p>
+              }
+              // A barra é relativa à ação mais frequente: o que interessa aqui é
+              // a proporção entre elas, não o valor absoluto.
+              const max = Math.max(...rows.map((row) => row.count))
+              return rows.map(({ action, count }) => (
+                <div key={action.type} className="bd-row">
+                  <span className="bd-row__label">
+                    <Glyph kind={action.glyph} size={12} color={action.dot} />
+                    <span>{action.label}</span>
+                  </span>
+                  <span className="bd-row__count">{count}</span>
+                  <span className="bd-row__track">
+                    <span
+                      className="bd-row__fill"
+                      style={{ width: `${(count / max) * 100}%`, background: action.dot }}
+                    />
+                  </span>
+                </div>
+              ))
+            })()}
           </div>
         </section>
       ) : status !== 'SELF' && (
-        <section className="pv-panel mt-5 rounded-3xl p-6 sm:p-7">
-          <p className="text-sm text-secondary">
-            🔒 {t('pubProfile.statsLocked')}
-          </p>
-          <p className="pv-muted mt-1 text-sm">
-            {t('pubProfile.statsLockedSub', { name: owner.displayName })}
-          </p>
+        <section className="pcard">
+          <h2 className="pcard__title">🔒 {t('pubProfile.statsLocked')}</h2>
+          <p className="pcard__sub">{t('pubProfile.statsLockedSub', { name: owner.displayName })}</p>
         </section>
       )}
+
+      {stats && (
+        <section className="pcard">
+          <h2 className="pcard__title">{t('pubProfile.byCategory')}</h2>
+
+          <div className="pcard__body bd">
+            {(() => {
+              const known = prayerCategoryOptions().map((option) => ({
+                key: option.value as string,
+                emoji: option.emoji,
+                label: option.label,
+                count: stats.prayerActionsByCategory[option.value] ?? 0
+              }))
+              const knownKeys = new Set(known.map((row) => row.key))
+              // Defensivo: categoria que o backend conheça e o front ainda não.
+              const unknown = Object.entries(stats.prayerActionsByCategory)
+                .filter(([key]) => !knownKeys.has(key))
+                .map(([key, count]) => ({ key, emoji: categoryEmoji(key), label: categoryLabel(key), count }))
+              const rows = [...known, ...unknown].filter((row) => row.count > 0)
+              if (rows.length === 0) {
+                return <p className="private__hint" style={{ margin: 0 }}>{t('pubProfile.noCategories')}</p>
+              }
+              const max = Math.max(...rows.map((row) => row.count))
+              return rows.map((row) => (
+                <div key={row.key} className="bd-row">
+                  <span className="bd-row__label">
+                    <span aria-hidden>{row.emoji}</span>
+                    <span>{row.label}</span>
+                  </span>
+                  <span className="bd-row__count">{row.count}</span>
+                  <span className="bd-row__track">
+                    <span
+                      className="bd-row__fill"
+                      style={{ width: `${(row.count / max) * 100}%`, background: 'var(--ink-3)' }}
+                    />
+                  </span>
+                </div>
+              ))
+            })()}
+          </div>
+        </section>
+      )}
+
       </main>
     </PageShell>
-  )
-}
-
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-2xl border border-primary bg-panel p-5">
-      <p className="pv-muted text-xs uppercase tracking-[0.14em]">{label}</p>
-      <p className="pv-title mt-1 text-3xl font-bold text-primary">{value}</p>
-    </div>
-  )
-}
-
-function UnknownCategoriesList({ byCategory }: { byCategory: Record<string, number> }) {
-  const known = new Set(prayerCategoryOptions().map((o) => o.value))
-  const unknown = Object.entries(byCategory).filter(([k]) => !known.has(k as never))
-  if (unknown.length === 0) return null
-  return (
-    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-      {unknown.map(([k, v]) => (
-        <div key={k} className="flex items-center justify-between rounded-2xl border border-primary/40 bg-panel px-3 py-2.5">
-          <span className="flex items-center gap-2 text-sm text-secondary">
-            <span aria-hidden>{categoryEmoji(k)}</span>
-            {categoryLabel(k)}
-          </span>
-          <span className="tabular-nums text-sm font-semibold text-primary">{v}</span>
-        </div>
-      ))}
-    </div>
   )
 }
 
