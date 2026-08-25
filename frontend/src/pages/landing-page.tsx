@@ -5,9 +5,50 @@ import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { translateAuthError } from '@/lib/auth-errors'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import type { Tradition } from '@/lib/traditions'
+import { api } from '@/lib/api'
+import { traditionOptions, type Tradition } from '@/lib/traditions'
 
 type AuthTab = 'entrar' | 'criar'
+type UsernameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+
+const USERNAME_RE = /^[a-z0-9_]{3,30}$/
+const PASSWORD_MIN = 8
+
+// Checagem de disponibilidade do @username com debounce. É só um aviso: o
+// servidor revalida na hora de aplicar, então uma falha aqui não trava nada.
+function useUsernameAvailability(username: string): UsernameState {
+  const [state, setState] = useState<UsernameState>('idle')
+
+  useEffect(() => {
+    if (username === '') {
+      setState('idle')
+      return
+    }
+    if (!USERNAME_RE.test(username)) {
+      setState('invalid')
+      return
+    }
+    setState('checking')
+    let active = true
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await api.get<{ available: boolean }>('/username-availability', {
+          params: { username }
+        })
+        if (active) setState(res.data.available ? 'available' : 'taken')
+      } catch {
+        if (active) setState('idle')
+      }
+    }, 400)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [username])
+
+  return state
+}
 
 export function LandingPage() {
   const navigate = useNavigate()
@@ -22,11 +63,16 @@ export function LandingPage() {
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [name, setName] = useState('')
-  const [tradition, setTradition] = useState<Tradition>('CATHOLIC')
+  const [username, setUsername] = useState('')
+  // Sem pré-seleção de propósito: com CATHOLIC marcado por padrão, quem passava
+  // batido pelo campo saía católico sem nunca ter escolhido.
+  const [tradition, setTradition] = useState<Tradition | null>(null)
   const [magic, setMagic] = useState(false)
   const [info, setInfo] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+
+  const usernameState = useUsernameAvailability(username)
 
   const tabsRef = useRef<HTMLDivElement | null>(null)
   const [ink, setInk] = useState({ x: 0, w: 0 })
@@ -79,15 +125,32 @@ export function LandingPage() {
       setError(t('landing.namePrompt'))
       return
     }
+    if (!USERNAME_RE.test(username)) {
+      setError(t('landing.usernameInvalid'))
+      return
+    }
+    if (usernameState === 'taken') {
+      setError(t('landing.usernameTaken'))
+      return
+    }
+    if (pass.length < PASSWORD_MIN) {
+      setError(t('landing.passwordMin', { min: PASSWORD_MIN }))
+      return
+    }
+    if (!tradition) {
+      setError(t('landing.traditionPrompt'))
+      return
+    }
     setIsLoading(true)
     try {
-      window.localStorage.setItem('creo-pending-tradition', tradition)
       const { error: signErr } = await supabase.auth.signUp({
         email,
         password: pass,
         options: {
           emailRedirectTo: `${window.location.origin}/auth`,
-          data: { display_name: name.trim(), tradition }
+          // O backend aplica esta metadata na primeira requisição autenticada
+          // (migration 000018), então a escolha vale em qualquer dispositivo.
+          data: { display_name: name.trim(), username, tradition }
         }
       })
       if (signErr) {
@@ -302,6 +365,27 @@ export function LandingPage() {
                       required
                     />
                   </label>
+
+                  <label className="welcome__field">
+                    <div className="welcome__label-row">
+                      <span className="welcome__label">{t('landing.username')}</span>
+                      <span className="welcome__link-quiet" style={{ cursor: 'default' }}>
+                        {usernameState === 'checking' && t('landing.usernameChecking')}
+                        {usernameState === 'available' && t('landing.usernameAvailable')}
+                        {usernameState === 'taken' && t('landing.usernameTaken')}
+                        {usernameState === 'invalid' && t('landing.usernameInvalid')}
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder={t('landing.usernamePlaceholder')}
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value.replace(/^@+/, '').replace(/\s/g, '').toLowerCase())}
+                      required
+                    />
+                    <span className="welcome__hint">{t('landing.usernameHelp')}</span>
+                  </label>
+
                   <label className="welcome__field">
                     <span className="welcome__label">{t('landing.email')}</span>
                     <input
@@ -312,6 +396,7 @@ export function LandingPage() {
                       required
                     />
                   </label>
+
                   <label className="welcome__field">
                     <span className="welcome__label">{t('landing.password')}</span>
                     <input
@@ -325,34 +410,28 @@ export function LandingPage() {
 
                   <div className="welcome__field">
                     <span className="welcome__label">{t('landing.tradition')}</span>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
-                      {(['CATHOLIC', 'EVANGELICAL'] as const).map((trad) => {
-                        const active = tradition === trad
+                    <div className="optgrid" style={{ marginTop: 4 }}>
+                      {traditionOptions().map((option) => {
+                        const active = tradition === option.value
                         return (
                           <button
-                            key={trad}
+                            key={option.value}
                             type="button"
-                            onClick={() => setTradition(trad)}
+                            onClick={() => setTradition(option.value)}
                             aria-pressed={active}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: 'var(--r-2)',
-                              border: `1.5px solid ${active ? 'var(--ink)' : 'var(--line-2)'}`,
-                              background: active ? 'var(--ink)' : 'transparent',
-                              color: active ? 'var(--bg)' : 'var(--ink)',
-                              fontSize: 13,
-                              fontWeight: 600,
-                              fontFamily: 'var(--sans)',
-                              cursor: 'pointer',
-                              textAlign: 'center',
-                              transition: 'border-color 0.15s, background 0.15s, color 0.15s'
-                            }}
+                            className={`opt ${active ? 'is-on' : ''}`}
                           >
-                            {t(`traditions.${trad}.label`)}
+                            <span className="opt__mark" aria-hidden>{option.emoji}</span>
+                            <span className="min-w-0">
+                              <span className="opt__label">{option.label}</span>
+                              <span className="opt__desc">{option.description}</span>
+                            </span>
+                            {active && <span className="opt__check" aria-hidden>✓</span>}
                           </button>
                         )
                       })}
                     </div>
+                    <span className="welcome__hint">{t('landing.traditionHelp')}</span>
                   </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
