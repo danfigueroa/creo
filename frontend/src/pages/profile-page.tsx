@@ -119,9 +119,14 @@ export function ProfilePage() {
 
   const updateAvatar = useMutation({
     mutationFn: async (avatarUrl: string | null) => {
+      const saved = profile.data
+      if (!saved) throw new Error(t('profile.notLoaded'))
+      // PATCH /profile exige displayName e username no corpo, mas quem manda
+      // aqui são os valores JÁ SALVOS: enviar o estado do formulário faria uma
+      // troca de foto persistir edições que o usuário ainda não confirmou.
       const res = await api.patch<Profile>('/profile', {
-        displayName,
-        username,
+        displayName: saved.displayName,
+        username: saved.username,
         avatarUrl
       })
       return res.data
