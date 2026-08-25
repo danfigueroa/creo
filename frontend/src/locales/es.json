@@ -13,6 +13,10 @@
     "cannotStartSession": "No se pudo iniciar la sesión."
   },
   "profile": {
+    "navActivity": "Actividad",
+    "navEdit": "Editar perfil",
+    "navPrefs": "Preferencias",
+    "navAccount": "Cuenta",
     "yourProfile": "Tu perfil",
     "selectPhoto": "Seleccionar foto de perfil",
     "uploading": "Subiendo…",
@@ -37,7 +41,6 @@
     "languageEyebrow": "Idioma",
     "languageTitle": "Idioma de la plataforma",
     "languageSub": "Define el idioma de toda la interfaz. La preferencia te acompaña entre dispositivos.",
-    "currentSuffix": " — actual",
     "traditionEyebrow": "Tradición",
     "traditionTitle": "Mi tradición",
     "traditionSub": "Esto define las acciones de oración disponibles y el muro que ves. Al cambiar, verás solo peticiones de la nueva tradición.",
@@ -73,7 +76,13 @@
     "blockedOn": "Bloqueado el {{date}}",
     "sessionTitle": "Sesión",
     "sessionSub": "Cierra la sesión en este dispositivo.",
-    "signingOut": "Saliendo…"
+    "signingOut": "Saliendo…",
+    "editProfile": "Editar perfil",
+    "photoTitle": "Foto de perfil",
+    "photoSub": "JPG, PNG o WebP, hasta {{max}} MB. Aparece en tus peticiones y en tu perfil.",
+    "changeTradition": "Cambiar tradición",
+    "changeLanguage": "Cambiar idioma",
+    "languageUpdated": "Idioma actualizado."
   },
   "authPage": {
     "errEmailNotConfirmed": "Aún no confirmaste tu correo. Abre el enlace que enviamos a tu bandeja de entrada — o pide uno nuevo abajo.",

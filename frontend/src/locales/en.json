@@ -13,6 +13,10 @@
     "cannotStartSession": "Couldn't start the session."
   },
   "profile": {
+    "navActivity": "Activity",
+    "navEdit": "Edit profile",
+    "navPrefs": "Preferences",
+    "navAccount": "Account",
     "yourProfile": "Your profile",
     "selectPhoto": "Select profile photo",
     "uploading": "Uploading…",
@@ -37,7 +41,6 @@
     "languageEyebrow": "Language",
     "languageTitle": "Platform language",
     "languageSub": "Sets the language of the whole interface. The preference follows you across devices.",
-    "currentSuffix": " — current",
     "traditionEyebrow": "Tradition",
     "traditionTitle": "My tradition",
     "traditionSub": "This sets the available prayer actions and the feed you see. When you switch, you'll only see requests from the new tradition.",
@@ -73,7 +76,13 @@
     "blockedOn": "Blocked on {{date}}",
     "sessionTitle": "Session",
     "sessionSub": "End the session on this device.",
-    "signingOut": "Signing out…"
+    "signingOut": "Signing out…",
+    "editProfile": "Edit profile",
+    "photoTitle": "Profile photo",
+    "photoSub": "JPG, PNG or WebP, up to {{max}} MB. Shown on your requests and profile.",
+    "changeTradition": "Change tradition",
+    "changeLanguage": "Change language",
+    "languageUpdated": "Language updated."
   },
   "authPage": {
     "errEmailNotConfirmed": "You haven't confirmed your email yet. Open the link we sent to your inbox — or request a new one below.",
