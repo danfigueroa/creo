@@ -2977,6 +2977,203 @@ textarea::placeholder {
   .welcome__auth-card { padding: 26px 22px; }
 }
 
+
+/* ---------- Landing: seções educativas ----------------------------------- */
+
+/* A classe já era aplicada no seletor de idioma do hero (landing-page.tsx) mas
+   nunca teve regra: o seletor ficava colado no wordmark em vez de ancorado na
+   ponta direita da linha da marca. */
+.welcome__lang { margin-left: auto; }
+
+.welcome__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 160ms ease;
+}
+.welcome__more:hover { color: var(--ink); }
+.welcome__more span[aria-hidden] { transition: transform 200ms ease; }
+.welcome__more:hover span[aria-hidden] { transform: translateY(2px); }
+
+.welcome__hint { font-size: 12px; line-height: 1.45; color: var(--muted); }
+
+/* .optgrid/.opt vêm do bloco de perfil; dentro do card de auth o fundo precisa
+   acompanhar o dos inputs (--bg), senão os cartões somem contra o --card. */
+.welcome__field .opt { background: var(--bg); padding: 12px 34px 12px 14px; }
+.welcome__field .opt:hover { background: var(--card-2); }
+.welcome__field .opt.is-on { background: color-mix(in oklab, var(--ink) 6%, var(--card)); }
+
+.lp { background: var(--bg); position: relative; z-index: 1; }
+
+.lp-section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 84px 80px;
+  border-top: 1px solid var(--line);
+}
+.lp-section__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+.lp-section__title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 12px;
+  text-wrap: balance;
+}
+.lp-section__sub {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 62ch;
+  margin: 0;
+  text-wrap: pretty;
+}
+.lp-section__body { margin-top: 36px; }
+
+/* Passos — o gap de 1px sobre o fundo --line vira a divisória, mesmo truque de
+   .profile__stats. */
+.lp-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.lp-step { background: var(--card); padding: 30px 28px; }
+.lp-step__n {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 26px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin-bottom: 14px;
+}
+.lp-step__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.lp-step__text { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0; }
+
+/* Funcionalidades */
+.lp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 14px;
+}
+.lp-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  padding: 24px 22px;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+.lp-card:hover { border-color: var(--line-2); background: var(--card-2); }
+.lp-card__mark { font-size: 22px; line-height: 1; display: block; margin-bottom: 14px; }
+.lp-card__title {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.lp-card__text { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0; }
+
+/* Tradições — mostra as ações reais de lib/traditions.ts */
+.lp-trads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.lp-trad {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  padding: 26px 24px;
+}
+.lp-trad__head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.lp-trad__mark { font-size: 24px; line-height: 1; }
+.lp-trad__title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}
+.lp-trad__text { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0 0 18px; }
+.lp-trad__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Espelha .rx, mas estático: aqui as pílulas são amostra, não botão. */
+.lp-rx {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px 6px 9px;
+  border-radius: var(--r-pill);
+  background: var(--rx-bg);
+  border: 1px solid var(--rx-border);
+  color: var(--rx-fg);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+/* Privacidade */
+.lp-privacy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+
+/* Idiomas */
+.lp-langs { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+/* Rodapé */
+.lp-foot {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 80px 56px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.lp-foot__brand { display: inline-flex; align-items: center; gap: 10px; }
+.lp-foot__brand .brand-mark { width: 26px; height: 26px; border-radius: 8px; }
+.lp-foot__brand .brand-word { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.lp-foot__note { font-size: 12px; color: var(--muted-2); margin: 0; max-width: 46ch; }
+
+/* Os breakpoints do landing são 1100/640, não os 900 do shell autenticado. */
+@media (max-width: 1100px) {
+  .lp-section { padding: 64px 36px; }
+  .lp-foot { padding: 28px 36px 48px; }
+  .lp-steps { grid-template-columns: 1fr; }
+  .lp-trads { grid-template-columns: 1fr; }
+  .lp-privacy { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .lp-section { padding: 48px 22px; }
+  .lp-foot { padding: 24px 22px 40px; }
+  .lp-step { padding: 24px 20px; }
+  .lp-card { padding: 20px 18px; }
+  .lp-trad { padding: 22px 18px; }
+}
+
 /* ---------- Mobile bottom tab bar ---------------------------------------- */
 
 .mobile-tabbar { display: none; }
