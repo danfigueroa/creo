@@ -71,6 +71,8 @@ export function LandingPage() {
   const [info, setInfo] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
 
   const usernameState = useUsernameAvailability(username)
 
@@ -157,9 +159,29 @@ export function LandingPage() {
         setError(translateAuthError(signErr.message))
         return
       }
-      setInfo(t('landing.accountCreated', { email: email.trim() }))
+      setResendState('idle')
+      setPendingEmail(email.trim())
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function onResend() {
+    if (!pendingEmail) return
+    const supabase = getSupabaseClient()
+    if (!supabase) return
+    setError('')
+    setResendState('sending')
+    try {
+      const { error: resendErr } = await supabase.auth.resend({ type: 'signup', email: pendingEmail })
+      if (resendErr) {
+        setError(translateAuthError(resendErr.message))
+        setResendState('idle')
+        return
+      }
+      setResendState('sent')
+    } catch {
+      setResendState('idle')
     }
   }
 
@@ -344,6 +366,46 @@ export function LandingPage() {
                     }}
                   >
                     {t('landing.createOne')}
+                  </a>
+                </p>
+              </>
+            ) : pendingEmail ? (
+              <>
+                <h2 className="welcome__auth-title">{t('landing.checkInboxTitle')}</h2>
+                <p className="welcome__auth-sub">{t('landing.checkInboxText', { email: pendingEmail })}</p>
+
+                <div className="welcome__form">
+                  <button
+                    type="button"
+                    className="welcome__magic"
+                    disabled={resendState !== 'idle'}
+                    onClick={onResend}
+                  >
+                    {resendState === 'sending'
+                      ? t('landing.resending')
+                      : resendState === 'sent'
+                        ? t('landing.resent')
+                        : t('landing.resend')}
+                  </button>
+                </div>
+
+                {error && (
+                  <p role="alert" style={alertStyle()}>
+                    {error}
+                  </p>
+                )}
+
+                <p className="welcome__foot">
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      setPendingEmail(null)
+                      setResendState('idle')
+                      setError('')
+                    }}
+                  >
+                    {t('landing.useAnotherEmail')}
                   </a>
                 </p>
               </>
