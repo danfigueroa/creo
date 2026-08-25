@@ -5,33 +5,8 @@ import { Input } from '@/components/input'
 import { Button } from '@/components/button'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
-import { api } from '@/lib/api'
-import i18n from '@/lib/i18n'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { Tradition, traditionOptions } from '@/lib/traditions'
-
-type AuthMode = 'signin' | 'signup'
-
-function translateAuthError(raw: string): string {
-  const message = (raw || '').toLowerCase()
-  if (message.includes('email not confirmed')) return i18n.t('authPage.errEmailNotConfirmed')
-  if (message.includes('invalid login credentials') || message.includes('invalid credentials')) return i18n.t('authErrors.invalidCredentials')
-  if (message.includes('user already registered') || message.includes('already registered')) return i18n.t('authPage.errAlreadyRegistered')
-  if (message.includes('password should be at least')) return i18n.t('authErrors.passwordTooShort')
-  if (message.includes('rate limit') || message.includes('too many')) return i18n.t('authPage.errRateLimit')
-  if (message.includes('signup') && message.includes('disabled')) return i18n.t('authPage.errSignupDisabled')
-  if (message.includes('otp') && (message.includes('expired') || message.includes('invalid'))) return i18n.t('authPage.errOtpExpired')
-  return raw || i18n.t('authErrors.generic')
-}
-
-function translateCallbackError(code: string, description: string): string {
-  const desc = (description || '').toLowerCase()
-  const c = (code || '').toLowerCase()
-  if (desc.includes('expired') || c.includes('expired')) return i18n.t('authPage.errCallbackExpired')
-  if (desc.includes('already') || desc.includes('used') || c === 'access_denied') return i18n.t('authPage.errCallbackUsed')
-  if (description) return decodeURIComponent(description.replace(/\+/g, ' '))
-  return i18n.t('authPage.errCallbackInvalid')
-}
+import { translateAuthError, translateCallbackError } from '@/lib/auth-errors'
 
 export function AuthPage() {
   const navigate = useNavigate()
@@ -41,10 +16,9 @@ export function AuthPage() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [username, setUsername] = useState('')
-  const [tradition, setTradition] = useState<Tradition>('CATHOLIC')
-  const [mode, setMode] = useState<AuthMode>('signin')
+  // A criação de conta vive só na landing agora; esta tela cuida de acesso,
+  // link mágico, redefinição de senha e dos callbacks de e-mail.
+  const [showReset, setShowReset] = useState(searchParams.get('reset') === '1')
   const [isLoading, setIsLoading] = useState(false)
   const [info, setInfo] = useState('')
   const [error, setError] = useState('')
@@ -75,20 +49,9 @@ export function AuthPage() {
     }
     let active = true
 
-    const redirectIfSession = async (token: string | null | undefined) => {
+    const redirectIfSession = (token: string | null | undefined) => {
       if (!active || !token) return
       setAccessToken(token)
-      const pendingTradition = window.localStorage.getItem('creo-pending-tradition')
-      if (pendingTradition) {
-        try {
-          await api.patch('/profile/tradition', { tradition: pendingTradition })
-          // Só limpa em sucesso: se o PATCH falhar (rede, backend frio), a
-          // escolha fica guardada e é reaplicada no próximo login.
-          window.localStorage.removeItem('creo-pending-tradition')
-        } catch {
-          // best-effort
-        }
-      }
       navigate(nextPath, { replace: true })
     }
 
@@ -114,55 +77,6 @@ export function AuthPage() {
         setError(t('authPage.supabaseMissingEnv'))
         return
       }
-      if (mode === 'signup') {
-        const normalizedUsername = username.trim().replace(/^@+/, '').toLowerCase()
-        const normalizedDisplayName = displayName.trim()
-        if (normalizedDisplayName.length < 2 || normalizedDisplayName.length > 80) {
-          setError(t('authPage.invalidDisplayName'))
-          return
-        }
-        if (!/^[a-z0-9_]{3,30}$/.test(normalizedUsername)) {
-          setError(t('authPage.invalidUsername'))
-          return
-        }
-        if (!email.trim() || password.length < 6) {
-          setError(t('authPage.invalidEmailPassword'))
-          return
-        }
-
-        try {
-          const availability = await api.get<{ available: boolean }>('/username-availability', {
-            params: { username: normalizedUsername }
-          })
-          if (!availability.data.available) {
-            setError(t('authPage.usernameTaken'))
-            return
-          }
-        } catch {
-          // backend pode estar fora — segue o cadastro; conflito real volta como erro do Supabase ou na primeira request autenticada
-        }
-
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth`,
-            data: {
-              username: normalizedUsername,
-              display_name: normalizedDisplayName,
-              tradition
-            }
-          }
-        })
-        if (signUpError) {
-          setError(translateAuthError(signUpError.message))
-          return
-        }
-        setPendingConfirmEmail(email.trim())
-        setInfo(t('authPage.accountCreated', { email: email.trim() }))
-        return
-      }
-
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password
@@ -244,6 +158,7 @@ export function AuthPage() {
         return
       }
       setInfo(t('authPage.resetSent'))
+      setShowReset(false)
     } finally {
       setIsLoading(false)
     }
@@ -334,97 +249,65 @@ export function AuthPage() {
       </section>
 
       <section className="pv-panel flex h-full flex-col rounded-3xl p-7 sm:p-9">
-        <div className="inline-flex w-full rounded-full border border-primary bg-panel p-1">
-          <button
-            className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${mode === 'signin' ? 'bg-primary text-onPrimary shadow-[0_8px_18px_-10px_var(--fx-ring)]' : 'text-primary hover:bg-primary/5'}`}
-            onClick={() => setMode('signin')}
-            type="button"
-          >
-            {t('landing.signIn')}
-          </button>
-          <button
-            className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${mode === 'signup' ? 'bg-primary text-onPrimary shadow-[0_8px_18px_-10px_var(--fx-ring)]' : 'text-primary hover:bg-primary/5'}`}
-            onClick={() => setMode('signup')}
-            type="button"
-          >
-            {t('landing.signUp')}
-          </button>
-        </div>
-
-        <h2 className="pv-title mt-7 text-2xl font-semibold text-secondary sm:text-3xl">
-          {mode === 'signin' ? t('authPage.welcomeBack') : t('authPage.createYourAccount')}
+        <h2 className="pv-title text-2xl font-semibold text-secondary sm:text-3xl">
+          {showReset ? t('authPage.resetTitle') : t('authPage.welcomeBack')}
         </h2>
         <p className="pv-muted mt-2 text-sm">
-          {mode === 'signin' ? t('authPage.signinSub') : t('authPage.signupSub')}
+          {showReset ? t('authPage.resetSub') : t('authPage.signinSub')}
         </p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          {mode === 'signup' && (
-            <>
+        {showReset ? (
+          <>
+            <div className="mt-6 space-y-4">
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('authPage.displayName')}</span>
-                <Input className="mt-1.5" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t('authPage.displayNamePlaceholder')} />
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
+                <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
+              </label>
+              <Button className="w-full" disabled={isLoading} onClick={onResetPassword} type="button">
+                {isLoading ? t('common.loading') : t('authPage.resetCta')}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setShowReset(false); setError(''); setInfo('') }}
+                className="w-full text-xs font-semibold text-primary hover:text-secondary"
+              >
+                {t('authPage.backToSignIn')}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <form onSubmit={onSubmit} className="mt-6 space-y-4">
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
+                <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
               </label>
               <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">@username</span>
-                <Input className="mt-1.5" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} placeholder={t('authPage.usernamePlaceholder')} />
+                <span className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                  <span>{t('landing.password')}</span>
+                  <button className="text-[11px] font-semibold normal-case tracking-normal text-primary hover:text-secondary" onClick={() => setShowReset(true)} type="button">
+                    {t('landing.forgotPassword')}
+                  </button>
+                </span>
+                <Input className="mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete="current-password" />
               </label>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.tradition')}</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {traditionOptions().map((option) => {
-                    const active = tradition === option.value
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setTradition(option.value)}
-                        className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left transition ${active ? 'border-primary bg-primary/10 shadow-[0_10px_24px_-16px_var(--fx-ring)]' : 'border-primary bg-panel hover:bg-primary/5'}`}
-                        aria-pressed={active}
-                      >
-                        <span className="text-xl leading-none" aria-hidden>{option.emoji}</span>
-                        <span className="min-w-0">
-                          <span className={`block text-sm font-semibold ${active ? 'text-primary' : 'text-secondary'}`}>{option.label}</span>
-                          <span className="block text-[11px] leading-snug text-primary/80">{option.description}</span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
-          )}
 
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
-            <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
-          </label>
-          <label className="block">
-            <span className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              <span>{t('landing.password')}</span>
-              {mode === 'signin' && (
-                <button className="text-[11px] font-semibold normal-case tracking-normal text-primary hover:text-secondary" onClick={onResetPassword} type="button">
-                  {t('landing.forgotPassword')}
-                </button>
-              )}
-            </span>
-            <Input className="mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
-          </label>
+              <Button className="w-full" disabled={isLoading} type="submit">
+                {isLoading ? t('common.loading') : t('landing.signIn')}
+              </Button>
+            </form>
 
-          <Button className="w-full" disabled={isLoading} type="submit">
-            {isLoading ? t('common.loading') : mode === 'signin' ? t('landing.signIn') : t('landing.signUp')}
-          </Button>
-        </form>
+            <div className="my-6 flex items-center gap-3" aria-hidden>
+              <span className="h-px flex-1 bg-primary/30" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('landing.or')}</span>
+              <span className="h-px flex-1 bg-primary/30" />
+            </div>
 
-        <div className="my-6 flex items-center gap-3" aria-hidden>
-          <span className="h-px flex-1 bg-primary/30" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('landing.or')}</span>
-          <span className="h-px flex-1 bg-primary/30" />
-        </div>
-
-        <Button className="w-full" disabled={isLoading} onClick={onPasswordlessEmail} type="button" variant="secondary">
-          {t('landing.magicCta')}
-        </Button>
+            <Button className="w-full" disabled={isLoading} onClick={onPasswordlessEmail} type="button" variant="secondary">
+              {t('landing.magicCta')}
+            </Button>
+          </>
+        )}
 
         {(error || info) && (
           <div className="mt-4 space-y-2">
@@ -445,11 +328,11 @@ export function AuthPage() {
         )}
 
         <p className="pv-muted mt-auto pt-8 text-center text-xs">
-          {mode === 'signin' ? (
-            <>{t('landing.noAccount')} <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signup')} type="button">{t('authPage.createYours')}</button>.</>
-          ) : (
-            <>{t('landing.haveAccount')} <button className="font-semibold text-primary hover:text-secondary" onClick={() => setMode('signin')} type="button">{t('landing.signIn')}</button>.</>
-          )}
+          {t('landing.noAccount')}{' '}
+          <Link className="font-semibold text-primary hover:text-secondary" to="/">
+            {t('authPage.createYours')}
+          </Link>
+          .
         </p>
       </section>
     </div>
