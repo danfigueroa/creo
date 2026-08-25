@@ -174,7 +174,7 @@ func (r *PostgresRepository) SetUserTradition(ctx context.Context, userID string
 	var u models.User
 	err := r.db.QueryRow(ctx, `
 		UPDATE users
-		SET tradition = $2, updated_at = NOW()
+		SET tradition = $2, signup_metadata_applied = true, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING id::text, email, username, display_name, avatar_url, bio, tradition, language, created_at, updated_at
 	`, userID, tradition).Scan(&u.ID, &u.Email, &u.Username, &u.DisplayName, &u.AvatarURL, &u.Bio, &u.Tradition, &u.Language, &u.CreatedAt, &u.UpdatedAt)
@@ -365,6 +365,30 @@ func (r *PostgresRepository) UpsertAuthUser(ctx context.Context, userID, email, 
 			END,
 			updated_at = NOW()
 	`, userID, email, preferredUsername, preferredDisplayName, preferredTradition)
+	if err != nil {
+		return err
+	}
+	// O trigger on_auth_user_created já criou a linha no momento do signUp, então
+	// o INSERT acima sempre cai no ON CONFLICT e a tradição/username escolhidos no
+	// cadastro se perderiam. Aplica a metadata do JWT uma única vez — o WHERE na
+	// flag torna a operação idempotente, sem precisar de transação.
+	_, err = r.db.Exec(ctx, `
+		UPDATE users
+		SET
+			tradition = COALESCE(NULLIF($3, '')::tradition, tradition),
+			username = CASE
+				WHEN NULLIF($2, '') IS NOT NULL AND NOT EXISTS (
+					SELECT 1 FROM users u2
+					WHERE LOWER(u2.username) = LOWER($2)
+					  AND u2.id <> $1
+					  AND u2.deleted_at IS NULL
+				) THEN $2
+				ELSE username
+			END,
+			signup_metadata_applied = true,
+			updated_at = NOW()
+		WHERE id = $1 AND NOT signup_metadata_applied
+	`, userID, preferredUsername, preferredTradition)
 	return err
 }
 
