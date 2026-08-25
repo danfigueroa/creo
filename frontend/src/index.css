@@ -1769,6 +1769,216 @@ textarea::placeholder {
 .private__who { font-size: 13px; color: var(--muted); }
 .private__when { font-size: 12px; color: var(--muted-2); white-space: nowrap; }
 
+/* ---------- Profile: nav de seções + cartões de ajuste ------------------- */
+
+/* Nav de primeiro nível (/profile). Pílula preenchida de propósito: as sub-abas
+   de atividade logo abaixo usam .tabs (sublinhado), e dois níveis de navegação
+   com a mesma forma ficariam ambíguos. */
+.pnav {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  margin: 0 0 24px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pnav::-webkit-scrollbar { display: none; }
+.pnav__item {
+  flex: 1 0 auto;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.pnav__item:hover { color: var(--ink-2); background: var(--card-2); }
+.pnav__item.is-on { background: var(--ink); color: var(--bg); font-weight: 600; }
+
+/* Cartão de ajustes — o equivalente editorial de .pv-panel, alinhado com .post. */
+.pcard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  padding: 22px 24px;
+  margin-bottom: 14px;
+}
+.pcard__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+.pcard__title {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.pcard__sub {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 60ch;
+  margin: 0;
+  text-wrap: pretty;
+}
+.pcard__body { margin-top: 18px; }
+.pcard__row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.pcard__btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.pcard__list { display: flex; flex-direction: column; gap: 8px; }
+.pcard__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+}
+.pcard__item-body { flex: 1; min-width: 0; }
+.pcard__foot {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Grade de escolha única (tradição, idioma). Botões com aria-pressed, não
+   <input type=radio> — é o padrão que o resto do app já usa. */
+.optgrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+.opt {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 40px 14px 16px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.opt:hover { border-color: var(--line-2); background: var(--card-2); }
+.opt.is-on {
+  border-color: var(--ink-3);
+  background: color-mix(in oklab, var(--ink) 5%, var(--card));
+  box-shadow: var(--shadow-1);
+  cursor: default;
+}
+.opt:disabled:not(.is-on) { opacity: 0.55; cursor: default; }
+.opt__mark { font-size: 22px; line-height: 1; }
+.opt__label { display: block; font-size: 14px; font-weight: 600; color: var(--ink); }
+.opt__desc {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* Marca o item ativo sem depender de copy (" — atual"), que não cabia em 210px. */
+.opt__check {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Campo de formulário editorial. */
+.field { display: block; margin-bottom: 20px; }
+.field:last-child { margin-bottom: 0; }
+.field__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 7px;
+}
+.field__count {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-2);
+}
+.field__count.is-over { color: oklch(0.52 0.16 25); }
+.field__hint {
+  display: block;
+  margin: 7px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Aviso inline de status/erro — substitui três estilos ad-hoc diferentes. */
+.formnote {
+  margin: 0;
+  padding: 9px 13px;
+  border-radius: var(--r-2);
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+  color: var(--ink-2);
+}
+.formnote--err {
+  background: oklch(0.96 0.02 25);
+  border-color: oklch(0.84 0.07 25);
+  color: oklch(0.46 0.14 25);
+}
+
+/* Chips de tradição/idioma no header do próprio perfil: mostram o estado atual
+   e levam direto à seção Preferências. */
+.profile__chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.profile__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+.profile__chip:hover { border-color: var(--ink-3); background: var(--card-2); color: var(--ink); }
+
 .timeline { list-style: none; margin: 0; padding: 16px 0 0; position: relative; }
 .timeline::before {
   content: ""; position: absolute; left: 90px; top: 0; bottom: 0;
@@ -1816,6 +2026,11 @@ textarea::placeholder {
   .profile { padding: 0 20px 60px; }
   .profile__cover { margin: 18px -20px 0; }
   .profile__stats { grid-template-columns: repeat(2, 1fr); }
+  /* As quatro seções não cabem em 375px: os itens param de esticar e a .pnav
+     rola horizontalmente (ela já é overflow-x: auto). */
+  .pnav__item { flex: 0 0 auto; padding: 9px 15px; font-size: 13px; }
+  .pcard { padding: 18px 16px; }
+  .optgrid { grid-template-columns: 1fr; }
 }
 
 /* ---------- Notifications ----------------------------------------------- */
