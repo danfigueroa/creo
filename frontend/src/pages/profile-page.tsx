@@ -11,7 +11,7 @@ import { Button } from '@/components/button'
 import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { errorMessage } from '@/lib/api-error'
-import { Tradition, traditionOptions } from '@/lib/traditions'
+import { Tradition, traditionLabel, traditionOptions } from '@/lib/traditions'
 import { LANGUAGES, type BackendLanguage } from '@/lib/i18n'
 import { useLanguage } from '@/lib/use-language'
 import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, getSupabaseClient, uploadAvatar } from '@/lib/supabase'
@@ -55,6 +55,7 @@ export function ProfilePage() {
   const toast = useToast()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { current: currentLanguage } = useLanguage()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [displayName, setDisplayName] = useState('')
@@ -208,6 +209,7 @@ export function ProfilePage() {
   const bioCount = bio.trim().length
   const acceptAttr = AVATAR_ACCEPTED_MIMES.join(',')
   const maxMb = Math.round(AVATAR_MAX_BYTES / (1024 * 1024))
+  const activeLanguage = LANGUAGES.find((lang) => lang.code === currentLanguage) ?? LANGUAGES[0]
   const loading = profile.isLoading && !profile.data
 
   return (
@@ -229,6 +231,30 @@ export function ProfilePage() {
                   <span>@{username || profile.data?.username || 'username'}</span>
                 </div>
                 {profile.data?.bio && <p className="profile__bio">"{profile.data.bio}"</p>}
+                {/* Estado atual de tradição e idioma direto no header — antes só
+                    dava para descobrir rolando até o fim da página. */}
+                <div className="profile__chips">
+                  {profile.data?.tradition && (
+                    <button
+                      type="button"
+                      className="profile__chip"
+                      onClick={() => goTo('prefs')}
+                      aria-label={t('profile.changeTradition')}
+                    >
+                      <span aria-hidden>{profile.data.tradition === 'EVANGELICAL' ? '🕊️' : '📿'}</span>
+                      {traditionLabel(profile.data.tradition)}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="profile__chip"
+                    onClick={() => goTo('prefs')}
+                    aria-label={t('profile.changeLanguage')}
+                  >
+                    <span aria-hidden>{activeLanguage.flag}</span>
+                    {activeLanguage.nativeLabel}
+                  </button>
+                </div>
               </>
             )}
           </div>
