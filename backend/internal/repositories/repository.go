@@ -36,6 +36,8 @@ var ErrBlockNotFound = errors.New("block not found")
 var ErrUserBlocked = errors.New("user blocked")
 var ErrModerationNotApplicable = errors.New("moderation not applicable")
 var ErrAnnouncementNotFound = errors.New("announcement not found")
+var ErrVerseNotFound = errors.New("verse not found")
+var ErrVerseShareNotFound = errors.New("verse share not found")
 
 type Repository interface {
 	GetUserByID(ctx context.Context, userID string) (models.User, error)
@@ -113,6 +115,34 @@ type Repository interface {
 	CountAnnouncementsForUser(ctx context.Context, userID string) (int64, error)
 	UpdateAnnouncement(ctx context.Context, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error)
 	SoftDeleteAnnouncement(ctx context.Context, announcementID string) error
+
+	// Versículo do dia.
+	CountVersePool(ctx context.Context, tradition models.Tradition) (int64, error)
+	GetVerseByPoolOffset(ctx context.Context, tradition models.Tradition, offset int64) (models.BibleVerse, error)
+	GetVerseByID(ctx context.Context, verseID string) (models.BibleVerse, error)
+	SetVerseText(ctx context.Context, verseID, text string) error
+	HasSharedVerseOn(ctx context.Context, userID, verseID, day string) (bool, error)
+
+	// Compartilhamentos de versículo.
+	CreateVerseShare(ctx context.Context, in models.CreateVerseShareInput) (models.VerseShare, error)
+	GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error)
+	DeleteVerseShare(ctx context.Context, userID, shareID string) error
+	RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error
+	ListVerseShareActions(ctx context.Context, shareID string) ([]models.PrayerActionRecord, error)
+	EnrichVerseShares(ctx context.Context, viewerUserID string, items []*models.VerseShare) error
+
+	// Streams de feed. Devolvem linhas cruas (sem enrich), como os List*PrayerRequests
+	// dos feeds mesclados: o service fatia a página e só então enriquece.
+	ListHomeVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error)
+	CountHomeVerseShares(ctx context.Context, userID string) (int64, error)
+	ListPublicVerseShares(ctx context.Context, viewerUserID string, limit, offset int) ([]models.VerseShare, error)
+	CountPublicVerseShares(ctx context.Context, viewerUserID string) (int64, error)
+	ListFriendsVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error)
+	CountFriendsVerseShares(ctx context.Context, userID string) (int64, error)
+	ListGroupsVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error)
+	CountGroupsVerseShares(ctx context.Context, userID string) (int64, error)
+	ListVerseSharesByGroup(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.VerseShare, error)
+	CountVerseSharesByGroup(ctx context.Context, viewerUserID, groupID string) (int64, error)
 }
 
 type PostgresRepository struct {
@@ -3055,3 +3085,681 @@ func (r *PostgresRepository) notifyPrayersOfRequest(ctx context.Context, exec no
 
 var _ Repository = (*PostgresRepository)(nil)
 var _ = pgx.ErrNoRows
+
+// ---------------------------------------------------------------------------
+// Versículo do dia e compartilhamentos
+// ---------------------------------------------------------------------------
+
+// verseShareColumns é a projeção compartilhada por toda listagem de
+// compartilhamento. Todas as queries selecionam estas colunas nesta ordem, que
+// é o que scanVerseShares espera — mesmo contrato de scanPrayerRequests.
+const verseShareColumns = `
+	vs.id::text, vs.author_id::text, vs.comment, vs.visibility, vs.tradition,
+	vs.created_at, vs.updated_at,
+	bv.id::text, bv.book_slug, bv.book_name, bv.chapter, bv.verse, bv.theme,
+	bv.tradition, bv.translation, COALESCE(bv.text, '')
+`
+
+// verseShareFrom é o FROM comum: o versículo sempre vem junto (o card do feed
+// não faz sentido sem ele) e o autor precisa estar ativo.
+const verseShareFrom = `
+	FROM verse_shares vs
+	INNER JOIN bible_verses bv ON bv.id = vs.verse_id
+	INNER JOIN users u ON u.id = vs.author_id AND u.deleted_at IS NULL
+`
+
+// bibleVerseColumns projeta o catálogo sozinho, sem compartilhamento.
+const bibleVerseColumns = `
+	id::text, book_slug, book_name, chapter, verse, theme, tradition,
+	translation, COALESCE(text, '')
+`
+
+func scanBibleVerse(row pgx.Row) (models.BibleVerse, error) {
+	var v models.BibleVerse
+	err := row.Scan(&v.ID, &v.BookSlug, &v.BookName, &v.Chapter, &v.Verse,
+		&v.Theme, &v.Tradition, &v.Translation, &v.Text)
+	if err != nil {
+		return models.BibleVerse{}, err
+	}
+	v.FillReference()
+	return v, nil
+}
+
+func scanVerseShares(rows pgx.Rows) ([]models.VerseShare, error) {
+	items := make([]models.VerseShare, 0)
+	for rows.Next() {
+		var vs models.VerseShare
+		err := rows.Scan(
+			&vs.ID, &vs.AuthorID, &vs.Comment, &vs.Visibility, &vs.Tradition,
+			&vs.CreatedAt, &vs.UpdatedAt,
+			&vs.Verse.ID, &vs.Verse.BookSlug, &vs.Verse.BookName, &vs.Verse.Chapter,
+			&vs.Verse.Verse, &vs.Verse.Theme, &vs.Verse.Tradition,
+			&vs.Verse.Translation, &vs.Verse.Text,
+		)
+		if err != nil {
+			return nil, err
+		}
+		vs.Verse.FillReference()
+		items = append(items, vs)
+	}
+	return items, rows.Err()
+}
+
+// CountVersePool conta o catálogo visível para uma tradição. Versículos com
+// tradition NULL servem as duas.
+func (r *PostgresRepository) CountVersePool(ctx context.Context, tradition models.Tradition) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::bigint
+		FROM bible_verses
+		WHERE deleted_at IS NULL
+		  AND (tradition IS NULL OR tradition = $1)
+	`, tradition).Scan(&total)
+	return total, err
+}
+
+// GetVerseByPoolOffset devolve o versículo na posição offset do pool daquela
+// tradição. O ORDER BY id dá a ordem estável de que a escolha determinística do
+// versículo do dia depende: mudar essa ordenação muda o versículo de todo mundo.
+func (r *PostgresRepository) GetVerseByPoolOffset(ctx context.Context, tradition models.Tradition, offset int64) (models.BibleVerse, error) {
+	verse, err := scanBibleVerse(r.db.QueryRow(ctx, `
+		SELECT `+bibleVerseColumns+`
+		FROM bible_verses
+		WHERE deleted_at IS NULL
+		  AND (tradition IS NULL OR tradition = $1)
+		ORDER BY id
+		OFFSET $2
+		LIMIT 1
+	`, tradition, offset))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.BibleVerse{}, ErrVerseNotFound
+	}
+	return verse, err
+}
+
+// GetVerseByID busca uma entrada do catálogo pelo id.
+func (r *PostgresRepository) GetVerseByID(ctx context.Context, verseID string) (models.BibleVerse, error) {
+	verse, err := scanBibleVerse(r.db.QueryRow(ctx, `
+		SELECT `+bibleVerseColumns+`
+		FROM bible_verses
+		WHERE id = $1 AND deleted_at IS NULL
+	`, verseID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.BibleVerse{}, ErrVerseNotFound
+	}
+	return verse, err
+}
+
+// SetVerseText persiste o texto hidratado da API, para que a próxima leitura
+// não precise mais da rede.
+func (r *PostgresRepository) SetVerseText(ctx context.Context, verseID, text string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE bible_verses
+		SET text = $2, fetched_at = NOW(), updated_at = NOW()
+		WHERE id = $1
+	`, verseID, text)
+	return err
+}
+
+// HasSharedVerseOn diz se o usuário já compartilhou aquele versículo no dia
+// informado (YYYY-MM-DD, no fuso de São Paulo — o mesmo que define o "dia" do
+// versículo). Compartilhamentos apagados não contam.
+func (r *PostgresRepository) HasSharedVerseOn(ctx context.Context, userID, verseID, day string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM verse_shares
+			WHERE author_id = $1::uuid
+			  AND verse_id = $2::uuid
+			  AND deleted_at IS NULL
+			  AND (created_at AT TIME ZONE 'America/Sao_Paulo')::date = $3::date
+		)
+	`, userID, verseID, day).Scan(&exists)
+	return exists, err
+}
+
+// CreateVerseShare grava o compartilhamento e seus grupos alvo numa transação,
+// espelhando CreatePrayerRequest: a tradição é um snapshot do autor e cada
+// grupo alvo exige membresia ativa.
+func (r *PostgresRepository) CreateVerseShare(ctx context.Context, in models.CreateVerseShareInput) (models.VerseShare, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return models.VerseShare{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var shareID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO verse_shares (author_id, verse_id, comment, visibility, tradition)
+		VALUES ($1::uuid, $2::uuid, $3, $4, COALESCE((SELECT tradition FROM users WHERE id = $1::uuid), 'CATHOLIC'))
+		RETURNING id::text
+	`, in.AuthorID, in.VerseID, in.Comment, in.Visibility).Scan(&shareID)
+	if err != nil {
+		return models.VerseShare{}, err
+	}
+
+	for _, groupID := range in.GroupIDs {
+		var canPost bool
+		err = tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM group_memberships gm
+				WHERE gm.group_id = $1::uuid
+				  AND gm.user_id = $2::uuid
+				  AND gm.deleted_at IS NULL
+			)
+		`, groupID, in.AuthorID).Scan(&canPost)
+		if err != nil {
+			return models.VerseShare{}, err
+		}
+		if !canPost {
+			return models.VerseShare{}, ErrGroupAccessDenied
+		}
+
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO verse_share_groups (verse_share_id, group_id)
+			VALUES ($1::uuid, $2::uuid)
+		`, shareID, groupID); err != nil {
+			return models.VerseShare{}, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return models.VerseShare{}, err
+	}
+	return r.GetVerseShareByID(ctx, in.AuthorID, shareID)
+}
+
+// GetVerseShareByID aplica o controle de acesso de um único compartilhamento.
+// É o predicado canônico de visibilidade: o autor vê o que é seu (inclusive
+// PRIVATE), PUBLIC é aberto, FRIENDS exige amizade aceita e GROUP_ONLY exige
+// membresia num dos grupos alvo. viewerUserID vazio representa visitante anônimo.
+func (r *PostgresRepository) GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT `+verseShareColumns+verseShareFrom+`
+		WHERE vs.id = $1::uuid
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = COALESCE(
+		      (SELECT tradition FROM users WHERE id = NULLIF($2, '')::uuid AND deleted_at IS NULL),
+		      vs.tradition
+		  )
+		  AND (
+		      vs.author_id = NULLIF($2, '')::uuid
+		      OR vs.visibility = 'PUBLIC'
+		      OR (vs.visibility = 'FRIENDS' AND EXISTS (
+		          SELECT 1 FROM friendships f
+		          WHERE f.status = 'ACCEPTED'
+		            AND ((f.user_id = vs.author_id AND f.friend_user_id = NULLIF($2, '')::uuid)
+		              OR (f.friend_user_id = vs.author_id AND f.user_id = NULLIF($2, '')::uuid))
+		      ))
+		      OR (vs.visibility = 'GROUP_ONLY' AND EXISTS (
+		          SELECT 1 FROM verse_share_groups vsg
+		          INNER JOIN group_memberships gm ON gm.group_id = vsg.group_id
+		          WHERE vsg.verse_share_id = vs.id
+		            AND gm.user_id = NULLIF($2, '')::uuid
+		            AND gm.deleted_at IS NULL
+		      ))
+		  )
+	`, shareID, viewerUserID)
+	if err != nil {
+		return models.VerseShare{}, err
+	}
+	defer rows.Close()
+
+	items, err := scanVerseShares(rows)
+	if err != nil {
+		return models.VerseShare{}, err
+	}
+	if len(items) == 0 {
+		return models.VerseShare{}, ErrVerseShareNotFound
+	}
+	if err := r.enrichVerseShares(ctx, viewerUserID, items); err != nil {
+		return models.VerseShare{}, err
+	}
+	return items[0], nil
+}
+
+// DeleteVerseShare faz soft delete; só o autor pode apagar.
+func (r *PostgresRepository) DeleteVerseShare(ctx context.Context, userID, shareID string) error {
+	ct, err := r.db.Exec(ctx, `
+		UPDATE verse_shares
+		SET deleted_at = NOW(), updated_at = NOW()
+		WHERE id = $1::uuid AND author_id = $2::uuid AND deleted_at IS NULL
+	`, shareID, userID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrVerseShareNotFound
+	}
+	return nil
+}
+
+// RecordVerseShareAction registra uma reação num compartilhamento, com o mesmo
+// dedupe por janela de RecordPrayerAction. Ao contrário de prayer_requests, não
+// há contador desnormalizado: PrayedCount é somado no enrich a partir das
+// próprias reações, então não existe contador para dessincronizar.
+func (r *PostgresRepository) RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error {
+	ct, err := r.db.Exec(ctx, `
+		INSERT INTO prayer_actions (user_id, verse_share_id, action_type)
+		SELECT $1::uuid, $2::uuid, $3
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM prayer_actions
+			WHERE user_id = $1::uuid
+			  AND verse_share_id = $2::uuid
+			  AND action_type = $3
+			  AND created_at > NOW() - ($4::text || ' hours')::interval
+		)
+	`, userID, shareID, actionType, windowHours)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrDuplicatePrayedAction
+	}
+
+	var authorID string
+	if err := r.db.QueryRow(ctx, `
+		SELECT author_id::text FROM verse_shares WHERE id = $1::uuid AND deleted_at IS NULL
+	`, shareID).Scan(&authorID); err == nil && authorID != "" && authorID != userID {
+		// Mesmo dedupe de 60 minutos do PRAYED: reagir várias vezes no mesmo
+		// compartilhamento não vira uma enxurrada de notificações.
+		var recent bool
+		_ = r.db.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM notifications
+				WHERE user_id = $1::uuid
+				  AND type = 'VERSE_SHARE_PRAYED'
+				  AND actor_user_id = $2::uuid
+				  AND subject_id = $3::uuid
+				  AND created_at > NOW() - INTERVAL '60 minutes'
+			)
+		`, authorID, userID, shareID).Scan(&recent)
+		if !recent {
+			actor := userID
+			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
+				UserID:      authorID,
+				Type:        models.NotificationTypeVerseSharePrayed,
+				ActorUserID: &actor,
+				SubjectType: models.NotificationSubjectVerseShare,
+				SubjectID:   shareID,
+				Payload:     map[string]any{"actionType": string(actionType)},
+			})
+		}
+	}
+
+	r.maybeEmitPrayedMilestone(ctx, userID)
+	r.maybeEmitStreakMilestone(ctx, userID)
+	return nil
+}
+
+// ListVerseShareActions lista quem rezou num compartilhamento.
+func (r *PostgresRepository) ListVerseShareActions(ctx context.Context, shareID string) ([]models.PrayerActionRecord, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pa.user_id::text, u.username, u.display_name, u.avatar_url, pa.action_type, pa.created_at
+		FROM prayer_actions pa
+		INNER JOIN users u ON u.id = pa.user_id AND u.deleted_at IS NULL
+		WHERE pa.verse_share_id = $1::uuid
+		ORDER BY pa.created_at DESC
+	`, shareID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.PrayerActionRecord, 0)
+	for rows.Next() {
+		var rec models.PrayerActionRecord
+		if err := rows.Scan(&rec.UserID, &rec.Username, &rec.DisplayName, &rec.AvatarURL, &rec.ActionType, &rec.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, rec)
+	}
+	return items, rows.Err()
+}
+
+func (r *PostgresRepository) enrichVerseShares(ctx context.Context, viewerUserID string, items []models.VerseShare) error {
+	refs := make([]*models.VerseShare, len(items))
+	for i := range items {
+		refs[i] = &items[i]
+	}
+	return r.EnrichVerseShares(ctx, viewerUserID, refs)
+}
+
+// EnrichVerseShares preenche autor, grupos e contagens de reação em lote,
+// espelhando EnrichPrayerRequests. Recebe ponteiros para que os feeds mesclados
+// possam enriquecer a página final no lugar.
+//
+// Não há tratamento de anonimato aqui: compartilhar um versículo é sempre
+// identificado, ao contrário de um pedido de oração.
+func (r *PostgresRepository) EnrichVerseShares(ctx context.Context, viewerUserID string, items []*models.VerseShare) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	ids := make([]string, 0, len(items))
+	indexByID := make(map[string]int, len(items))
+	authorIDs := make([]string, 0, len(items))
+	authorSet := make(map[string]struct{}, len(items))
+	for i, item := range items {
+		ids = append(ids, item.ID)
+		indexByID[item.ID] = i
+		if _, seen := authorSet[item.AuthorID]; !seen {
+			authorSet[item.AuthorID] = struct{}{}
+			authorIDs = append(authorIDs, item.AuthorID)
+		}
+	}
+
+	// 1) autores
+	authorRows, err := r.db.Query(ctx, `
+		SELECT id::text, username, display_name, avatar_url
+		FROM users
+		WHERE id = ANY($1::uuid[])
+	`, authorIDs)
+	if err != nil {
+		return err
+	}
+	type authorInfo struct {
+		username    string
+		displayName string
+		avatarURL   *string
+	}
+	authors := make(map[string]authorInfo, len(authorIDs))
+	for authorRows.Next() {
+		var id string
+		var info authorInfo
+		if err := authorRows.Scan(&id, &info.username, &info.displayName, &info.avatarURL); err != nil {
+			authorRows.Close()
+			return err
+		}
+		authors[id] = info
+	}
+	authorRows.Close()
+	if err := authorRows.Err(); err != nil {
+		return err
+	}
+	for i := range items {
+		if info, ok := authors[items[i].AuthorID]; ok {
+			items[i].AuthorUsername = info.username
+			items[i].AuthorDisplayName = info.displayName
+			items[i].AuthorAvatarURL = info.avatarURL
+		}
+	}
+
+	// 2) grupos alvo
+	groupRows, err := r.db.Query(ctx, `
+		SELECT vsg.verse_share_id::text, vsg.group_id::text, g.name
+		FROM verse_share_groups vsg
+		INNER JOIN groups g ON g.id = vsg.group_id
+		WHERE vsg.verse_share_id = ANY($1::uuid[])
+		  AND g.deleted_at IS NULL
+	`, ids)
+	if err != nil {
+		return err
+	}
+	for groupRows.Next() {
+		var shareID, groupID, groupName string
+		if err := groupRows.Scan(&shareID, &groupID, &groupName); err != nil {
+			groupRows.Close()
+			return err
+		}
+		if idx, ok := indexByID[shareID]; ok {
+			items[idx].GroupIDs = append(items[idx].GroupIDs, groupID)
+			items[idx].GroupNames = append(items[idx].GroupNames, groupName)
+		}
+	}
+	groupRows.Close()
+	if err := groupRows.Err(); err != nil {
+		return err
+	}
+
+	// 3) contagens de reação por tipo (e o total, somado daqui)
+	countRows, err := r.db.Query(ctx, `
+		SELECT verse_share_id::text, action_type, COUNT(*)::bigint
+		FROM prayer_actions
+		WHERE verse_share_id = ANY($1::uuid[])
+		GROUP BY verse_share_id, action_type
+	`, ids)
+	if err != nil {
+		return err
+	}
+	for countRows.Next() {
+		var shareID, actionType string
+		var count int64
+		if err := countRows.Scan(&shareID, &actionType, &count); err != nil {
+			countRows.Close()
+			return err
+		}
+		if idx, ok := indexByID[shareID]; ok {
+			if items[idx].PrayerTypeCounts == nil {
+				items[idx].PrayerTypeCounts = make(map[string]int64, 4)
+			}
+			items[idx].PrayerTypeCounts[actionType] = count
+			items[idx].PrayedCount += count
+		}
+	}
+	countRows.Close()
+	if err := countRows.Err(); err != nil {
+		return err
+	}
+
+	// 4) reações do próprio viewer (pulada para visitante anônimo)
+	if viewerUserID == "" {
+		return nil
+	}
+	mineRows, err := r.db.Query(ctx, `
+		SELECT DISTINCT verse_share_id::text, action_type
+		FROM prayer_actions
+		WHERE user_id = $1::uuid AND verse_share_id = ANY($2::uuid[])
+	`, viewerUserID, ids)
+	if err != nil {
+		return err
+	}
+	defer mineRows.Close()
+	for mineRows.Next() {
+		var shareID, actionType string
+		if err := mineRows.Scan(&shareID, &actionType); err != nil {
+			return err
+		}
+		if idx, ok := indexByID[shareID]; ok {
+			items[idx].MyPrayerTypes = append(items[idx].MyPrayerTypes, actionType)
+		}
+	}
+	return mineRows.Err()
+}
+
+// verseViewerCTEs são as CTEs comuns aos feeds autenticados, com a mesma forma
+// usada por ListHomePrayerRequests: a tradição do viewer, seus amigos aceitos e
+// os bloqueios nas duas direções. $1 é sempre o id do viewer.
+const verseViewerCTEs = `
+	viewer AS (
+		SELECT tradition FROM users WHERE id = $1::uuid AND deleted_at IS NULL
+	),
+	friend_ids AS (
+		SELECT CASE WHEN user_id = $1::uuid THEN friend_user_id ELSE user_id END AS friend_id
+		FROM friendships
+		WHERE status = 'ACCEPTED' AND (user_id = $1::uuid OR friend_user_id = $1::uuid)
+	),
+	blocked_ids AS (
+		SELECT blocked_user_id AS uid FROM user_blocks WHERE blocker_user_id = $1::uuid
+		UNION
+		SELECT blocker_user_id AS uid FROM user_blocks WHERE blocked_user_id = $1::uuid
+	)
+`
+
+// Cada constante abaixo seleciona os ids visíveis num stream. Todas preservam
+// os mesmos invariantes: deleted_at IS NULL, filtro de tradição (exceto no ramo
+// do próprio autor, que sempre vê o que é seu), exclusão mútua por user_blocks,
+// e PRIVATE restrito ao autor.
+const (
+	verseIDsHome = `
+		SELECT vs.id
+		FROM verse_shares vs
+		WHERE vs.author_id = $1::uuid AND vs.deleted_at IS NULL
+		UNION
+		SELECT vs.id
+		FROM verse_shares vs
+		INNER JOIN friend_ids f ON f.friend_id = vs.author_id
+		WHERE vs.visibility IN ('PUBLIC', 'FRIENDS')
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = (SELECT tradition FROM viewer)
+		  AND vs.author_id NOT IN (SELECT uid FROM blocked_ids)
+		UNION
+		SELECT vs.id
+		FROM verse_shares vs
+		INNER JOIN verse_share_groups vsg ON vsg.verse_share_id = vs.id
+		INNER JOIN group_memberships gm ON gm.group_id = vsg.group_id
+		WHERE gm.user_id = $1::uuid
+		  AND gm.deleted_at IS NULL
+		  AND vs.visibility = 'GROUP_ONLY'
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = (SELECT tradition FROM viewer)
+		  AND vs.author_id NOT IN (SELECT uid FROM blocked_ids)
+	`
+
+	verseIDsFriends = `
+		SELECT vs.id
+		FROM verse_shares vs
+		INNER JOIN friend_ids f ON f.friend_id = vs.author_id
+		WHERE vs.visibility IN ('PUBLIC', 'FRIENDS')
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = (SELECT tradition FROM viewer)
+		  AND vs.author_id NOT IN (SELECT uid FROM blocked_ids)
+	`
+
+	verseIDsGroups = `
+		SELECT vs.id
+		FROM verse_shares vs
+		INNER JOIN verse_share_groups vsg ON vsg.verse_share_id = vs.id
+		INNER JOIN group_memberships gm ON gm.group_id = vsg.group_id
+		WHERE gm.user_id = $1::uuid
+		  AND gm.deleted_at IS NULL
+		  AND vs.visibility = 'GROUP_ONLY'
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = (SELECT tradition FROM viewer)
+		  AND vs.author_id NOT IN (SELECT uid FROM blocked_ids)
+	`
+
+	// $2 é o grupo. O acesso à membresia é validado antes, no service, por
+	// ensureGroupFeedAccess — aqui só se filtra o conteúdo.
+	verseIDsByGroup = `
+		SELECT vs.id
+		FROM verse_shares vs
+		INNER JOIN verse_share_groups vsg ON vsg.verse_share_id = vs.id
+		WHERE vsg.group_id = $2::uuid
+		  AND vs.visibility = 'GROUP_ONLY'
+		  AND vs.deleted_at IS NULL
+		  AND vs.tradition = COALESCE((SELECT tradition FROM viewer), vs.tradition)
+		  AND vs.author_id NOT IN (SELECT uid FROM blocked_ids)
+	`
+)
+
+// verseListQuery monta a listagem de um stream a partir da CTE de ids visíveis.
+// limitParam/offsetParam variam porque alguns streams consomem $2 para outro fim.
+func verseListQuery(idsCTE, limitParam, offsetParam string) string {
+	return `WITH ` + verseViewerCTEs + `, visible AS (` + idsCTE + `)
+		SELECT ` + verseShareColumns + verseShareFrom + `
+		INNER JOIN visible v ON v.id = vs.id
+		ORDER BY vs.created_at DESC
+		LIMIT ` + limitParam + ` OFFSET ` + offsetParam
+}
+
+func verseCountQuery(idsCTE string) string {
+	return `WITH ` + verseViewerCTEs + `, visible AS (` + idsCTE + `)
+		SELECT COUNT(*)::bigint FROM visible`
+}
+
+func (r *PostgresRepository) listVerseShares(ctx context.Context, query string, args ...any) ([]models.VerseShare, error) {
+	rows, err := r.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanVerseShares(rows)
+}
+
+// ListHomeVerseShares devolve os compartilhamentos do mural principal: os
+// próprios (inclusive PRIVATE), os de amigos marcados PUBLIC ou FRIENDS, e os
+// GROUP_ONLY dos grupos onde o viewer é membro.
+func (r *PostgresRepository) ListHomeVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error) {
+	return r.listVerseShares(ctx, verseListQuery(verseIDsHome, "$2", "$3"), userID, limit, offset)
+}
+
+func (r *PostgresRepository) CountHomeVerseShares(ctx context.Context, userID string) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, verseCountQuery(verseIDsHome), userID).Scan(&total)
+	return total, err
+}
+
+// ListFriendsVerseShares devolve os compartilhamentos de amigos visíveis ao viewer.
+func (r *PostgresRepository) ListFriendsVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error) {
+	return r.listVerseShares(ctx, verseListQuery(verseIDsFriends, "$2", "$3"), userID, limit, offset)
+}
+
+func (r *PostgresRepository) CountFriendsVerseShares(ctx context.Context, userID string) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, verseCountQuery(verseIDsFriends), userID).Scan(&total)
+	return total, err
+}
+
+// ListGroupsVerseShares devolve os compartilhamentos dirigidos aos grupos do viewer.
+func (r *PostgresRepository) ListGroupsVerseShares(ctx context.Context, userID string, limit, offset int) ([]models.VerseShare, error) {
+	return r.listVerseShares(ctx, verseListQuery(verseIDsGroups, "$2", "$3"), userID, limit, offset)
+}
+
+func (r *PostgresRepository) CountGroupsVerseShares(ctx context.Context, userID string) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, verseCountQuery(verseIDsGroups), userID).Scan(&total)
+	return total, err
+}
+
+// ListVerseSharesByGroup devolve os compartilhamentos do mural de um grupo.
+func (r *PostgresRepository) ListVerseSharesByGroup(ctx context.Context, viewerUserID, groupID string, limit, offset int) ([]models.VerseShare, error) {
+	return r.listVerseShares(ctx, verseListQuery(verseIDsByGroup, "$3", "$4"), viewerUserID, groupID, limit, offset)
+}
+
+func (r *PostgresRepository) CountVerseSharesByGroup(ctx context.Context, viewerUserID, groupID string) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, verseCountQuery(verseIDsByGroup), viewerUserID, groupID).Scan(&total)
+	return total, err
+}
+
+// verseWherePublic monta o predicado do feed público com o viewer no
+// placeholder informado — a listagem o recebe em $3, a contagem em $1.
+// Tolera viewer anônimo (string vazia): sem viewer não há filtro de tradição
+// nem de bloqueio, o mesmo truque de NULLIF/COALESCE de ListPublicPrayerRequests.
+func verseWherePublic(viewerParam string) string {
+	v := "NULLIF(" + viewerParam + ", '')::uuid"
+	return `
+	WHERE vs.visibility = 'PUBLIC'
+	  AND vs.deleted_at IS NULL
+	  AND vs.tradition = COALESCE(
+	      (SELECT tradition FROM users WHERE id = ` + v + ` AND deleted_at IS NULL),
+	      vs.tradition
+	  )
+	  AND NOT EXISTS (
+	      SELECT 1 FROM user_blocks ub
+	      WHERE ` + v + ` IS NOT NULL
+	        AND ((ub.blocker_user_id = ` + v + ` AND ub.blocked_user_id = vs.author_id)
+	          OR (ub.blocked_user_id = ` + v + ` AND ub.blocker_user_id = vs.author_id))
+	  )
+`
+}
+
+// ListPublicVerseShares devolve o feed público, acessível sem autenticação.
+func (r *PostgresRepository) ListPublicVerseShares(ctx context.Context, viewerUserID string, limit, offset int) ([]models.VerseShare, error) {
+	return r.listVerseShares(ctx, `
+		SELECT `+verseShareColumns+verseShareFrom+verseWherePublic("$3")+`
+		ORDER BY vs.created_at DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset, viewerUserID)
+}
+
+func (r *PostgresRepository) CountPublicVerseShares(ctx context.Context, viewerUserID string) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)::bigint
+	`+verseShareFrom+verseWherePublic("$1"), viewerUserID).Scan(&total)
+	return total, err
+}
