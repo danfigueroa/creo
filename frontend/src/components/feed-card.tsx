@@ -26,6 +26,27 @@ function categoryStyle(category: string) {
   return { background: palette.bg, color: palette.fg }
 }
 
+// Verse themes get their own tinted pills, on the same oklch scale as categories.
+const VERSE_THEME_PALETTE: Record<string, { bg: string; fg: string }> = {
+  HOPE: { bg: 'oklch(0.93 0.03 200)', fg: 'oklch(0.38 0.08 200)' },
+  GRIEF: { bg: 'oklch(0.93 0.02 250)', fg: 'oklch(0.40 0.06 250)' },
+  GRATITUDE: { bg: 'oklch(0.93 0.04 95)', fg: 'oklch(0.40 0.10 80)' },
+  FORGIVENESS: { bg: 'oklch(0.93 0.03 320)', fg: 'oklch(0.40 0.08 320)' },
+  FAITH: { bg: 'oklch(0.93 0.03 175)', fg: 'oklch(0.38 0.08 190)' },
+  FAMILY: { bg: 'oklch(0.94 0.03 25)', fg: 'oklch(0.42 0.10 25)' },
+  HEALING: { bg: 'oklch(0.93 0.03 145)', fg: 'oklch(0.38 0.08 145)' },
+  PROVISION: { bg: 'oklch(0.93 0.03 120)', fg: 'oklch(0.38 0.08 120)' },
+  COURAGE: { bg: 'oklch(0.93 0.04 60)', fg: 'oklch(0.40 0.10 50)' },
+  PEACE: { bg: 'oklch(0.93 0.02 220)', fg: 'oklch(0.38 0.07 220)' },
+  GUIDANCE: { bg: 'oklch(0.93 0.03 270)', fg: 'oklch(0.40 0.08 270)' },
+  LOVE: { bg: 'oklch(0.94 0.04 10)', fg: 'oklch(0.42 0.10 10)' }
+}
+
+function verseThemeStyle(theme: string) {
+  const palette = VERSE_THEME_PALETTE[theme] || CATEGORY_PALETTE.OTHER
+  return { background: palette.bg, color: palette.fg }
+}
+
 export type PrayerFeedItem = {
   kind: 'PRAYER_REQUEST'
   id: string
@@ -62,28 +83,66 @@ export type AnnouncementFeedItem = {
   createdAt: string
 }
 
-export type FeedCardItem = PrayerFeedItem | AnnouncementFeedItem
+export type VerseShareVisibility = 'PUBLIC' | 'FRIENDS' | 'GROUP_ONLY' | 'PRIVATE'
 
-// flattenFeedItem turns the discriminated wire shape ({kind, prayerRequest|announcement, createdAt})
+export type BibleVerse = {
+  id: string
+  bookName: string
+  chapter: number
+  verse: number
+  theme: string
+  translation: string
+  /** Vazio quando o catálogo ainda não foi hidratado — mostrar só a referência. */
+  text: string
+  reference: string
+}
+
+export type VerseFeedItem = {
+  kind: 'VERSE_SHARE'
+  id: string
+  authorId: string
+  authorUsername?: string
+  authorDisplayName?: string
+  authorAvatarUrl?: string | null
+  verse: BibleVerse
+  comment: string
+  visibility: VerseShareVisibility
+  groupIds?: string[]
+  groupNames?: string[]
+  createdAt: string
+  prayedCount: number
+  prayerTypeCounts?: Record<string, number>
+}
+
+export type FeedCardItem = PrayerFeedItem | AnnouncementFeedItem | VerseFeedItem
+
+/** Tipos de item que aceitam reação de oração. */
+export type FeedSubjectKind = 'PRAYER_REQUEST' | 'VERSE_SHARE'
+
+// flattenFeedItem turns the discriminated wire shape ({kind, prayerRequest|announcement|verseShare, createdAt})
 // into the flat union the FeedCard consumes.
 type RawFeedItem =
   | { kind: 'PRAYER_REQUEST'; createdAt: string; prayerRequest: Omit<PrayerFeedItem, 'kind'> }
   | { kind: 'ANNOUNCEMENT'; createdAt: string; announcement: Omit<AnnouncementFeedItem, 'kind'> }
+  | { kind: 'VERSE_SHARE'; createdAt: string; verseShare: Omit<VerseFeedItem, 'kind'> }
 
 export function flattenFeedItem(raw: RawFeedItem): FeedCardItem {
   if (raw.kind === 'PRAYER_REQUEST') {
     return { kind: 'PRAYER_REQUEST', ...raw.prayerRequest }
   }
+  if (raw.kind === 'VERSE_SHARE') {
+    return { kind: 'VERSE_SHARE', ...raw.verseShare }
+  }
   return { kind: 'ANNOUNCEMENT', ...raw.announcement }
 }
 
-type PrayerHit = { requestID: string; actionType: string; fxID: number } | null
+type PrayerHit = { subjectId: string; actionType: string; fxID: number } | null
 
 type FeedCardProps = {
   item: FeedCardItem
   viewerId?: string
   prayerActions: PrayerAction[]
-  onPray: (requestID: string, actionType: string) => void
+  onPray: (subjectId: string, actionType: string, kind: FeedSubjectKind) => void
   isPrayPending: boolean
   lastPrayerHit: PrayerHit
   groupNameById: Map<string, string>
@@ -187,6 +246,9 @@ function FeedCardComponent(props: FeedCardProps) {
   if (props.item.kind === 'ANNOUNCEMENT') {
     return <AnnouncementCard item={props.item} viewerId={props.viewerId} />
   }
+  if (props.item.kind === 'VERSE_SHARE') {
+    return <VerseCard {...props} item={props.item} />
+  }
   return <PrayerCard {...props} item={props.item} />
 }
 
@@ -272,10 +334,10 @@ function PrayerCard({
               key={`${item.id}-${action.type}`}
               action={action}
               count={item.prayerTypeCounts?.[action.type] ?? 0}
-              triggered={lastPrayerHit?.requestID === item.id && lastPrayerHit?.actionType === action.type}
+              triggered={lastPrayerHit?.subjectId === item.id && lastPrayerHit?.actionType === action.type}
               triggerKey={lastPrayerHit?.fxID}
               disabled={isPrayPending}
-              onPress={() => onPray(item.id, action.type)}
+              onPress={() => onPray(item.id, action.type, 'PRAYER_REQUEST')}
             />
           ))}
         </div>
@@ -599,6 +661,99 @@ function AnnouncementCard({ item, viewerId }: { item: AnnouncementFeedItem; view
         ) : undefined
       }
     />
+  )
+}
+
+
+type VerseCardProps = Omit<FeedCardProps, 'item'> & { item: VerseFeedItem }
+
+// VerseCard renders a shared verse of the day. It reuses the `.post` shell,
+// header and reaction footer of PrayerCard — only the middle differs: the verse
+// itself is the hero, and the author's comment sits under it.
+function VerseCard({ item, viewerId, prayerActions, onPray, isPrayPending, lastPrayerHit, formatDate }: VerseCardProps) {
+  const { t } = useTranslation()
+  const isOwner = viewerId === item.authorId
+  const fullDate = formatDate(item.createdAt)
+  const authorUser = {
+    displayName: item.authorDisplayName,
+    username: item.authorUsername,
+    avatarUrl: item.authorAvatarUrl
+  }
+  const total = prayerActions.reduce((sum, action) => sum + (item.prayerTypeCounts?.[action.type] ?? 0), 0)
+
+  return (
+    <article className="post">
+      <header className="post__head">
+        <Avatar user={authorUser} size="md" linkToProfile={!!item.authorUsername} />
+        <div className="post__id">
+          <div className="post__line">
+            {item.authorUsername ? (
+              <Link to={`/u/${item.authorUsername}`} className="post__name">
+                {item.authorDisplayName || t('card.member')}
+              </Link>
+            ) : (
+              <span className="post__name">{item.authorDisplayName || t('card.member')}</span>
+            )}
+            {item.authorUsername && (
+              <>
+                <span className="post__handle">@{item.authorUsername}</span>
+                <span className="post__sep">·</span>
+              </>
+            )}
+            <time className="post__when" dateTime={item.createdAt} title={fullDate}>
+              {relativeTime(item.createdAt)}
+            </time>
+          </div>
+          <div className="post__line post__line--meta">
+            <span className="cat-pill" style={verseThemeStyle(item.verse.theme)}>
+              {t('verse.sharedLabel')}
+            </span>
+            {item.visibility !== 'PUBLIC' && (
+              <span className="pv-muted text-[11px]">{t(`verseVisibility.${item.visibility}.badge`)}</span>
+            )}
+          </div>
+        </div>
+        {isOwner && (
+          <Link to={`/verses/${item.id}`} className="post__edit" aria-label={t('verse.openShare')}>
+            {t('verse.open')}
+          </Link>
+        )}
+      </header>
+
+      <Link to={`/verses/${item.id}`} className="block" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <blockquote className="verse">
+          {item.verse.text ? (
+            <p className="verse__text">{item.verse.text}</p>
+          ) : (
+            <p className="verse__text verse__text--missing">{t('verse.textUnavailable')}</p>
+          )}
+          <cite className="verse__ref">{item.verse.reference}</cite>
+        </blockquote>
+        {item.comment && <p className="post__text">{item.comment}</p>}
+      </Link>
+
+      <footer className="post__foot" onClick={(e) => e.stopPropagation()}>
+        <div className="post__reactions">
+          {prayerActions.map((action) => (
+            <ReactionPill
+              key={`${item.id}-${action.type}`}
+              action={action}
+              count={item.prayerTypeCounts?.[action.type] ?? 0}
+              triggered={lastPrayerHit?.subjectId === item.id && lastPrayerHit?.actionType === action.type}
+              triggerKey={lastPrayerHit?.fxID}
+              disabled={isPrayPending}
+              onPress={() => onPray(item.id, action.type, 'VERSE_SHARE')}
+            />
+          ))}
+        </div>
+        {total > 0 && (
+          <div className="post__total" aria-label={t('card.prayingTotalAria', { count: total })}>
+            <span className="post__total-num">{total}</span>
+            <span className="post__total-label">{t('card.praying')}</span>
+          </div>
+        )}
+      </footer>
+    </article>
   )
 }
 

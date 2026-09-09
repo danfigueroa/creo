@@ -3426,3 +3426,43 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
     padding-bottom: 0;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Versículo do dia e compartilhamentos
+   --------------------------------------------------------------------------- */
+
+/* Bloco de citação usado no card do feed, no preview do modal e no detalhe. */
+.verse {
+  margin: 14px 0 12px;
+  padding: 14px 16px;
+  border-left: 3px solid var(--line-2);
+  background: var(--card-2);
+  border-radius: var(--r-2);
+}
+
+.verse__text {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.verse__text--missing {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.verse__ref {
+  display: block;
+  margin-top: 10px;
+  font-style: normal;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.verse--preview {
+  margin-top: 0;
+}

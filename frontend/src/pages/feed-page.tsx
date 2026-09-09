@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { api } from '@/lib/api'
-import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
+import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { useComposerStore } from '@/state/composer-store'
@@ -44,7 +44,7 @@ function formatPostDate(value: string) {
 export function FeedPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [lastPrayerHit, setLastPrayerHit] = useState<{ requestID: string; actionType: string; fxID: number } | null>(null)
+  const [lastPrayerHit, setLastPrayerHit] = useState<{ subjectId: string; actionType: string; fxID: number } | null>(null)
   const openComposer = useComposerStore((s) => s.openComposer)
   const [searchParams, setSearchParams] = useSearchParams()
   const rawScope = searchParams.get('scope') as FeedScope | null
@@ -80,17 +80,28 @@ export function FeedPage() {
     }
   })
   const prayMutation = useMutation({
-    mutationFn: async ({ requestID, actionType }: { requestID: string; actionType: string }) => {
-      await api.post(`/requests/${requestID}/pray`, { actionType })
+    // Pedidos e versículos compartilhados reagem pelo mesmo conjunto de orações,
+    // mas cada um tem seu endpoint — o kind escolhe qual.
+    mutationFn: async ({
+      subjectId,
+      actionType,
+      kind
+    }: {
+      subjectId: string
+      actionType: string
+      kind: FeedSubjectKind
+    }) => {
+      const path = kind === 'VERSE_SHARE' ? `/verses/shares/${subjectId}/pray` : `/requests/${subjectId}/pray`
+      await api.post(path, { actionType })
     },
-    onMutate: async ({ requestID, actionType }) => {
+    onMutate: async ({ subjectId, actionType, kind }) => {
       await queryClient.cancelQueries({ queryKey: ['feed', scope, page] })
       const previous = queryClient.getQueryData<FeedResponse>(['feed', scope, page])
       if (previous) {
         queryClient.setQueryData<FeedResponse>(['feed', scope, page], {
           ...previous,
           items: previous.items.map((it) =>
-            it.kind === 'PRAYER_REQUEST' && it.id === requestID
+            it.kind === kind && it.id === subjectId
               ? {
                   ...it,
                   prayedCount: it.prayedCount + 1,
@@ -103,7 +114,7 @@ export function FeedPage() {
           )
         })
       }
-      setLastPrayerHit({ requestID, actionType, fxID: Date.now() })
+      setLastPrayerHit({ subjectId, actionType, fxID: Date.now() })
       return { previous }
     },
     onError: (_err, _vars, ctx) => {
@@ -221,8 +232,8 @@ export function FeedPage() {
   const pageNumbers = Array.from({ length: paginationEnd - paginationStart + 1 }, (_, idx) => paginationStart + idx)
 
   const handlePray = useCallback(
-    (requestID: string, actionType: string) => {
-      prayMutation.mutate({ requestID, actionType })
+    (subjectId: string, actionType: string, kind: FeedSubjectKind) => {
+      prayMutation.mutate({ subjectId, actionType, kind })
     },
     [prayMutation]
   )

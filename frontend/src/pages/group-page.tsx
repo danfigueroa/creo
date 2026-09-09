@@ -6,7 +6,7 @@ import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
-import { FeedCard, flattenFeedItem, type FeedCardItem } from '@/components/feed-card'
+import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
@@ -304,7 +304,7 @@ function GroupMural({
   const navigate = useNavigate()
   const canPostAnnouncement = !!myRole && ROLE_RANK[myRole] >= ROLE_RANK.MODERATOR
   const [page, setPage] = useState(1)
-  const [lastHit, setLastHit] = useState<{ requestID: string; actionType: string; fxID: number } | null>(null)
+  const [lastHit, setLastHit] = useState<{ subjectId: string; actionType: string; fxID: number } | null>(null)
   const [composerOpen, setComposerOpen] = useState(false)
   const pageSize = 10
 
@@ -326,17 +326,26 @@ function GroupMural({
   const prayerActions = useMemo(() => prayerActionsFor(tradition ?? 'CATHOLIC'), [tradition])
 
   const prayMutation = useMutation({
-    mutationFn: async ({ requestID, actionType }: { requestID: string; actionType: string }) => {
-      await api.post(`/requests/${requestID}/pray`, { actionType })
+    mutationFn: async ({
+      subjectId,
+      actionType,
+      kind
+    }: {
+      subjectId: string
+      actionType: string
+      kind: FeedSubjectKind
+    }) => {
+      const path = kind === 'VERSE_SHARE' ? `/verses/shares/${subjectId}/pray` : `/requests/${subjectId}/pray`
+      await api.post(path, { actionType })
     },
-    onMutate: async ({ requestID, actionType }) => {
+    onMutate: async ({ subjectId, actionType, kind }) => {
       await queryClient.cancelQueries({ queryKey: ['group', groupId, 'feed', page] })
       const previous = queryClient.getQueryData<GroupFeedResponse>(['group', groupId, 'feed', page])
       if (previous) {
         queryClient.setQueryData<GroupFeedResponse>(['group', groupId, 'feed', page], {
           ...previous,
           items: previous.items.map((it) =>
-            it.kind === 'PRAYER_REQUEST' && it.id === requestID
+            it.kind === kind && it.id === subjectId
               ? {
                   ...it,
                   prayedCount: it.prayedCount + 1,
@@ -349,7 +358,7 @@ function GroupMural({
           )
         })
       }
-      setLastHit({ requestID, actionType, fxID: Date.now() })
+      setLastHit({ subjectId, actionType, fxID: Date.now() })
       return { previous }
     },
     onError: (_e, _v, ctx) => {
@@ -413,7 +422,7 @@ function GroupMural({
           item={item}
           viewerId={viewerId}
           prayerActions={prayerActions}
-          onPray={(requestID, actionType) => prayMutation.mutate({ requestID, actionType })}
+          onPray={(subjectId, actionType, kind) => prayMutation.mutate({ subjectId, actionType, kind })}
           isPrayPending={prayMutation.isPending}
           lastPrayerHit={lastHit}
           groupNameById={groupNameById}
