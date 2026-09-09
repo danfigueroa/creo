@@ -8,6 +8,11 @@ import (
 	"syscall"
 	"time"
 
+	// tzdata embutida: o versículo do dia vira à meia-noite de São Paulo e o
+	// runtime da Vercel não garante a base de fusos do sistema.
+	_ "time/tzdata"
+
+	"parish-viva/backend/internal/bible"
 	"parish-viva/backend/internal/config"
 	apphttp "parish-viva/backend/internal/http"
 	"parish-viva/backend/internal/repositories"
@@ -50,7 +55,8 @@ func main() {
 	defer dbpool.Close()
 
 	repo := repositories.NewPostgresRepository(dbpool)
-	svc := services.NewService(repo)
+	bibleProvider := bible.NewHTTPProvider(cfg.BibleAPIBaseURL, cfg.BibleAPITimeout)
+	svc := services.NewService(repo, bibleProvider)
 	router := apphttp.NewRouter(cfg, logger, svc)
 
 	srv := &http.Server{

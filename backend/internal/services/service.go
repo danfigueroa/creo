@@ -3,18 +3,23 @@ package services
 import (
 	"context"
 	"errors"
+	"hash/fnv"
+	"io"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"parish-viva/backend/internal/bible"
 	"parish-viva/backend/internal/models"
 	"parish-viva/backend/internal/repositories"
 )
 
 type Service struct {
 	repo       repositories.Repository
+	bible      bible.TextProvider
 	feedCounts *ttlCounts
 }
 
@@ -85,9 +90,13 @@ var ErrAnnouncementInvalidTitle = errors.New("invalid announcement title")
 var ErrAnnouncementInvalidBody = errors.New("invalid announcement body")
 var ErrAnnouncementInvalidEventAt = errors.New("invalid announcement event date")
 
-func NewService(repo repositories.Repository) *Service {
+// NewService monta o service. O TextProvider pode ser nil: nesse caso o
+// versículo do dia é servido só com a referência quando o catálogo ainda não
+// tiver texto persistido, sem nunca falhar a requisição.
+func NewService(repo repositories.Repository, bibleProvider bible.TextProvider) *Service {
 	return &Service{
 		repo:       repo,
+		bible:      bibleProvider,
 		feedCounts: &ttlCounts{entries: map[string]ttlCountEntry{}},
 	}
 }
@@ -990,12 +999,26 @@ func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID strin
 	if err != nil {
 		return nil, 0, err
 	}
-	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	verses, err := s.repo.ListVerseSharesByGroup(ctx, viewerUserID, groupID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	verseCount, err := s.cachedCount(ctx, "group-verse:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountVerseSharesByGroup(ctx, viewerUserID, groupID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(
+		models.WrapPrayerRequests(prayers),
+		models.WrapAnnouncements(announcements),
+		models.WrapVerseShares(verses),
+	)
 	page := sliceFeed(merged, offset, limit)
 	if err := s.enrichFeedPage(ctx, viewerUserID, page); err != nil {
 		return nil, 0, err
 	}
-	return page, prayerCount + announcementCount, nil
+	return page, prayerCount + announcementCount + verseCount, nil
 }
 
 // ListHomeFeed returns the merged home feed (prayer requests from self/friends/groups + announcements
@@ -1028,12 +1051,26 @@ func (s *Service) ListHomeFeed(ctx context.Context, userID string, limit, offset
 	if err != nil {
 		return nil, 0, err
 	}
-	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	verses, err := s.repo.ListHomeVerseShares(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	verseCount, err := s.cachedCount(ctx, "home-verse:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountHomeVerseShares(ctx, userID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(
+		models.WrapPrayerRequests(prayers),
+		models.WrapAnnouncements(announcements),
+		models.WrapVerseShares(verses),
+	)
 	page := sliceFeed(merged, offset, limit)
 	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
 		return nil, 0, err
 	}
-	return page, prayerCount + announcementCount, nil
+	return page, prayerCount + announcementCount + verseCount, nil
 }
 
 // ListGroupsFeed returns the merged "all groups" feed (all prayer requests from groups
@@ -1066,12 +1103,26 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 	if err != nil {
 		return nil, 0, err
 	}
-	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapAnnouncements(announcements))
+	verses, err := s.repo.ListGroupsVerseShares(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	verseCount, err := s.cachedCount(ctx, "groups-verse:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountGroupsVerseShares(ctx, userID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(
+		models.WrapPrayerRequests(prayers),
+		models.WrapAnnouncements(announcements),
+		models.WrapVerseShares(verses),
+	)
 	page := sliceFeed(merged, offset, limit)
 	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
 		return nil, 0, err
 	}
-	return page, prayerCount + announcementCount, nil
+	return page, prayerCount + announcementCount + verseCount, nil
 }
 
 func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
@@ -1116,4 +1167,274 @@ func (s *Service) ApplyModerationAction(ctx context.Context, moderatorUserID, re
 
 func (s *Service) ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error) {
 	return s.repo.ListModerationHistory(ctx, requestID)
+}
+
+// ---------------------------------------------------------------------------
+// Versículo do dia
+// ---------------------------------------------------------------------------
+
+var (
+	// ErrVersePoolEmpty indica catálogo vazio para a tradição do usuário —
+	// na prática, migration de seed não aplicada.
+	ErrVersePoolEmpty = errors.New("verse pool empty")
+	// ErrInvalidVerseComment sinaliza comentário acima do limite.
+	ErrInvalidVerseComment = errors.New("invalid verse comment")
+	// ErrInvalidVerseVisibility sinaliza visibilidade fora do enum.
+	ErrInvalidVerseVisibility = errors.New("invalid verse visibility")
+	// ErrVerseGroupIDsRequired sinaliza GROUP_ONLY sem grupo alvo.
+	ErrVerseGroupIDsRequired = errors.New("verse group ids required")
+	// ErrVerseGroupsNotAllowed sinaliza grupos enviados numa visibilidade que não os aceita.
+	ErrVerseGroupsNotAllowed = errors.New("verse groups not allowed")
+)
+
+// verseCommentMaxRunes limita o comentário do compartilhamento. Contado em
+// runas, como nos avisos de grupo, para não penalizar acentuação.
+const verseCommentMaxRunes = 500
+
+// verseDayLocation é o fuso que define a virada do "dia" do versículo. O
+// produto é brasileiro: virar em UTC entregaria o versículo de amanhã no fim da
+// tarde. Se a tzdata não estiver disponível, cai num offset fixo de -03:00.
+var verseDayLocation = func() *time.Location {
+	loc, err := time.LoadLocation("America/Sao_Paulo")
+	if err != nil {
+		return time.FixedZone("BRT", -3*60*60)
+	}
+	return loc
+}()
+
+// dailyVerseOffset devolve a posição, dentro do pool, do versículo do dia de um
+// usuário. É determinística por (usuário, dia): estável enquanto o dia durar e
+// distinta entre usuários, sem estado persistido nem job agendado — o backend
+// não tem scheduler, então a escolha precisa ser recomputável a cada request.
+//
+// poolSize deve ser > 0; quem chama garante isso antes.
+func dailyVerseOffset(userID string, day time.Time, poolSize int64) int64 {
+	h := fnv.New64a()
+	_, _ = io.WriteString(h, userID)
+	_, _ = io.WriteString(h, "|")
+	_, _ = io.WriteString(h, day.Format("2006-01-02"))
+	return int64(h.Sum64() % uint64(poolSize))
+}
+
+// GetDailyVerse devolve o versículo do dia do usuário, hidratando o texto pela
+// API na primeira vez que aquele versículo é servido.
+//
+// Falha do provider de texto não propaga: o versículo volta com Text vazio e o
+// frontend exibe só a referência. O versículo do dia nunca derruba a tela.
+func (s *Service) GetDailyVerse(ctx context.Context, userID string) (models.DailyVerse, error) {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return models.DailyVerse{}, err
+	}
+
+	poolSize, err := s.cachedCount(ctx, "verse-pool:"+string(user.Tradition), func(ctx context.Context) (int64, error) {
+		return s.repo.CountVersePool(ctx, user.Tradition)
+	})
+	if err != nil {
+		return models.DailyVerse{}, err
+	}
+	if poolSize <= 0 {
+		return models.DailyVerse{}, ErrVersePoolEmpty
+	}
+
+	day := time.Now().In(verseDayLocation)
+	offset := dailyVerseOffset(userID, day, poolSize)
+
+	verse, err := s.resolveVerseWithText(ctx, user.Tradition, offset, poolSize)
+	if err != nil {
+		return models.DailyVerse{}, err
+	}
+
+	dayKey := day.Format("2006-01-02")
+	alreadyShared, err := s.repo.HasSharedVerseOn(ctx, userID, verse.ID, dayKey)
+	if err != nil {
+		return models.DailyVerse{}, err
+	}
+
+	return models.DailyVerse{Verse: verse, Date: dayKey, AlreadyShared: alreadyShared}, nil
+}
+
+// dailyVerseFallbackSteps limita quantos vizinhos do pool o service tenta antes
+// de desistir e devolver o versículo original sem texto.
+const dailyVerseFallbackSteps = 4
+
+// resolveVerseWithText devolve o versículo do offset escolhido, já hidratado.
+//
+// Se a API não souber resolver aquela referência (as traduções pt-BR gratuitas
+// têm buracos), caminha determinísticamente pelos vizinhos do pool até achar um
+// com texto — assim uma referência quebrada no catálogo nunca vira um card em
+// branco para o usuário. Esgotadas as tentativas, devolve o primeiro candidato:
+// a referência sozinha ainda é melhor que um erro.
+func (s *Service) resolveVerseWithText(ctx context.Context, tradition models.Tradition, offset, poolSize int64) (models.BibleVerse, error) {
+	var first models.BibleVerse
+	for step := int64(0); step < dailyVerseFallbackSteps && step < poolSize; step++ {
+		candidate, err := s.repo.GetVerseByPoolOffset(ctx, tradition, (offset+step)%poolSize)
+		if err != nil {
+			return models.BibleVerse{}, err
+		}
+		candidate = s.hydrateVerseText(ctx, candidate)
+		if step == 0 {
+			first = candidate
+		}
+		if candidate.Text != "" {
+			return candidate, nil
+		}
+	}
+	return first, nil
+}
+
+// hydrateVerseText busca o texto na API quando o catálogo ainda não o tem e
+// persiste o resultado, para que as próximas leituras não toquem a rede.
+// Best-effort: qualquer falha devolve o versículo como está.
+func (s *Service) hydrateVerseText(ctx context.Context, verse models.BibleVerse) models.BibleVerse {
+	if verse.Text != "" || s.bible == nil {
+		return verse
+	}
+	ref := bible.Reference{BookSlug: verse.BookSlug, Chapter: verse.Chapter, Verse: verse.Verse}
+	text, err := s.bible.Fetch(ctx, ref, verse.Translation)
+	if err != nil {
+		log.Printf("daily verse text unavailable: ref=%s translation=%s err=%v", ref, verse.Translation, err)
+		return verse
+	}
+	if err := s.repo.SetVerseText(ctx, verse.ID, text); err != nil {
+		log.Printf("daily verse text persist failed: id=%s err=%v", verse.ID, err)
+	}
+	verse.Text = text
+	return verse
+}
+
+// CreateVerseShare valida e cria um compartilhamento de versículo.
+// Espelha as regras de CreatePrayerRequest: só GROUP_ONLY aceita grupos alvo.
+func (s *Service) CreateVerseShare(ctx context.Context, in models.CreateVerseShareInput) (models.VerseShare, error) {
+	in.Comment = strings.TrimSpace(in.Comment)
+	if len([]rune(in.Comment)) > verseCommentMaxRunes {
+		return models.VerseShare{}, ErrInvalidVerseComment
+	}
+	if !models.IsValidVerseShareVisibility(in.Visibility) {
+		return models.VerseShare{}, ErrInvalidVerseVisibility
+	}
+	if in.Visibility == models.VerseVisibilityGroupOnly {
+		if len(in.GroupIDs) == 0 {
+			return models.VerseShare{}, ErrVerseGroupIDsRequired
+		}
+	} else if len(in.GroupIDs) > 0 {
+		return models.VerseShare{}, ErrVerseGroupsNotAllowed
+	}
+	if _, err := s.repo.GetVerseByID(ctx, in.VerseID); err != nil {
+		return models.VerseShare{}, err
+	}
+	return s.repo.CreateVerseShare(ctx, in)
+}
+
+// GetVerseShare devolve um compartilhamento aplicando o controle de acesso.
+func (s *Service) GetVerseShare(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error) {
+	return s.repo.GetVerseShareByID(ctx, viewerUserID, shareID)
+}
+
+// DeleteVerseShare apaga (soft delete) um compartilhamento do próprio autor.
+func (s *Service) DeleteVerseShare(ctx context.Context, userID, shareID string) error {
+	return s.repo.DeleteVerseShare(ctx, userID, shareID)
+}
+
+// RecordVerseShareAction registra uma reação, validando o tipo contra a
+// tradição do usuário — mesma regra de RecordPrayerAction.
+func (s *Service) RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error {
+	if windowHours < 1 {
+		windowHours = 12
+	}
+	viewer, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !isValidPrayerActionTypeFor(viewer.Tradition, actionType) {
+		return ErrInvalidPrayerActionType
+	}
+	// Reagir exige enxergar: reusa o predicado de visibilidade do GET.
+	if _, err := s.repo.GetVerseShareByID(ctx, userID, shareID); err != nil {
+		return err
+	}
+	return s.repo.RecordVerseShareAction(ctx, userID, shareID, actionType, windowHours)
+}
+
+// ListVerseShareActions lista quem rezou num compartilhamento visível ao viewer.
+func (s *Service) ListVerseShareActions(ctx context.Context, viewerUserID, shareID string) ([]models.PrayerActionRecord, error) {
+	if _, err := s.repo.GetVerseShareByID(ctx, viewerUserID, shareID); err != nil {
+		return nil, err
+	}
+	return s.repo.ListVerseShareActions(ctx, shareID)
+}
+
+// ListPublicFeed devolve o feed público mesclado (pedidos + versículos).
+// viewerUserID vazio representa visitante anônimo.
+func (s *Service) ListPublicFeed(ctx context.Context, viewerUserID string, limit, offset int) ([]models.FeedItem, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	fetch := limit + offset
+	prayers, err := s.repo.ListPublicPrayerRequests(ctx, viewerUserID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	verses, err := s.repo.ListPublicVerseShares(ctx, viewerUserID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	prayerCount, err := s.cachedCount(ctx, "public:"+viewerUserID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	verseCount, err := s.cachedCount(ctx, "public-verse:"+viewerUserID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountPublicVerseShares(ctx, viewerUserID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapVerseShares(verses))
+	page := sliceFeed(merged, offset, limit)
+	if err := s.enrichFeedPage(ctx, viewerUserID, page); err != nil {
+		return nil, 0, err
+	}
+	return page, prayerCount + verseCount, nil
+}
+
+// ListFriendsFeed devolve o feed de amigos mesclado (pedidos + versículos).
+func (s *Service) ListFriendsFeed(ctx context.Context, userID string, limit, offset int) ([]models.FeedItem, int64, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	fetch := limit + offset
+	prayers, err := s.repo.ListFriendsPrayerRequests(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	verses, err := s.repo.ListFriendsVerseShares(ctx, userID, fetch, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	prayerCount, err := s.cachedCount(ctx, "friends:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountFriendsPrayerRequests(ctx, userID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	verseCount, err := s.cachedCount(ctx, "friends-verse:"+userID, func(ctx context.Context) (int64, error) {
+		return s.repo.CountFriendsVerseShares(ctx, userID)
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapVerseShares(verses))
+	page := sliceFeed(merged, offset, limit)
+	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
+		return nil, 0, err
+	}
+	return page, prayerCount + verseCount, nil
 }

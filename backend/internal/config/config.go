@@ -23,6 +23,9 @@ type Config struct {
 	PrayedWindowHours    int
 	PrayedIPBurstPerHour int
 	CORSAllowedOrigins   []string
+	BibleAPIBaseURL      string
+	BibleTranslation     string
+	BibleAPITimeout      time.Duration
 }
 
 func Load() (Config, error) {
@@ -41,6 +44,9 @@ func Load() (Config, error) {
 		PrayedWindowHours:    intOrDefault("PRAYED_WINDOW_HOURS", 12),
 		PrayedIPBurstPerHour: intOrDefault("PRAYED_IP_BURST_PER_HOUR", 200),
 		CORSAllowedOrigins:   csvOrDefault("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"}),
+		BibleAPIBaseURL:      envOrDefault("BIBLE_API_BASE_URL", "https://bible-api.com"),
+		BibleTranslation:     envOrDefault("BIBLE_TRANSLATION", "almeida"),
+		BibleAPITimeout:      durationOrDefault("BIBLE_API_TIMEOUT", 3*time.Second),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
