@@ -63,12 +63,7 @@ func (h *PrayerHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	items, err := h.service.ListPublicPrayerRequests(r.Context(), viewerUserID, limit, offset)
-	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	total, err := h.service.CountPublicPrayerRequests(r.Context(), viewerUserID)
+	items, total, err := h.service.ListPublicFeed(r.Context(), viewerUserID, limit, offset)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
@@ -79,7 +74,7 @@ func (h *PrayerHandler) ListPublic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60")
 		w.Header().Set("Vary", "Authorization")
 	}
-	writeFeedResponse(w, models.WrapPrayerRequests(items), page, limit, total)
+	writeFeedResponse(w, items, page, limit, total)
 }
 
 func (h *PrayerHandler) ListHome(w http.ResponseWriter, r *http.Request) {
@@ -119,17 +114,12 @@ func (h *PrayerHandler) ListFriendsFeed(w http.ResponseWriter, r *http.Request) 
 		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 		return
 	}
-	items, err := h.service.ListFriendsPrayerRequests(r.Context(), userID, limit, offset)
+	items, total, err := h.service.ListFriendsFeed(r.Context(), userID, limit, offset)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
-	total, err := h.service.CountFriendsPrayerRequests(r.Context(), userID)
-	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	writeFeedResponse(w, models.WrapPrayerRequests(items), page, limit, total)
+	writeFeedResponse(w, items, page, limit, total)
 }
 
 func parseFeedPagination(r *http.Request) (int, int, int) {
