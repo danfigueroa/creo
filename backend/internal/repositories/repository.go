@@ -769,44 +769,53 @@ func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, userID, req
 		return ErrDuplicatePrayedAction
 	}
 
-	_, err = r.db.Exec(ctx, `
+	// O contador e a notificação são independentes entre si e ambos vêm depois
+	// da escrita que o usuário pediu, então viajam juntos num batch.
+	//
+	// A notificação virou um INSERT ... SELECT único: descobrir o autor, checar
+	// a janela de dedupe e inserir eram três idas em série. Agora o SELECT acha
+	// o autor, o author_id <> actor evita a auto-notificação e o NOT EXISTS
+	// aplica a mesma janela de 60 minutos, que existe para que reagir várias
+	// vezes no mesmo pedido não vire enxurrada.
+	payload, err := json.Marshal(map[string]any{"actionType": string(actionType)})
+	if err != nil {
+		payload = []byte(`{}`)
+	}
+	tail := &pgx.Batch{}
+	tail.Queue(`
 		UPDATE prayer_requests
 		SET prayed_count = prayed_count + 1, updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 	`, requestID)
-	if err != nil {
+	tail.Queue(`
+		INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
+		SELECT pr.author_id, $3, $1::uuid, $4, $2::uuid, $5::jsonb
+		FROM prayer_requests pr
+		WHERE pr.id = $2::uuid
+		  AND pr.deleted_at IS NULL
+		  AND pr.author_id <> $1::uuid
+		  AND NOT EXISTS (
+		      SELECT 1 FROM notifications n
+		      WHERE n.user_id = pr.author_id
+		        AND n.type = $3
+		        AND n.actor_user_id = $1::uuid
+		        AND n.subject_id = $2::uuid
+		        AND n.created_at > NOW() - INTERVAL '60 minutes'
+		  )
+	`, userID, requestID, string(models.NotificationTypePrayed),
+		string(models.NotificationSubjectPrayerRequest), string(payload))
+
+	tailResults := r.db.SendBatch(ctx, tail)
+	if _, err := tailResults.Exec(); err != nil {
+		tailResults.Close()
 		return err
 	}
-
-	var authorID string
-	if err := r.db.QueryRow(ctx, `
-		SELECT author_id::text FROM prayer_requests WHERE id = $1 AND deleted_at IS NULL
-	`, requestID).Scan(&authorID); err == nil && authorID != "" && authorID != userID {
-		// Dedup: don't emit a fresh PRAYED notification when the same actor
-		// has already triggered one for this request in the last 60 minutes.
-		// Avoids spamming the author when someone reacts multiple times.
-		var recent bool
-		_ = r.db.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM notifications
-				WHERE user_id = $1::uuid
-				  AND type = 'PRAYED'
-				  AND actor_user_id = $2::uuid
-				  AND subject_id = $3::uuid
-				  AND created_at > NOW() - INTERVAL '60 minutes'
-			)
-		`, authorID, userID, requestID).Scan(&recent)
-		if !recent {
-			actor := userID
-			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
-				UserID:      authorID,
-				Type:        models.NotificationTypePrayed,
-				ActorUserID: &actor,
-				SubjectType: models.NotificationSubjectPrayerRequest,
-				SubjectID:   requestID,
-				Payload:     map[string]any{"actionType": string(actionType)},
-			})
-		}
+	// A notificação é best-effort: falhar aqui não desfaz a reação.
+	if _, err := tailResults.Exec(); err != nil {
+		log.Printf("prayed notification failed: request=%s actor=%s err=%v", requestID, userID, err)
+	}
+	if err := tailResults.Close(); err != nil {
+		return err
 	}
 
 	r.maybeEmitPrayedMilestone(ctx, userID)
@@ -3356,34 +3365,33 @@ func (r *PostgresRepository) RecordVerseShareAction(ctx context.Context, userID,
 		return ErrDuplicatePrayedAction
 	}
 
-	var authorID string
-	if err := r.db.QueryRow(ctx, `
-		SELECT author_id::text FROM verse_shares WHERE id = $1::uuid AND deleted_at IS NULL
-	`, shareID).Scan(&authorID); err == nil && authorID != "" && authorID != userID {
-		// Mesmo dedupe de 60 minutos do PRAYED: reagir várias vezes no mesmo
-		// compartilhamento não vira uma enxurrada de notificações.
-		var recent bool
-		_ = r.db.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM notifications
-				WHERE user_id = $1::uuid
-				  AND type = 'VERSE_SHARE_PRAYED'
-				  AND actor_user_id = $2::uuid
-				  AND subject_id = $3::uuid
-				  AND created_at > NOW() - INTERVAL '60 minutes'
-			)
-		`, authorID, userID, shareID).Scan(&recent)
-		if !recent {
-			actor := userID
-			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
-				UserID:      authorID,
-				Type:        models.NotificationTypeVerseSharePrayed,
-				ActorUserID: &actor,
-				SubjectType: models.NotificationSubjectVerseShare,
-				SubjectID:   shareID,
-				Payload:     map[string]any{"actionType": string(actionType)},
-			})
-		}
+	// Descobrir o autor, checar o dedupe e inserir a notificação eram três idas
+	// ao banco em série. Resolvidas numa só: o SELECT acha o autor, o
+	// author_id <> actor evita a auto-notificação e o NOT EXISTS aplica a mesma
+	// janela de 60 minutos, para que reagir várias vezes não vire enxurrada.
+	// Best-effort, como toda notificação: falhar aqui não desfaz a reação.
+	payload, err := json.Marshal(map[string]any{"actionType": string(actionType)})
+	if err != nil {
+		payload = []byte(`{}`)
+	}
+	if _, err := r.db.Exec(ctx, `
+		INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
+		SELECT vs.author_id, $3, $1::uuid, $4, $2::uuid, $5::jsonb
+		FROM verse_shares vs
+		WHERE vs.id = $2::uuid
+		  AND vs.deleted_at IS NULL
+		  AND vs.author_id <> $1::uuid
+		  AND NOT EXISTS (
+		      SELECT 1 FROM notifications n
+		      WHERE n.user_id = vs.author_id
+		        AND n.type = $3
+		        AND n.actor_user_id = $1::uuid
+		        AND n.subject_id = $2::uuid
+		        AND n.created_at > NOW() - INTERVAL '60 minutes'
+		  )
+	`, userID, shareID, string(models.NotificationTypeVerseSharePrayed),
+		string(models.NotificationSubjectVerseShare), string(payload)); err != nil {
+		log.Printf("verse share notification failed: share=%s actor=%s err=%v", shareID, userID, err)
 	}
 
 	r.maybeEmitPrayedMilestone(ctx, userID)
