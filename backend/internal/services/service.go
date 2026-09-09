@@ -298,22 +298,6 @@ func (s *Service) GetPrayerRequestByID(ctx context.Context, userID, requestID st
 	return s.repo.GetPrayerRequestByID(ctx, userID, requestID)
 }
 
-func (s *Service) ListPublicPrayerRequests(ctx context.Context, viewerUserID string, limit, offset int) ([]models.PrayerRequest, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	return s.repo.ListPublicPrayerRequests(ctx, viewerUserID, limit, offset)
-}
-
-func (s *Service) CountPublicPrayerRequests(ctx context.Context, viewerUserID string) (int64, error) {
-	return s.cachedCount(ctx, "public:"+viewerUserID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
-	})
-}
-
 // RecordPrayerAction registra uma reação. actionType vazio assume a oração
 // padrão da tradição do usuário: resolver isso aqui, e não no handler, evita
 // buscar a mesma linha de users duas vezes na mesma requisição.
@@ -1544,26 +1528,38 @@ func (s *Service) ListFriendsFeed(ctx context.Context, userID string, limit, off
 		offset = 0
 	}
 	fetch := limit + offset
-	prayers, err := s.repo.ListFriendsPrayerRequests(ctx, userID, fetch, 0)
-	if err != nil {
+
+	var (
+		prayers     []models.PrayerRequest
+		verses      []models.VerseShare
+		prayerCount int64
+		verseCount  int64
+	)
+	if err := runBounded(ctx,
+		func(ctx context.Context) (err error) {
+			prayers, err = s.repo.ListFriendsPrayerRequests(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verses, err = s.repo.ListFriendsVerseShares(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			prayerCount, err = s.cachedCount(ctx, "friends:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountFriendsPrayerRequests(ctx, userID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verseCount, err = s.cachedCount(ctx, "friends-verse:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountFriendsVerseShares(ctx, userID)
+			})
+			return
+		},
+	); err != nil {
 		return nil, 0, err
 	}
-	verses, err := s.repo.ListFriendsVerseShares(ctx, userID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	prayerCount, err := s.cachedCount(ctx, "friends:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountFriendsPrayerRequests(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	verseCount, err := s.cachedCount(ctx, "friends-verse:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountFriendsVerseShares(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
+
 	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapVerseShares(verses))
 	page := sliceFeed(merged, offset, limit)
 	if err := s.enrichFeedPage(ctx, userID, page); err != nil {
