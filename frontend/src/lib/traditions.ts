@@ -130,6 +130,19 @@ const evangelicalActions: PrayerAction[] = [
   }
 ]
 
+// Lookup por tipo cruzando as duas tradições: uma reação chega com o tipo da
+// tradição de quem reagiu, que não é necessariamente a de quem está lendo.
+const actionsByType: Record<string, PrayerAction> = Object.fromEntries(
+  [...catholicActions, ...evangelicalActions].map((action) => [action.type, action])
+)
+
+export function prayerActionByType(type: unknown): PrayerAction | undefined {
+  if (typeof type !== 'string') return undefined
+  const action = actionsByType[type]
+  if (!action) return undefined
+  return { ...action, label: i18n.t(`prayerActions.${action.type}`) }
+}
+
 // Labels resolved via i18n so prayer-action names follow the active language.
 export function prayerActionsFor(tradition: Tradition | undefined | null): PrayerAction[] {
   const actions = tradition === 'EVANGELICAL' ? evangelicalActions : catholicActions
