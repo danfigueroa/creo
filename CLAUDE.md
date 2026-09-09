@@ -183,15 +183,58 @@ Sistema in-app, **best-effort**: `_ = insertNotificationOn(ctx, exec, in)` — f
 - `r.notifyGroupAdminsOfJoinRequest(ctx, requesterUserID, groupID)` — itera admins.
 - `r.notifyGroupMembersOfAnnouncement(...)` — fan-out em um único `INSERT ... SELECT` (não iterar membros).
 - Self-notification é evitada (skip `if actor == recipient`).
-- Eventos suportados (lista completa em `models.go`, `NotificationType*`): `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`, `REQUEST_APPROVED`, `REQUEST_REJECTED`, `REQUEST_CHANGES_ASKED`, `REQUEST_UPDATED`, `REQUEST_ANSWERED`, `GROUP_ANNOUNCEMENT_POSTED`, `MILESTONE_PRAYED`, `MILESTONE_CREATED`, `MILESTONE_STREAK`.
-- `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP, MILESTONE}` — `subject_id` permite o front navegar.
+- Eventos suportados (lista completa em `models.go`, `NotificationType*`): `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`, `REQUEST_APPROVED`, `REQUEST_REJECTED`, `REQUEST_CHANGES_ASKED`, `REQUEST_UPDATED`, `REQUEST_ANSWERED`, `GROUP_ANNOUNCEMENT_POSTED`, `MILESTONE_PRAYED`, `MILESTONE_CREATED`, `MILESTONE_STREAK`, `VERSE_SHARE_PRAYED`.
+- `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP, MILESTONE, VERSE_SHARE}` — `subject_id` permite o front navegar.
 
 ### Performance de feed (convenções)
 
-- **Feeds mesclados** (home, groups, mural do grupo) buscam `limit+offset` linhas **cruas** de pedidos + anúncios, mesclam/fatiam no service e só então chamam `repo.EnrichPrayerRequests` na página final. Não voltar a enriquecer dentro de `ListHomePrayerRequests`/`ListGroupsPrayerRequests`/`ListPrayerRequestsByGroup`.
+- **Feeds mesclados** (home, groups, friends, público, mural do grupo) buscam `limit+offset` linhas **cruas** de cada stream, mesclam/fatiam no service e só então enriquecem a página final via `enrichFeedPage`. Não voltar a enriquecer dentro de `ListHomePrayerRequests`/`ListGroupsPrayerRequests`/`ListPrayerRequestsByGroup`/`List*VerseShares`.
+- `mergeFeedItems(streams ...[]models.FeedItem)` é **variádico** — hoje recebe pedidos, avisos e versículos. Um tipo novo de item entra como mais um stream, não como mais um parâmetro posicional.
 - **COUNTs de feed** passam por `Service.cachedCount` (TTL 30s, `feedCountTTL`). Novos counts de feed devem usar o mesmo helper.
 - `prayer_actions` tem índice `(prayer_request_id, action_type)` (migration 000016) para a agregação de reações do enrich — preservar esse padrão de acesso.
 - Feed público **anônimo** responde `Cache-Control: s-maxage=30` (CDN). Não adicionar cache em resposta autenticada sem `Vary`/cuidado.
+
+### Versículo do dia (`bible_verses` / `verse_shares`)
+
+Terceiro tipo de conteúdo do feed, ao lado de pedidos e avisos.
+
+- **Catálogo curado** em `bible_verses` (migration 000019): 312 linhas de
+  *referência + tema + tradição*. A curadoria vive no banco porque nenhuma API
+  pública sabe responder "um versículo sobre esperança" — elas só resolvem
+  referência → texto.
+- **Texto hidratado sob demanda**: `bible_verses.text` nasce `NULL` e é
+  preenchido na primeira leitura pelo `internal/bible.TextProvider` (HTTP contra
+  `bible-api.com`, tradução `almeida`, domínio público), depois persistido. A
+  API sai do caminho quente. Falha do provider **nunca** propaga: o endpoint
+  responde 200 com texto vazio e o front mostra só a referência.
+  Os deuterocanônicos já vêm com texto semeado — as traduções pt-BR gratuitas
+  servem só o cânon protestante e nunca conseguiriam hidratá-los.
+- **Fallback de texto**: a tradução `almeida` do bible-api.com tem buracos (ex.:
+  `ephesians 2:14` responde 404). `resolveVerseWithText` caminha até 4 vizinhos
+  do pool, de forma determinística, até achar um versículo com texto — assim uma
+  referência que a API não resolve nunca vira um card em branco. Esgotadas as
+  tentativas, devolve o primeiro candidato mesmo sem texto.
+  ⚠️ O catálogo de 300 referências **não foi validado inteiro** contra a API:
+  a varredura derrubou o IP no rate-limit (15 req/30s) e ficou incompleta. Se
+  for refazer, serial e com ~2s entre chamadas.
+- **Seleção determinística**: `dailyVerseOffset(userID, dia, poolSize)` =
+  `fnv64a(userID + "|" + YYYY-MM-DD) % poolSize`, com o dia no fuso de São Paulo
+  (`time/tzdata` importada em `main.go` porque a Vercel não garante a base de
+  fusos). Não existe cron no backend — a escolha precisa ser recomputável a cada
+  request. **Se mudar o `ORDER BY id` de `GetVerseByPoolOffset`, o versículo de
+  todo mundo muda.**
+- **Visibilidade** usa enum próprio `verse_share_visibility`
+  (`PUBLIC | FRIENDS | GROUP_ONLY | PRIVATE`) — `FRIENDS` não existe em
+  `prayer_visibility`. `GetVerseShareByID` é o predicado canônico; os streams de
+  feed repetem os mesmos invariantes (tradição, `deleted_at IS NULL`,
+  `user_blocks` nas duas direções, `PRIVATE` só para o autor).
+- **Reações reusam `prayer_actions`**, que virou polimórfica na migration 000020:
+  `prayer_request_id` agora é nullable, existe `verse_share_id`, e um CHECK
+  garante exatamente um dos dois. Nenhuma query antiga precisou mudar (todas
+  filtram `prayer_request_id = ...`, e `NULL` nunca casa). Isso mantém
+  `ProfileStats.PrayerActionsTotal` contando tudo num lugar só.
+- `verse_shares` **não tem contador desnormalizado**: `prayedCount` é somado no
+  enrich a partir das próprias reações, então não há contador para dessincronizar.
 
 ### Tradition (catolica/evangélica)
 
@@ -333,6 +376,7 @@ Sino de notificação navega via `subject_type`:
 - `PRAYER_REQUEST` → `/requests/{id}`
 - `FRIENDSHIP` → `/friends`
 - `GROUP` → `/groups/{id}`
+- `VERSE_SHARE` → `/verses/{id}`
 
 ---
 
@@ -383,6 +427,8 @@ Sino de notificação navega via `subject_type`:
 | SQL | `backend/internal/repositories/repository.go` |
 | Schema | `backend/internal/db/migrations/*.sql` |
 | Modelos / enums | `backend/internal/models/models.go` |
+| Versículo do dia (backend) | `backend/internal/bible/bible.go` + `verse_handler.go` + seção de versículos em `service.go`/`repository.go` |
+| Versículo do dia (frontend) | `frontend/src/components/daily-verse.tsx`, `share-verse-modal.tsx`, `VerseCard` em `feed-card.tsx` |
 
 ---
 
