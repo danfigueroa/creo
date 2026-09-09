@@ -259,83 +259,48 @@ func (r *PostgresRepository) GetFriendshipState(ctx context.Context, viewerID, o
 	}
 }
 
+// GetUserStats reúne as estatísticas do perfil.
+//
+// As cinco consultas dependem apenas de userID e viajam num único pgx.Batch:
+// cinco idas ao Supabase viravam o custo dominante de abrir a tela de perfil.
 func (r *PostgresRepository) GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error) {
 	stats := models.ProfileStats{
 		PrayerActionsByType:     map[string]int{},
 		PrayerActionsByCategory: map[string]int{},
 	}
-	if err := r.db.QueryRow(ctx, `
+
+	batch := &pgx.Batch{}
+	batch.Queue(`
 		SELECT COUNT(*)::int
 		FROM prayer_requests
 		WHERE author_id = $1 AND deleted_at IS NULL
-	`, userID).Scan(&stats.RequestsCreated); err != nil {
-		return models.ProfileStats{}, err
-	}
-
-	rows, err := r.db.Query(ctx, `
+	`, userID)
+	batch.Queue(`
 		SELECT action_type, COUNT(*)::int
 		FROM prayer_actions
 		WHERE user_id = $1
 		GROUP BY action_type
 	`, userID)
-	if err != nil {
-		return models.ProfileStats{}, err
-	}
-	for rows.Next() {
-		var t string
-		var c int
-		if err = rows.Scan(&t, &c); err != nil {
-			rows.Close()
-			return models.ProfileStats{}, err
-		}
-		stats.PrayerActionsByType[t] = c
-		stats.PrayerActionsTotal += c
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return models.ProfileStats{}, err
-	}
-
-	rows, err = r.db.Query(ctx, `
+	batch.Queue(`
 		SELECT pr.category::text, COUNT(*)::int
 		FROM prayer_actions pa
 		INNER JOIN prayer_requests pr ON pr.id = pa.prayer_request_id
 		WHERE pa.user_id = $1 AND pr.deleted_at IS NULL
 		GROUP BY pr.category
 	`, userID)
-	if err != nil {
-		return models.ProfileStats{}, err
-	}
-	for rows.Next() {
-		var cat string
-		var c int
-		if err = rows.Scan(&cat, &c); err != nil {
-			rows.Close()
-			return models.ProfileStats{}, err
-		}
-		stats.PrayerActionsByCategory[cat] = c
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return models.ProfileStats{}, err
-	}
-
 	// Prayers received: count of prayer_actions on every request the user
 	// authored (excluding deleted requests).
-	if err := r.db.QueryRow(ctx, `
+	batch.Queue(`
 		SELECT COUNT(*)::int
 		FROM prayer_actions pa
 		INNER JOIN prayer_requests pr ON pr.id = pa.prayer_request_id
 		WHERE pr.author_id = $1 AND pr.deleted_at IS NULL
-	`, userID).Scan(&stats.PrayerActionsReceived); err != nil {
-		return models.ProfileStats{}, err
-	}
-
+	`, userID)
 	// Streak: longest run of consecutive days ending today (or yesterday) where
 	// the user recorded at least one prayer action. Computed from the distinct
 	// day series in prayer_actions. Cheap enough at this scale; if the table
 	// grows we can move to a materialized counter or daily cron.
-	streakRow := r.db.QueryRow(ctx, `
+	batch.Queue(`
 		WITH days AS (
 			SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day
 			FROM prayer_actions
@@ -357,7 +322,47 @@ func (r *PostgresRepository) GetUserStats(ctx context.Context, userID string) (m
 		FROM runs, today
 		WHERE last_day = today.today OR last_day = today.today - 1
 	`, userID)
-	if err := streakRow.Scan(&stats.StreakDays); err != nil {
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	if err := br.QueryRow().Scan(&stats.RequestsCreated); err != nil {
+		return models.ProfileStats{}, err
+	}
+
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var actionType string
+			var count int
+			if err := rows.Scan(&actionType, &count); err != nil {
+				return err
+			}
+			stats.PrayerActionsByType[actionType] = count
+			stats.PrayerActionsTotal += count
+		}
+		return nil
+	}); err != nil {
+		return models.ProfileStats{}, err
+	}
+
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var category string
+			var count int
+			if err := rows.Scan(&category, &count); err != nil {
+				return err
+			}
+			stats.PrayerActionsByCategory[category] = count
+		}
+		return nil
+	}); err != nil {
+		return models.ProfileStats{}, err
+	}
+
+	if err := br.QueryRow().Scan(&stats.PrayerActionsReceived); err != nil {
+		return models.ProfileStats{}, err
+	}
+	if err := br.QueryRow().Scan(&stats.StreakDays); err != nil {
 		return models.ProfileStats{}, err
 	}
 	return stats, nil
