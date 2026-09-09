@@ -69,10 +69,10 @@ export function DailyVerse({ placement = 'side' }: Props) {
       ) : (
         <button
           type="button"
-          className="btn btn--ghost daily__cta"
+          className="btn btn--primary daily__cta"
           onClick={() => openVerseComposer(data.verse)}
         >
-          {t('verse.shareAction')}
+          {t('verse.shareCta')}
         </button>
       )}
     </section>

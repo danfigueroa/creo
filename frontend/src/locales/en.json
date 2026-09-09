@@ -692,6 +692,7 @@
     "groupJoinError": "Couldn't request to join the group."
   },
   "verse": {
+    "shareCta": "Share this verse",
     "ofTheDay": "Verse of the day",
     "sharedLabel": "Verse",
     "shareTitle": "Share verse",

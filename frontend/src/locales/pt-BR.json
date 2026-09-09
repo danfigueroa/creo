@@ -692,6 +692,7 @@
     "groupJoinError": "Não foi possível solicitar entrada no grupo."
   },
   "verse": {
+    "shareCta": "Compartilhar versículo",
     "ofTheDay": "Versículo do dia",
     "sharedLabel": "Versículo",
     "shareTitle": "Compartilhar versículo",
