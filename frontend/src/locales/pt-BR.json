@@ -465,6 +465,7 @@
     "answerError": "Não foi possível marcar como atendido."
   },
   "notif": {
+    "verseSharePrayed": "{{name}} rezou com o versículo que você compartilhou",
     "eyebrow": "Comunidade",
     "sub": "Quem rezou, quem atualizou, quem se aproximou.",
     "markAllRead": "Marcar todas como lidas",
@@ -689,5 +690,32 @@
     "friendRequestError": "Não foi possível enviar solicitação de amizade.",
     "groupJoinSent": "Solicitação para entrar no grupo enviada.",
     "groupJoinError": "Não foi possível solicitar entrada no grupo."
+  },
+  "verse": {
+    "ofTheDay": "Versículo do dia",
+    "sharedLabel": "Versículo",
+    "shareTitle": "Compartilhar versículo",
+    "shareAction": "Compartilhar",
+    "sharing": "Compartilhando…",
+    "alreadyShared": "Você já compartilhou este versículo hoje.",
+    "textUnavailable": "Texto indisponível no momento.",
+    "commentLabel": "Seu comentário",
+    "commentHelp": "Opcional. Diga o que este versículo falou com você hoje.",
+    "commentPlaceholder": "O que este versículo diz a você?",
+    "commentTooLong": "O comentário pode ter no máximo {{max}} caracteres.",
+    "visibilityLabel": "Quem pode ver",
+    "visibilityHelp": "Escolha o alcance deste compartilhamento. Só quem enxerga pode rezar por ele.",
+    "errorShare": "Não foi possível compartilhar o versículo.",
+    "open": "Abrir",
+    "openShare": "Abrir compartilhamento",
+    "notFound": "Compartilhamento não encontrado.",
+    "deleteTitle": "Apagar compartilhamento?",
+    "deleteDesc": "O versículo sai do mural de quem o via. Esta ação não pode ser desfeita."
+  },
+  "verseVisibility": {
+    "PUBLIC": { "label": "Público", "description": "Qualquer pessoa no Creo pode ver e rezar.", "badge": "Público" },
+    "FRIENDS": { "label": "Amigos", "description": "Somente seus amigos veem no mural deles.", "badge": "Amigos" },
+    "GROUP_ONLY": { "label": "Grupos", "description": "Somente os membros dos grupos escolhidos.", "badge": "Grupos" },
+    "PRIVATE": { "label": "Só eu", "description": "Fica no seu mural, ninguém mais vê.", "badge": "Só eu" }
   }
 }

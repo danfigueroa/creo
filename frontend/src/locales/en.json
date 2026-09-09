@@ -465,6 +465,7 @@
     "answerError": "Couldn't mark as answered."
   },
   "notif": {
+    "verseSharePrayed": "{{name}} prayed with the verse you shared",
     "eyebrow": "Community",
     "sub": "Who prayed, who updated, who reached out.",
     "markAllRead": "Mark all as read",
@@ -689,5 +690,32 @@
     "friendRequestError": "Couldn't send friend request.",
     "groupJoinSent": "Request to join the group sent.",
     "groupJoinError": "Couldn't request to join the group."
+  },
+  "verse": {
+    "ofTheDay": "Verse of the day",
+    "sharedLabel": "Verse",
+    "shareTitle": "Share verse",
+    "shareAction": "Share",
+    "sharing": "Sharing…",
+    "alreadyShared": "You already shared this verse today.",
+    "textUnavailable": "Text unavailable right now.",
+    "commentLabel": "Your comment",
+    "commentHelp": "Optional. Say what this verse spoke to you today.",
+    "commentPlaceholder": "What does this verse say to you?",
+    "commentTooLong": "The comment can have at most {{max}} characters.",
+    "visibilityLabel": "Who can see it",
+    "visibilityHelp": "Choose the reach of this share. Only those who can see it can pray with it.",
+    "errorShare": "Could not share the verse.",
+    "open": "Open",
+    "openShare": "Open share",
+    "notFound": "Share not found.",
+    "deleteTitle": "Delete this share?",
+    "deleteDesc": "The verse leaves the feed of everyone who could see it. This cannot be undone."
+  },
+  "verseVisibility": {
+    "PUBLIC": { "label": "Public", "description": "Anyone on Creo can see it and pray.", "badge": "Public" },
+    "FRIENDS": { "label": "Friends", "description": "Only your friends see it on their feed.", "badge": "Friends" },
+    "GROUP_ONLY": { "label": "Groups", "description": "Only members of the groups you choose.", "badge": "Groups" },
+    "PRIVATE": { "label": "Only me", "description": "Stays on your feed, nobody else sees it.", "badge": "Only me" }
   }
 }

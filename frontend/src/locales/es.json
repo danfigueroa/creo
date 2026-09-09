@@ -465,6 +465,7 @@
     "answerError": "No se pudo marcar como respondida."
   },
   "notif": {
+    "verseSharePrayed": "{{name}} rezó con el versículo que compartiste",
     "eyebrow": "Comunidad",
     "sub": "Quién oró, quién actualizó, quién se acercó.",
     "markAllRead": "Marcar todas como leídas",
@@ -689,5 +690,32 @@
     "friendRequestError": "No se pudo enviar la solicitud de amistad.",
     "groupJoinSent": "Solicitud para unirte al grupo enviada.",
     "groupJoinError": "No se pudo solicitar unirte al grupo."
+  },
+  "verse": {
+    "ofTheDay": "Versículo del día",
+    "sharedLabel": "Versículo",
+    "shareTitle": "Compartir versículo",
+    "shareAction": "Compartir",
+    "sharing": "Compartiendo…",
+    "alreadyShared": "Ya compartiste este versículo hoy.",
+    "textUnavailable": "Texto no disponible por ahora.",
+    "commentLabel": "Tu comentario",
+    "commentHelp": "Opcional. Di lo que este versículo te dijo hoy.",
+    "commentPlaceholder": "¿Qué te dice este versículo?",
+    "commentTooLong": "El comentario puede tener como máximo {{max}} caracteres.",
+    "visibilityLabel": "Quién puede verlo",
+    "visibilityHelp": "Elige el alcance de este compartir. Solo quien lo ve puede rezar por él.",
+    "errorShare": "No se pudo compartir el versículo.",
+    "open": "Abrir",
+    "openShare": "Abrir publicación",
+    "notFound": "Publicación no encontrada.",
+    "deleteTitle": "¿Borrar esta publicación?",
+    "deleteDesc": "El versículo sale del muro de quienes lo veían. Esta acción no se puede deshacer."
+  },
+  "verseVisibility": {
+    "PUBLIC": { "label": "Público", "description": "Cualquier persona en Creo puede verlo y rezar.", "badge": "Público" },
+    "FRIENDS": { "label": "Amigos", "description": "Solo tus amigos lo ven en su muro.", "badge": "Amigos" },
+    "GROUP_ONLY": { "label": "Grupos", "description": "Solo los miembros de los grupos elegidos.", "badge": "Grupos" },
+    "PRIVATE": { "label": "Solo yo", "description": "Queda en tu muro, nadie más lo ve.", "badge": "Solo yo" }
   }
 }
