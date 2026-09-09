@@ -11,6 +11,7 @@ import { fromBackendLanguage, normalizeLanguage } from '@/lib/i18n'
 import { searchFriendshipLabelCompact, type SearchFriendshipStatus } from '@/lib/friendship'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { ShareVerseModal } from '@/components/share-verse-modal'
+import { DailyVerse } from '@/components/daily-verse'
 import { Avatar } from '@/components/avatar'
 
 type ProfileMini = {
@@ -501,6 +502,10 @@ export function PageShell({ children }: PropsWithChildren) {
             </NavLink>
           ))}
         </nav>
+
+        <div className="side__divider" />
+
+        <DailyVerse />
 
         <div className="side__divider" />
 

@@ -3466,3 +3466,58 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
 .verse--preview {
   margin-top: 0;
 }
+
+/* O widget do mural só aparece quando a sidebar some (breakpoint do shell, 900px),
+   para não duplicar o versículo em duas colunas ao mesmo tempo. */
+.daily-feed-slot { display: none; }
+@media (max-width: 900px) {
+  .daily-feed-slot { display: block; }
+}
+
+/* Widget do versículo do dia: na sidebar no desktop, no topo do mural no mobile. */
+.daily {
+  padding: 12px 0 4px;
+}
+
+.daily__text {
+  margin: 8px 0 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.daily__ref {
+  margin: 6px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.daily__cta {
+  margin-top: 10px;
+  width: 100%;
+}
+
+.daily__done {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.daily--feed {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  background: var(--card);
+}
+
+.daily--feed .daily__text {
+  font-size: 16px;
+}
+
+.daily--feed .daily__cta {
+  width: auto;
+}

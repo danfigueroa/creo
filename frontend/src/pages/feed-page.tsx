@@ -8,6 +8,7 @@ import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } fr
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { Avatar } from '@/components/avatar'
 import { useComposerStore } from '@/state/composer-store'
+import { DailyVerse } from '@/components/daily-verse'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
 import i18n from '@/lib/i18n'
 
@@ -274,6 +275,13 @@ export function FeedPage() {
             style={{ ['--idx' as any]: activeTabIdx } as Record<string, string | number>}
           />
         </div>
+
+        {/* No mobile a sidebar some, então o versículo do dia entra aqui. */}
+        {profileQuery.data?.id && (
+          <div className="daily-feed-slot">
+            <DailyVerse placement="feed" />
+          </div>
+        )}
 
         {profileQuery.data?.id && (
           <button
