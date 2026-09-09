@@ -4,11 +4,13 @@ import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useSessionStore } from '@/state/session-store'
 import { useComposerStore } from '@/state/composer-store'
+import { useVerseComposerStore } from '@/state/verse-composer-store'
 import { getSupabaseClient } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { fromBackendLanguage, normalizeLanguage } from '@/lib/i18n'
 import { searchFriendshipLabelCompact, type SearchFriendshipStatus } from '@/lib/friendship'
 import { NewRequestModal } from '@/components/new-request-modal'
+import { ShareVerseModal } from '@/components/share-verse-modal'
 import { Avatar } from '@/components/avatar'
 
 type ProfileMini = {
@@ -291,6 +293,10 @@ export function PageShell({ children }: PropsWithChildren) {
   const composerOnCreated = useComposerStore((s) => s.onCreated)
   const openComposer = useComposerStore((s) => s.openComposer)
   const closeComposer = useComposerStore((s) => s.closeComposer)
+  const verseComposerOpen = useVerseComposerStore((s) => s.open)
+  const verseComposerVerse = useVerseComposerStore((s) => s.verse)
+  const verseComposerOnShared = useVerseComposerStore((s) => s.onShared)
+  const closeVerseComposer = useVerseComposerStore((s) => s.closeVerseComposer)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 250)
@@ -686,6 +692,12 @@ export function PageShell({ children }: PropsWithChildren) {
         onClose={closeComposer}
         defaultGroupId={composerDefaultGroupId ?? undefined}
         onCreated={composerOnCreated ?? undefined}
+      />
+      <ShareVerseModal
+        open={verseComposerOpen}
+        verse={verseComposerVerse}
+        onClose={closeVerseComposer}
+        onShared={verseComposerOnShared ?? undefined}
       />
     </div>
   )
