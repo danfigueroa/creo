@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type Visibility string
 
@@ -18,6 +21,10 @@ type GroupJoinPolicy string
 type GroupRole string
 
 type ModerationActionType string
+
+type VerseTheme string
+
+type VerseShareVisibility string
 
 const (
 	VisibilityPublic    Visibility = "PUBLIC"
@@ -60,6 +67,32 @@ const (
 const (
 	TraditionCatholic    Tradition = "CATHOLIC"
 	TraditionEvangelical Tradition = "EVANGELICAL"
+)
+
+// Temas do catálogo curado de versículos. Espelham verse_theme no banco.
+const (
+	VerseThemeHope        VerseTheme = "HOPE"
+	VerseThemeGrief       VerseTheme = "GRIEF"
+	VerseThemeGratitude   VerseTheme = "GRATITUDE"
+	VerseThemeForgiveness VerseTheme = "FORGIVENESS"
+	VerseThemeFaith       VerseTheme = "FAITH"
+	VerseThemeFamily      VerseTheme = "FAMILY"
+	VerseThemeHealing     VerseTheme = "HEALING"
+	VerseThemeProvision   VerseTheme = "PROVISION"
+	VerseThemeCourage     VerseTheme = "COURAGE"
+	VerseThemePeace       VerseTheme = "PEACE"
+	VerseThemeGuidance    VerseTheme = "GUIDANCE"
+	VerseThemeLove        VerseTheme = "LOVE"
+)
+
+// Visibilidade de um compartilhamento de versículo. Diferente de Visibility,
+// inclui FRIENDS: um versículo pode ser dirigido só aos amigos, alcance que
+// pedidos de oração não têm.
+const (
+	VerseVisibilityPublic    VerseShareVisibility = "PUBLIC"
+	VerseVisibilityFriends   VerseShareVisibility = "FRIENDS"
+	VerseVisibilityGroupOnly VerseShareVisibility = "GROUP_ONLY"
+	VerseVisibilityPrivate   VerseShareVisibility = "PRIVATE"
 )
 
 const (
@@ -348,6 +381,7 @@ const (
 	NotificationTypeMilestonePrayed         NotificationType = "MILESTONE_PRAYED"
 	NotificationTypeMilestoneCreated        NotificationType = "MILESTONE_CREATED"
 	NotificationTypeMilestoneStreak         NotificationType = "MILESTONE_STREAK"
+	NotificationTypeVerseSharePrayed        NotificationType = "VERSE_SHARE_PRAYED"
 )
 
 
@@ -358,6 +392,7 @@ const (
 	NotificationSubjectMilestone     NotificationSubjectType = "MILESTONE"
 	NotificationSubjectFriendship    NotificationSubjectType = "FRIENDSHIP"
 	NotificationSubjectGroup         NotificationSubjectType = "GROUP"
+	NotificationSubjectVerseShare    NotificationSubjectType = "VERSE_SHARE"
 )
 
 type NotificationActor struct {
@@ -449,6 +484,7 @@ type FeedItemKind string
 const (
 	FeedItemKindPrayerRequest FeedItemKind = "PRAYER_REQUEST"
 	FeedItemKindAnnouncement  FeedItemKind = "ANNOUNCEMENT"
+	FeedItemKindVerseShare    FeedItemKind = "VERSE_SHARE"
 )
 
 type FeedItem struct {
@@ -456,6 +492,7 @@ type FeedItem struct {
 	CreatedAt     time.Time          `json:"createdAt"`
 	PrayerRequest *PrayerRequest     `json:"prayerRequest,omitempty"`
 	Announcement  *GroupAnnouncement `json:"announcement,omitempty"`
+	VerseShare    *VerseShare        `json:"verseShare,omitempty"`
 }
 
 func WrapPrayerRequests(items []PrayerRequest) []FeedItem {
@@ -479,6 +516,92 @@ func WrapAnnouncements(items []GroupAnnouncement) []FeedItem {
 			Kind:         FeedItemKindAnnouncement,
 			CreatedAt:    a.CreatedAt,
 			Announcement: &a,
+		})
+	}
+	return out
+}
+
+// BibleVerse é uma entrada do catálogo curado que alimenta o versículo do dia.
+type BibleVerse struct {
+	ID          string     `json:"id"`
+	BookSlug    string     `json:"bookSlug"`
+	BookName    string     `json:"bookName"`
+	Chapter     int        `json:"chapter"`
+	Verse       int        `json:"verse"`
+	Theme       VerseTheme `json:"theme"`
+	Tradition   *Tradition `json:"tradition,omitempty"`
+	Translation string     `json:"translation"`
+	// Text fica vazio quando o catálogo ainda não foi hidratado e a API de
+	// texto está indisponível. O frontend exibe só a referência nesse caso.
+	Text      string `json:"text"`
+	Reference string `json:"reference"`
+}
+
+// FillReference deriva a referência de exibição em pt-BR ("João 3,16").
+// O separador é vírgula, como é praxe em citação bíblica em português.
+func (v *BibleVerse) FillReference() {
+	v.Reference = fmt.Sprintf("%s %d,%d", v.BookName, v.Chapter, v.Verse)
+}
+
+// DailyVerse é o versículo do dia de um usuário específico.
+type DailyVerse struct {
+	Verse BibleVerse `json:"verse"`
+	// Date é o dia (YYYY-MM-DD) no fuso de São Paulo que gerou a escolha.
+	Date string `json:"date"`
+	// AlreadyShared diz se o usuário já compartilhou este versículo hoje —
+	// o frontend usa para trocar o CTA por um link ao compartilhamento.
+	AlreadyShared bool `json:"alreadyShared"`
+}
+
+// VerseShare é um versículo compartilhado no feed com o comentário do autor.
+type VerseShare struct {
+	ID                string               `json:"id"`
+	AuthorID          string               `json:"authorId"`
+	AuthorUsername    string               `json:"authorUsername,omitempty"`
+	AuthorDisplayName string               `json:"authorDisplayName,omitempty"`
+	AuthorAvatarURL   *string              `json:"authorAvatarUrl,omitempty"`
+	Verse             BibleVerse           `json:"verse"`
+	Comment           string               `json:"comment"`
+	Visibility        VerseShareVisibility `json:"visibility"`
+	Tradition         Tradition            `json:"tradition"`
+	GroupIDs          []string             `json:"groupIds,omitempty"`
+	GroupNames        []string             `json:"groupNames,omitempty"`
+	PrayedCount       int64                `json:"prayedCount"`
+	PrayerTypeCounts  map[string]int64     `json:"prayerTypeCounts,omitempty"`
+	MyPrayerTypes     []string             `json:"myPrayerTypes,omitempty"`
+	CreatedAt         time.Time            `json:"createdAt"`
+	UpdatedAt         time.Time            `json:"updatedAt"`
+}
+
+// CreateVerseShareInput é a entrada de criação de um compartilhamento.
+// GroupIDs só é aceito quando Visibility é GROUP_ONLY.
+type CreateVerseShareInput struct {
+	AuthorID   string
+	VerseID    string
+	Comment    string
+	Visibility VerseShareVisibility
+	GroupIDs   []string
+}
+
+// IsValidVerseShareVisibility valida o enum vindo do cliente.
+func IsValidVerseShareVisibility(value VerseShareVisibility) bool {
+	switch value {
+	case VerseVisibilityPublic, VerseVisibilityFriends, VerseVisibilityGroupOnly, VerseVisibilityPrivate:
+		return true
+	default:
+		return false
+	}
+}
+
+// WrapVerseShares embrulha compartilhamentos como itens de feed.
+func WrapVerseShares(items []VerseShare) []FeedItem {
+	out := make([]FeedItem, 0, len(items))
+	for i := range items {
+		vs := items[i]
+		out = append(out, FeedItem{
+			Kind:       FeedItemKindVerseShare,
+			CreatedAt:  vs.CreatedAt,
+			VerseShare: &vs,
 		})
 	}
 	return out
