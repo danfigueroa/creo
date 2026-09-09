@@ -194,6 +194,67 @@ Sistema in-app, **best-effort**: `_ = insertNotificationOn(ctx, exec, in)` — f
 - `prayer_actions` tem índice `(prayer_request_id, action_type)` (migration 000016) para a agregação de reações do enrich — preservar esse padrão de acesso.
 - Feed público **anônimo** responde `Cache-Control: s-maxage=30` (CDN). Não adicionar cache em resposta autenticada sem `Vary`/cuidado.
 
+### Orçamento de round trips (regra de performance)
+
+**O gargalo deste backend é a quantidade de idas ao banco, não a duração das
+queries.** Medido contra o Supabase: um round trip custa ~200 ms de uma máquina
+no Brasil, e 50 statements numa única mensagem custam o mesmo que 1. Com o
+volume atual (poucas dezenas de linhas por tabela) o tempo de execução é
+desprezível — o que se paga é a viagem.
+
+Consequência prática: **antes de otimizar qualquer coisa, conte viagens.** O log
+de cada requisição traz `dbRoundTrips` e `dbStatements` (tracer em
+`internal/db/trace.go`, plugado em `poolCfg.ConnConfig.Tracer`). Um batch conta
+como **uma** viagem de propósito — é exatamente essa a diferença que interessa.
+
+Duas ferramentas, cada uma no seu lugar:
+
+- **`pgx.Batch` quando as consultas já estão no mesmo método do repositório.**
+  Colapsa N viagens em 1 usando **uma** conexão. É a primeira escolha. Helper:
+  `nextBatchRows` consome os resultados na ordem em que foram enfileirados.
+  Já aplicado em `EnrichPrayerRequests`, `EnrichVerseShares`, `GetUserStats` e
+  na cauda de `RecordPrayerAction`.
+- **`errgroup` quando as chamadas cruzam métodos do repositório** (os feeds
+  mesclados). Sempre via `runBounded`, **nunca** `errgroup` cru: o limite de
+  `maxParallelQueries = 3` existe porque `DB_MAX_CONNS` é 8 para o processo
+  inteiro. Sem trava, um fanout de seis numa requisição consumiria quase o pool
+  todo e a latência pioraria sob carga.
+
+Outras regras que saíram dessa medição:
+
+- **Não enriquecer duas vezes.** Os `List*` do repositório usados por feed
+  mesclado devolvem linhas **cruas**; quem enriquece é o `enrichFeedPage`, na
+  página final. `ListPublicPrayerRequests` e `ListFriendsPrayerRequests` já
+  enriqueceram internamente por um tempo e isso dobrava o custo do feed.
+- **Notificação resolvida em SQL.** Descobrir o autor, checar a janela de dedupe
+  e inserir eram três viagens; hoje é um `INSERT ... SELECT` só, com o
+  `author_id <> actor` evitando auto-notificação e o `NOT EXISTS` aplicando os
+  60 minutos.
+- **Trabalho em background não é opção neste deploy.** A tentação seria
+  responder na hora e deixar notificação/milestone para uma goroutine, mas a
+  função da Vercel congela depois da resposta e o trabalho morreria pela metade.
+  Por isso a cauda foi **agrupada**, não jogada para trás.
+- **`ensureAuthUser` tem cache de 60 s** (`ttlSeen` em `service.go`), chaveado
+  pelos dados do token e não só pelo id — se algo muda no Supabase, sincroniza
+  na hora. Sem isso era uma viagem extra em toda requisição autenticada.
+- **Índice ainda não vale a pena.** Com poucas dezenas de linhas o planner
+  ignora qualquer índice. Trabalho de índice só faz sentido depois de semear um
+  dataset representativo; até lá, otimize viagens.
+
+Números da passagem de otimização (medidos com round trip de ~200 ms):
+
+| caminho | antes | depois |
+|---|---|---|
+| `ListFriendsFeed` | 4189 ms | 430 ms |
+| `ListGroupsFeed` | 2920 ms | 415 ms |
+| `ListHomeFeed` | 2502 ms | 421 ms |
+| `ListPublicFeed` | 2256 ms | 411 ms |
+| `ListGroupFeed` | 1839 ms | 617 ms |
+| `GetUserStats` | 1164 ms | 207 ms |
+
+Pendente: `maybeEmitPrayedMilestone` / `maybeEmitStreakMilestone` ainda são 2 a 4
+viagens em série no fim de cada reação.
+
 ### Versículo do dia (`bible_verses` / `verse_shares`)
 
 Terceiro tipo de conteúdo do feed, ao lado de pedidos e avisos.
@@ -427,6 +488,7 @@ Sino de notificação navega via `subject_type`:
 | SQL | `backend/internal/repositories/repository.go` |
 | Schema | `backend/internal/db/migrations/*.sql` |
 | Modelos / enums | `backend/internal/models/models.go` |
+| Instrumentação de banco | `backend/internal/db/trace.go` + `internal/http/middleware/logging.go` |
 | Versículo do dia (backend) | `backend/internal/bible/bible.go` + `verse_handler.go` + seção de versículos em `service.go`/`repository.go` |
 | Versículo do dia (frontend) | `frontend/src/components/daily-verse.tsx`, `share-verse-modal.tsx`, `VerseCard` em `feed-card.tsx` |
 
