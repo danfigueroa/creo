@@ -22,8 +22,9 @@ type NotificationType =
   | 'MILESTONE_PRAYED'
   | 'MILESTONE_CREATED'
   | 'MILESTONE_STREAK'
+  | 'VERSE_SHARE_PRAYED'
 
-type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP' | 'MILESTONE'
+type SubjectType = 'PRAYER_REQUEST' | 'FRIENDSHIP' | 'GROUP' | 'MILESTONE' | 'VERSE_SHARE'
 
 type Actor = {
   userId: string
@@ -56,6 +57,7 @@ const bucketLabel = (b: Bucket): string => i18n.t(`notif.bucket.${b}`)
 function bucketOf(type: NotificationType): Bucket {
   switch (type) {
     case 'PRAYED':
+    case 'VERSE_SHARE_PRAYED':
       return 'prayed'
     case 'REQUEST_UPDATED':
     case 'REQUEST_ANSWERED':
@@ -94,6 +96,8 @@ function targetPath(n: Notification): string {
   switch (n.subjectType) {
     case 'PRAYER_REQUEST':
       return `/requests/${n.subjectId}`
+    case 'VERSE_SHARE':
+      return `/verses/${n.subjectId}`
     case 'FRIENDSHIP':
       return '/friends'
     case 'GROUP':
@@ -110,6 +114,8 @@ function copyFor(n: Notification): string {
   switch (n.type) {
     case 'PRAYED':
       return i18n.t('notif.prayed', { name })
+    case 'VERSE_SHARE_PRAYED':
+      return i18n.t('notif.verseSharePrayed', { name })
     case 'REQUEST_UPDATED':
       return i18n.t('notif.requestUpdated', { name })
     case 'REQUEST_ANSWERED':

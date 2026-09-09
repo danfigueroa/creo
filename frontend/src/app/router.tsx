@@ -26,6 +26,9 @@ const AnnouncementPage = lazy(() =>
 const NotificationsPage = lazy(() =>
   import('@/pages/notifications-page').then((m) => ({ default: m.NotificationsPage }))
 )
+const VerseSharePage = lazy(() =>
+  import('@/pages/verse-share-page').then((m) => ({ default: m.VerseSharePage }))
+)
 
 function lazyRoute(element: JSX.Element) {
   return (
@@ -51,6 +54,7 @@ export const router = createBrowserRouter([
       { path: '/friends', element: lazyRoute(<FriendsPage />) },
       { path: '/notifications', element: lazyRoute(<NotificationsPage />) },
       { path: '/requests/:id', element: lazyRoute(<RequestDetailPage />) },
+      { path: '/verses/:id', element: lazyRoute(<VerseSharePage />) },
       { path: '/profile', element: lazyRoute(<ProfilePage />) },
       { path: '/u/:username', element: lazyRoute(<PublicProfilePage />) },
       { path: '/moderation', element: lazyRoute(<ModerationPage />) }
