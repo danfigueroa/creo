@@ -14,6 +14,7 @@ import (
 
 	"parish-viva/backend/internal/bible"
 	"parish-viva/backend/internal/config"
+	appdb "parish-viva/backend/internal/db"
 	apphttp "parish-viva/backend/internal/http"
 	"parish-viva/backend/internal/repositories"
 	"parish-viva/backend/internal/services"
@@ -47,6 +48,10 @@ func main() {
 	poolCfg.MinConns = int32(cfg.DBMinConns)
 	poolCfg.MaxConnLifetime = cfg.DBMaxConnLifetime
 	poolCfg.MaxConnIdleTime = cfg.DBMaxConnIdleTime
+	// Conta as idas ao banco por requisição. A métrica que interessa aqui é o
+	// número de viagens, não o tempo de cada query: o custo é a latência até o
+	// Supabase, e um batch viaja uma vez só.
+	poolCfg.ConnConfig.Tracer = appdb.Tracer{}
 
 	dbpool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
