@@ -719,14 +719,9 @@ func (r *PostgresRepository) ListPublicPrayerRequests(ctx context.Context, viewe
 	}
 	defer rows.Close()
 
-	items, err := scanPrayerRequests(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.enrichPrayerRequests(ctx, viewerUserID, items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	// Devolve linhas cruas: o feed público é mesclado no service, que fatia a
+	// página e só então enriquece. Enriquecer aqui duplicaria o trabalho.
+	return scanPrayerRequests(rows)
 }
 
 func (r *PostgresRepository) CountPublicPrayerRequests(ctx context.Context, viewerUserID string) (int64, error) {
@@ -995,14 +990,8 @@ func (r *PostgresRepository) ListFriendsPrayerRequests(ctx context.Context, user
 		return nil, err
 	}
 	defer rows.Close()
-	items, err := scanPrayerRequests(rows)
-	if err != nil {
-		return nil, err
-	}
-	if err = r.enrichPrayerRequests(ctx, userID, items); err != nil {
-		return nil, err
-	}
-	return items, nil
+	// Idem ao feed público: cru, porque o service enriquece a página final.
+	return scanPrayerRequests(rows)
 }
 
 func (r *PostgresRepository) CountFriendsPrayerRequests(ctx context.Context, userID string) (int64, error) {
