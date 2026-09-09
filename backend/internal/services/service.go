@@ -909,10 +909,18 @@ func (s *Service) ListAnnouncementsByGroup(ctx context.Context, viewerUserID, gr
 // preserving DESC order. Used to overlay announcements onto prayer-request feeds.
 // Note: assumes inputs already include enough rows to satisfy the requested page
 // (callers fetch limit+offset from each side and slice afterwards).
-func mergeFeedItems(prayers, announcements []models.FeedItem) []models.FeedItem {
-	out := make([]models.FeedItem, 0, len(prayers)+len(announcements))
-	out = append(out, prayers...)
-	out = append(out, announcements...)
+// mergeFeedItems intercala N streams de feed por created_at decrescente.
+// É variádico porque o feed passou a ter três tipos de item (pedidos, avisos e
+// compartilhamentos de versículo) e tende a ganhar mais.
+func mergeFeedItems(streams ...[]models.FeedItem) []models.FeedItem {
+	total := 0
+	for _, stream := range streams {
+		total += len(stream)
+	}
+	out := make([]models.FeedItem, 0, total)
+	for _, stream := range streams {
+		out = append(out, stream...)
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].CreatedAt.After(out[j].CreatedAt)
 	})
@@ -933,13 +941,20 @@ func sliceFeed(items []models.FeedItem, offset, limit int) []models.FeedItem {
 // enrichFeedPage enriquece (autor, grupos, contagens de reação) apenas os pedidos
 // presentes na página final — os List* dos feeds mesclados retornam linhas cruas.
 func (s *Service) enrichFeedPage(ctx context.Context, viewerUserID string, page []models.FeedItem) error {
-	refs := make([]*models.PrayerRequest, 0, len(page))
+	prayers := make([]*models.PrayerRequest, 0, len(page))
+	verses := make([]*models.VerseShare, 0, len(page))
 	for i := range page {
 		if page[i].PrayerRequest != nil {
-			refs = append(refs, page[i].PrayerRequest)
+			prayers = append(prayers, page[i].PrayerRequest)
+		}
+		if page[i].VerseShare != nil {
+			verses = append(verses, page[i].VerseShare)
 		}
 	}
-	return s.repo.EnrichPrayerRequests(ctx, viewerUserID, refs)
+	if err := s.repo.EnrichPrayerRequests(ctx, viewerUserID, prayers); err != nil {
+		return err
+	}
+	return s.repo.EnrichVerseShares(ctx, viewerUserID, verses)
 }
 
 // ListGroupFeed returns the merged feed (prayer requests + announcements) for a group's mural.
