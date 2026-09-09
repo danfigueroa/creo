@@ -15,6 +15,8 @@ import (
 	"parish-viva/backend/internal/bible"
 	"parish-viva/backend/internal/models"
 	"parish-viva/backend/internal/repositories"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type Service struct {
@@ -918,6 +920,25 @@ func (s *Service) ListAnnouncementsByGroup(ctx context.Context, viewerUserID, gr
 // preserving DESC order. Used to overlay announcements onto prayer-request feeds.
 // Note: assumes inputs already include enough rows to satisfy the requested page
 // (callers fetch limit+offset from each side and slice afterwards).
+// maxParallelQueries limita quantas consultas uma única requisição dispara ao
+// mesmo tempo. O pool tem teto de DB_MAX_CONNS (8) para o processo inteiro, e
+// esse teto existe por causa do pooler do Supabase: sem trava, um fanout de seis
+// numa requisição só já consumiria quase tudo e faria a latência piorar
+// justamente sob carga, que é o oposto do objetivo.
+const maxParallelQueries = 3
+
+// runBounded roda tarefas independentes em paralelo, respeitando esse limite.
+// O contexto do errgroup cancela as irmãs no primeiro erro, que é o
+// comportamento certo aqui: se um stream do feed falha, a resposta falha.
+func runBounded(ctx context.Context, tasks ...func(context.Context) error) error {
+	group, ctx := errgroup.WithContext(ctx)
+	group.SetLimit(maxParallelQueries)
+	for _, task := range tasks {
+		group.Go(func() error { return task(ctx) })
+	}
+	return group.Wait()
+}
+
 // mergeFeedItems intercala N streams de feed por created_at decrescente.
 // É variádico porque o feed passou a ter três tipos de item (pedidos, avisos e
 // compartilhamentos de versículo) e tende a ganhar mais.
@@ -960,10 +981,12 @@ func (s *Service) enrichFeedPage(ctx context.Context, viewerUserID string, page 
 			verses = append(verses, page[i].VerseShare)
 		}
 	}
-	if err := s.repo.EnrichPrayerRequests(ctx, viewerUserID, prayers); err != nil {
-		return err
-	}
-	return s.repo.EnrichVerseShares(ctx, viewerUserID, verses)
+	// Cada enriquecimento é um batch de uma viagem só, e eles não se cruzam:
+	// atuam sobre fatias disjuntas da página.
+	return runBounded(ctx,
+		func(ctx context.Context) error { return s.repo.EnrichPrayerRequests(ctx, viewerUserID, prayers) },
+		func(ctx context.Context) error { return s.repo.EnrichVerseShares(ctx, viewerUserID, verses) },
+	)
 }
 
 // ListGroupFeed returns the merged feed (prayer requests + announcements) for a group's mural.
@@ -979,36 +1002,52 @@ func (s *Service) ListGroupFeed(ctx context.Context, viewerUserID, groupID strin
 		return nil, 0, err
 	}
 	fetch := limit + offset
-	prayers, err := s.repo.ListPrayerRequestsByGroup(ctx, viewerUserID, groupID, fetch, 0)
-	if err != nil {
+
+	var (
+		prayers           []models.PrayerRequest
+		announcements     []models.GroupAnnouncement
+		verses            []models.VerseShare
+		prayerCount       int64
+		announcementCount int64
+		verseCount        int64
+	)
+	// ensureGroupFeedAccess já rodou acima: é porta de autorização e continua
+	// sequencial de propósito, para nada ser lido antes de o acesso ser aceito.
+	if err := runBounded(ctx,
+		func(ctx context.Context) (err error) {
+			prayers, err = s.repo.ListPrayerRequestsByGroup(ctx, viewerUserID, groupID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcements, err = s.repo.ListAnnouncementsByGroup(ctx, groupID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verses, err = s.repo.ListVerseSharesByGroup(ctx, viewerUserID, groupID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			prayerCount, err = s.cachedCount(ctx, "group-req:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcementCount, err = s.cachedCount(ctx, "group-ann:"+groupID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountAnnouncementsByGroup(ctx, groupID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verseCount, err = s.cachedCount(ctx, "group-verse:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountVerseSharesByGroup(ctx, viewerUserID, groupID)
+			})
+			return
+		},
+	); err != nil {
 		return nil, 0, err
 	}
-	announcements, err := s.repo.ListAnnouncementsByGroup(ctx, groupID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	prayerCount, err := s.cachedCount(ctx, "group-req:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountPrayerRequestsByGroup(ctx, viewerUserID, groupID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	announcementCount, err := s.cachedCount(ctx, "group-ann:"+groupID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountAnnouncementsByGroup(ctx, groupID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	verses, err := s.repo.ListVerseSharesByGroup(ctx, viewerUserID, groupID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	verseCount, err := s.cachedCount(ctx, "group-verse:"+groupID+":"+viewerUserID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountVerseSharesByGroup(ctx, viewerUserID, groupID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
+
 	merged := mergeFeedItems(
 		models.WrapPrayerRequests(prayers),
 		models.WrapAnnouncements(announcements),
@@ -1031,36 +1070,52 @@ func (s *Service) ListHomeFeed(ctx context.Context, userID string, limit, offset
 		offset = 0
 	}
 	fetch := limit + offset
-	prayers, err := s.repo.ListHomePrayerRequests(ctx, userID, fetch, 0)
-	if err != nil {
+
+	var (
+		prayers           []models.PrayerRequest
+		announcements     []models.GroupAnnouncement
+		verses            []models.VerseShare
+		prayerCount       int64
+		announcementCount int64
+		verseCount        int64
+	)
+	// Os seis são independentes entre si: cada um só depende de userID e fetch,
+	// e cada tarefa escreve numa variável distinta.
+	if err := runBounded(ctx,
+		func(ctx context.Context) (err error) {
+			prayers, err = s.repo.ListHomePrayerRequests(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcements, err = s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verses, err = s.repo.ListHomeVerseShares(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			prayerCount, err = s.cachedCount(ctx, "home:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountHomePrayerRequests(ctx, userID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcementCount, err = s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountAnnouncementsForUser(ctx, userID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verseCount, err = s.cachedCount(ctx, "home-verse:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountHomeVerseShares(ctx, userID)
+			})
+			return
+		},
+	); err != nil {
 		return nil, 0, err
 	}
-	announcements, err := s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	prayerCount, err := s.cachedCount(ctx, "home:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountHomePrayerRequests(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	announcementCount, err := s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountAnnouncementsForUser(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	verses, err := s.repo.ListHomeVerseShares(ctx, userID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	verseCount, err := s.cachedCount(ctx, "home-verse:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountHomeVerseShares(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
+
 	merged := mergeFeedItems(
 		models.WrapPrayerRequests(prayers),
 		models.WrapAnnouncements(announcements),
@@ -1083,36 +1138,50 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 		offset = 0
 	}
 	fetch := limit + offset
-	prayers, err := s.repo.ListGroupsPrayerRequests(ctx, userID, fetch, 0)
-	if err != nil {
+
+	var (
+		prayers           []models.PrayerRequest
+		announcements     []models.GroupAnnouncement
+		verses            []models.VerseShare
+		prayerCount       int64
+		announcementCount int64
+		verseCount        int64
+	)
+	if err := runBounded(ctx,
+		func(ctx context.Context) (err error) {
+			prayers, err = s.repo.ListGroupsPrayerRequests(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcements, err = s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verses, err = s.repo.ListGroupsVerseShares(ctx, userID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			prayerCount, err = s.cachedCount(ctx, "groups:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountGroupsPrayerRequests(ctx, userID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			announcementCount, err = s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountAnnouncementsForUser(ctx, userID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verseCount, err = s.cachedCount(ctx, "groups-verse:"+userID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountGroupsVerseShares(ctx, userID)
+			})
+			return
+		},
+	); err != nil {
 		return nil, 0, err
 	}
-	announcements, err := s.repo.ListAnnouncementsForUser(ctx, userID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	prayerCount, err := s.cachedCount(ctx, "groups:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountGroupsPrayerRequests(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	announcementCount, err := s.cachedCount(ctx, "ann-user:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountAnnouncementsForUser(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	verses, err := s.repo.ListGroupsVerseShares(ctx, userID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	verseCount, err := s.cachedCount(ctx, "groups-verse:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountGroupsVerseShares(ctx, userID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
+
 	merged := mergeFeedItems(
 		models.WrapPrayerRequests(prayers),
 		models.WrapAnnouncements(announcements),
@@ -1374,26 +1443,38 @@ func (s *Service) ListPublicFeed(ctx context.Context, viewerUserID string, limit
 		offset = 0
 	}
 	fetch := limit + offset
-	prayers, err := s.repo.ListPublicPrayerRequests(ctx, viewerUserID, fetch, 0)
-	if err != nil {
+
+	var (
+		prayers     []models.PrayerRequest
+		verses      []models.VerseShare
+		prayerCount int64
+		verseCount  int64
+	)
+	if err := runBounded(ctx,
+		func(ctx context.Context) (err error) {
+			prayers, err = s.repo.ListPublicPrayerRequests(ctx, viewerUserID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verses, err = s.repo.ListPublicVerseShares(ctx, viewerUserID, fetch, 0)
+			return
+		},
+		func(ctx context.Context) (err error) {
+			prayerCount, err = s.cachedCount(ctx, "public:"+viewerUserID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
+			})
+			return
+		},
+		func(ctx context.Context) (err error) {
+			verseCount, err = s.cachedCount(ctx, "public-verse:"+viewerUserID, func(ctx context.Context) (int64, error) {
+				return s.repo.CountPublicVerseShares(ctx, viewerUserID)
+			})
+			return
+		},
+	); err != nil {
 		return nil, 0, err
 	}
-	verses, err := s.repo.ListPublicVerseShares(ctx, viewerUserID, fetch, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	prayerCount, err := s.cachedCount(ctx, "public:"+viewerUserID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountPublicPrayerRequests(ctx, viewerUserID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	verseCount, err := s.cachedCount(ctx, "public-verse:"+viewerUserID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountPublicVerseShares(ctx, viewerUserID)
-	})
-	if err != nil {
-		return nil, 0, err
-	}
+
 	merged := mergeFeedItems(models.WrapPrayerRequests(prayers), models.WrapVerseShares(verses))
 	page := sliceFeed(merged, offset, limit)
 	if err := s.enrichFeedPage(ctx, viewerUserID, page); err != nil {
