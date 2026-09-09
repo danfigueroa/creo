@@ -1385,9 +1385,48 @@ func (r *PostgresRepository) enrichPrayerRequests(ctx context.Context, userID st
 	return r.EnrichPrayerRequests(ctx, userID, refs)
 }
 
+// nextBatchRows consome o próximo resultado de um batch, na ordem em que foi
+// enfileirado, garantindo o Close mesmo quando o scan falha.
+func nextBatchRows(br pgx.BatchResults, scan func(pgx.Rows) error) error {
+	rows, err := br.Query()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if err := scan(rows); err != nil {
+		return err
+	}
+	return rows.Err()
+}
+
+// enrichedAuthor são os campos de autor que os enriquecimentos denormalizam.
+type enrichedAuthor struct {
+	username    string
+	displayName string
+	avatarURL   *string
+}
+
+// scanAuthors lê o resultado da consulta de autores usada pelos enriquecimentos.
+func scanAuthors(rows pgx.Rows, out map[string]enrichedAuthor) error {
+	for rows.Next() {
+		var id string
+		var author enrichedAuthor
+		if err := rows.Scan(&id, &author.username, &author.displayName, &author.avatarURL); err != nil {
+			return err
+		}
+		out[id] = author
+	}
+	return nil
+}
+
 // EnrichPrayerRequests preenche autor, answered, grupos e contagens de reação em lote.
 // Exposto para os feeds mesclados (home/groups/mural), que fatiam a página no service
 // e só então enriquecem os itens que serão de fato retornados.
+//
+// As consultas são independentes entre si e viajam num único pgx.Batch. O custo
+// dominante aqui é a ida e volta até o Supabase, não a execução: agrupá-las
+// transforma cinco viagens em uma, e sem consumir cinco conexões do pool, que
+// tem teto de DB_MAX_CONNS para o processo inteiro.
 func (r *PostgresRepository) EnrichPrayerRequests(ctx context.Context, userID string, items []*models.PrayerRequest) error {
 	if len(items) == 0 {
 		return nil
@@ -1407,41 +1446,51 @@ func (r *PostgresRepository) EnrichPrayerRequests(ctx context.Context, userID st
 		}
 	}
 
-	authorRows, err := r.db.Query(ctx, `
+	batch := &pgx.Batch{}
+	batch.Queue(`
 		SELECT id::text, username, display_name, avatar_url
 		FROM users
 		WHERE id = ANY($1::uuid[])
 	`, authorIDs)
-	if err != nil {
+	batch.Queue(`
+		SELECT id::text, answered_at, testimony
+		FROM prayer_requests
+		WHERE id = ANY($1::uuid[])
+		  AND answered_at IS NOT NULL
+	`, ids)
+	batch.Queue(`
+		SELECT prg.prayer_request_id::text, prg.group_id::text, g.name
+		FROM prayer_request_groups prg
+		INNER JOIN groups g ON g.id = prg.group_id
+		WHERE prg.prayer_request_id = ANY($1::uuid[])
+		  AND g.deleted_at IS NULL
+	`, ids)
+	batch.Queue(`
+		SELECT prayer_request_id::text, action_type, COUNT(*)::bigint
+		FROM prayer_actions
+		WHERE prayer_request_id = ANY($1::uuid[])
+		GROUP BY prayer_request_id, action_type
+	`, ids)
+	// Visitante anônimo não tem reações próprias para marcar.
+	withViewer := userID != ""
+	if withViewer {
+		batch.Queue(`
+			SELECT DISTINCT prayer_request_id::text, action_type
+			FROM prayer_actions
+			WHERE user_id = $1
+			  AND prayer_request_id = ANY($2::uuid[])
+		`, userID, ids)
+	}
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	authorByID := make(map[string]enrichedAuthor, len(authorIDs))
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		return scanAuthors(rows, authorByID)
+	}); err != nil {
 		return err
 	}
-	defer authorRows.Close()
-
-	authorByID := make(map[string]struct {
-		username    string
-		displayName string
-		avatarURL   *string
-	}, len(authorIDs))
-	for authorRows.Next() {
-		var id, username, displayName string
-		var avatarURL *string
-		if err = authorRows.Scan(&id, &username, &displayName, &avatarURL); err != nil {
-			return err
-		}
-		authorByID[id] = struct {
-			username    string
-			displayName string
-			avatarURL   *string
-		}{
-			username:    username,
-			displayName: displayName,
-			avatarURL:   avatarURL,
-		}
-	}
-	if err = authorRows.Err(); err != nil {
-		return err
-	}
-
 	for i := range items {
 		author, ok := authorByID[items[i].AuthorID]
 		if !ok {
@@ -1462,118 +1511,72 @@ func (r *PostgresRepository) EnrichPrayerRequests(ctx context.Context, userID st
 		items[i].AuthorAvatarURL = author.avatarURL
 	}
 
-	answeredRows, err := r.db.Query(ctx, `
-		SELECT id::text, answered_at, testimony
-		FROM prayer_requests
-		WHERE id = ANY($1::uuid[])
-		  AND answered_at IS NOT NULL
-	`, ids)
-	if err != nil {
-		return err
-	}
-	defer answeredRows.Close()
-
-	for answeredRows.Next() {
-		var requestID string
-		var answeredAt time.Time
-		var testimony *string
-		if err = answeredRows.Scan(&requestID, &answeredAt, &testimony); err != nil {
-			return err
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var requestID string
+			var answeredAt time.Time
+			var testimony *string
+			if err := rows.Scan(&requestID, &answeredAt, &testimony); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[requestID]; ok {
+				at := answeredAt
+				items[idx].AnsweredAt = &at
+				items[idx].Testimony = testimony
+			}
 		}
-		idx, ok := indexByID[requestID]
-		if !ok {
-			continue
-		}
-		at := answeredAt
-		items[idx].AnsweredAt = &at
-		items[idx].Testimony = testimony
-	}
-	if err = answeredRows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	groupRows, err := r.db.Query(ctx, `
-		SELECT prg.prayer_request_id::text, prg.group_id::text, g.name
-		FROM prayer_request_groups prg
-		INNER JOIN groups g ON g.id = prg.group_id
-		WHERE prg.prayer_request_id = ANY($1::uuid[])
-		  AND g.deleted_at IS NULL
-	`, ids)
-	if err != nil {
-		return err
-	}
-	defer groupRows.Close()
-
-	for groupRows.Next() {
-		var requestID, groupID, groupName string
-		if err = groupRows.Scan(&requestID, &groupID, &groupName); err != nil {
-			return err
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var requestID, groupID, groupName string
+			if err := rows.Scan(&requestID, &groupID, &groupName); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[requestID]; ok {
+				items[idx].GroupIDs = append(items[idx].GroupIDs, groupID)
+				items[idx].GroupNames = append(items[idx].GroupNames, groupName)
+			}
 		}
-		idx, ok := indexByID[requestID]
-		if !ok {
-			continue
-		}
-		items[idx].GroupIDs = append(items[idx].GroupIDs, groupID)
-		items[idx].GroupNames = append(items[idx].GroupNames, groupName)
-	}
-	if err = groupRows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	rows, err := r.db.Query(ctx, `
-		SELECT prayer_request_id::text, action_type, COUNT(*)::bigint
-		FROM prayer_actions
-		WHERE prayer_request_id = ANY($1::uuid[])
-		GROUP BY prayer_request_id, action_type
-	`, ids)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var requestID, actionType string
-		var count int64
-		if err = rows.Scan(&requestID, &actionType, &count); err != nil {
-			return err
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var requestID, actionType string
+			var count int64
+			if err := rows.Scan(&requestID, &actionType, &count); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[requestID]; ok {
+				items[idx].PrayerTypeCounts[actionType] = count
+			}
 		}
-		idx, ok := indexByID[requestID]
-		if !ok {
-			continue
-		}
-		items[idx].PrayerTypeCounts[actionType] = count
-	}
-	if err = rows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	if userID == "" {
+	if !withViewer {
 		return nil
 	}
-
-	userRows, err := r.db.Query(ctx, `
-		SELECT DISTINCT prayer_request_id::text, action_type
-		FROM prayer_actions
-		WHERE user_id = $1
-		  AND prayer_request_id = ANY($2::uuid[])
-	`, userID, ids)
-	if err != nil {
-		return err
-	}
-	defer userRows.Close()
-
-	for userRows.Next() {
-		var requestID, actionType string
-		if err = userRows.Scan(&requestID, &actionType); err != nil {
-			return err
+	return nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var requestID, actionType string
+			if err := rows.Scan(&requestID, &actionType); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[requestID]; ok {
+				items[idx].MyPrayerTypes = append(items[idx].MyPrayerTypes, actionType)
+			}
 		}
-		idx, ok := indexByID[requestID]
-		if !ok {
-			continue
-		}
-		items[idx].MyPrayerTypes = append(items[idx].MyPrayerTypes, actionType)
-	}
-	return userRows.Err()
+		return nil
+	})
 }
 
 func (r *PostgresRepository) SendFriendRequest(ctx context.Context, fromUserID, targetUsername string) error {
@@ -3420,6 +3423,9 @@ func (r *PostgresRepository) enrichVerseShares(ctx context.Context, viewerUserID
 // espelhando EnrichPrayerRequests. Recebe ponteiros para que os feeds mesclados
 // possam enriquecer a página final no lugar.
 //
+// As consultas são independentes e viajam num único pgx.Batch, pela mesma razão
+// de EnrichPrayerRequests: o custo é ida e volta, não execução.
+//
 // Não há tratamento de anonimato aqui: compartilhar um versículo é sempre
 // identificado, ao contrário de um pedido de oração.
 func (r *PostgresRepository) EnrichVerseShares(ctx context.Context, viewerUserID string, items []*models.VerseShare) error {
@@ -3440,32 +3446,41 @@ func (r *PostgresRepository) EnrichVerseShares(ctx context.Context, viewerUserID
 		}
 	}
 
-	// 1) autores
-	authorRows, err := r.db.Query(ctx, `
+	batch := &pgx.Batch{}
+	batch.Queue(`
 		SELECT id::text, username, display_name, avatar_url
 		FROM users
 		WHERE id = ANY($1::uuid[])
 	`, authorIDs)
-	if err != nil {
-		return err
+	batch.Queue(`
+		SELECT vsg.verse_share_id::text, vsg.group_id::text, g.name
+		FROM verse_share_groups vsg
+		INNER JOIN groups g ON g.id = vsg.group_id
+		WHERE vsg.verse_share_id = ANY($1::uuid[])
+		  AND g.deleted_at IS NULL
+	`, ids)
+	batch.Queue(`
+		SELECT verse_share_id::text, action_type, COUNT(*)::bigint
+		FROM prayer_actions
+		WHERE verse_share_id = ANY($1::uuid[])
+		GROUP BY verse_share_id, action_type
+	`, ids)
+	withViewer := viewerUserID != ""
+	if withViewer {
+		batch.Queue(`
+			SELECT DISTINCT verse_share_id::text, action_type
+			FROM prayer_actions
+			WHERE user_id = $1::uuid AND verse_share_id = ANY($2::uuid[])
+		`, viewerUserID, ids)
 	}
-	type authorInfo struct {
-		username    string
-		displayName string
-		avatarURL   *string
-	}
-	authors := make(map[string]authorInfo, len(authorIDs))
-	for authorRows.Next() {
-		var id string
-		var info authorInfo
-		if err := authorRows.Scan(&id, &info.username, &info.displayName, &info.avatarURL); err != nil {
-			authorRows.Close()
-			return err
-		}
-		authors[id] = info
-	}
-	authorRows.Close()
-	if err := authorRows.Err(); err != nil {
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	authors := make(map[string]enrichedAuthor, len(authorIDs))
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		return scanAuthors(rows, authors)
+	}); err != nil {
 		return err
 	}
 	for i := range items {
@@ -3476,86 +3491,59 @@ func (r *PostgresRepository) EnrichVerseShares(ctx context.Context, viewerUserID
 		}
 	}
 
-	// 2) grupos alvo
-	groupRows, err := r.db.Query(ctx, `
-		SELECT vsg.verse_share_id::text, vsg.group_id::text, g.name
-		FROM verse_share_groups vsg
-		INNER JOIN groups g ON g.id = vsg.group_id
-		WHERE vsg.verse_share_id = ANY($1::uuid[])
-		  AND g.deleted_at IS NULL
-	`, ids)
-	if err != nil {
-		return err
-	}
-	for groupRows.Next() {
-		var shareID, groupID, groupName string
-		if err := groupRows.Scan(&shareID, &groupID, &groupName); err != nil {
-			groupRows.Close()
-			return err
-		}
-		if idx, ok := indexByID[shareID]; ok {
-			items[idx].GroupIDs = append(items[idx].GroupIDs, groupID)
-			items[idx].GroupNames = append(items[idx].GroupNames, groupName)
-		}
-	}
-	groupRows.Close()
-	if err := groupRows.Err(); err != nil {
-		return err
-	}
-
-	// 3) contagens de reação por tipo (e o total, somado daqui)
-	countRows, err := r.db.Query(ctx, `
-		SELECT verse_share_id::text, action_type, COUNT(*)::bigint
-		FROM prayer_actions
-		WHERE verse_share_id = ANY($1::uuid[])
-		GROUP BY verse_share_id, action_type
-	`, ids)
-	if err != nil {
-		return err
-	}
-	for countRows.Next() {
-		var shareID, actionType string
-		var count int64
-		if err := countRows.Scan(&shareID, &actionType, &count); err != nil {
-			countRows.Close()
-			return err
-		}
-		if idx, ok := indexByID[shareID]; ok {
-			if items[idx].PrayerTypeCounts == nil {
-				items[idx].PrayerTypeCounts = make(map[string]int64, 4)
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var shareID, groupID, groupName string
+			if err := rows.Scan(&shareID, &groupID, &groupName); err != nil {
+				return err
 			}
-			items[idx].PrayerTypeCounts[actionType] = count
-			items[idx].PrayedCount += count
+			if idx, ok := indexByID[shareID]; ok {
+				items[idx].GroupIDs = append(items[idx].GroupIDs, groupID)
+				items[idx].GroupNames = append(items[idx].GroupNames, groupName)
+			}
 		}
-	}
-	countRows.Close()
-	if err := countRows.Err(); err != nil {
+		return nil
+	}); err != nil {
 		return err
 	}
 
-	// 4) reações do próprio viewer (pulada para visitante anônimo)
-	if viewerUserID == "" {
+	// Esta é a única consulta que toca PrayedCount: o total é somado daqui, e
+	// não de um contador desnormalizado que pudesse dessincronizar.
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var shareID, actionType string
+			var count int64
+			if err := rows.Scan(&shareID, &actionType, &count); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[shareID]; ok {
+				if items[idx].PrayerTypeCounts == nil {
+					items[idx].PrayerTypeCounts = make(map[string]int64, 4)
+				}
+				items[idx].PrayerTypeCounts[actionType] = count
+				items[idx].PrayedCount += count
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if !withViewer {
 		return nil
 	}
-	mineRows, err := r.db.Query(ctx, `
-		SELECT DISTINCT verse_share_id::text, action_type
-		FROM prayer_actions
-		WHERE user_id = $1::uuid AND verse_share_id = ANY($2::uuid[])
-	`, viewerUserID, ids)
-	if err != nil {
-		return err
-	}
-	defer mineRows.Close()
-	for mineRows.Next() {
-		var shareID, actionType string
-		if err := mineRows.Scan(&shareID, &actionType); err != nil {
-			return err
+	return nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var shareID, actionType string
+			if err := rows.Scan(&shareID, &actionType); err != nil {
+				return err
+			}
+			if idx, ok := indexByID[shareID]; ok {
+				items[idx].MyPrayerTypes = append(items[idx].MyPrayerTypes, actionType)
+			}
 		}
-		if idx, ok := indexByID[shareID]; ok {
-			items[idx].MyPrayerTypes = append(items[idx].MyPrayerTypes, actionType)
-		}
-	}
-	return mineRows.Err()
+		return nil
+	})
 }
 
 // verseViewerCTEs são as CTEs comuns aos feeds autenticados, com a mesma forma
