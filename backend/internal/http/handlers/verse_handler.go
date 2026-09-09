@@ -125,11 +125,8 @@ func (h *VerseHandler) PrayShare(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
 		return
 	}
-	actionType := models.PrayerActionType(req.ActionType)
-	if actionType == "" {
-		actionType = h.service.DefaultPrayerActionFor(r.Context(), userID)
-	}
-	err := h.service.RecordVerseShareAction(r.Context(), userID, chi.URLParam(r, "id"), actionType, h.prayedWindowHour)
+	// actionType vazio é resolvido no service, que já carrega o usuário.
+	err := h.service.RecordVerseShareAction(r.Context(), userID, chi.URLParam(r, "id"), models.PrayerActionType(req.ActionType), h.prayedWindowHour)
 	if err != nil {
 		writeVerseError(w, err)
 		return

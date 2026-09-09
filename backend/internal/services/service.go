@@ -275,6 +275,9 @@ func (s *Service) CountPublicPrayerRequests(ctx context.Context, viewerUserID st
 	})
 }
 
+// RecordPrayerAction registra uma reação. actionType vazio assume a oração
+// padrão da tradição do usuário: resolver isso aqui, e não no handler, evita
+// buscar a mesma linha de users duas vezes na mesma requisição.
 func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error {
 	if windowHours < 1 {
 		windowHours = 12
@@ -282,6 +285,9 @@ func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID stri
 	viewer, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
+	}
+	if actionType == "" {
+		actionType = defaultPrayerActionFor(viewer.Tradition)
 	}
 	if !isValidPrayerActionTypeFor(viewer.Tradition, actionType) {
 		return ErrInvalidPrayerActionType
@@ -407,31 +413,21 @@ func (s *Service) SetUserLanguage(ctx context.Context, userID string, language m
 	return s.repo.SetUserLanguage(ctx, userID, language)
 }
 
-func (s *Service) DefaultPrayerActionFor(ctx context.Context, userID string) models.PrayerActionType {
-	user, err := s.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		return models.PrayerActionHailMary
-	}
-	if user.Tradition == models.TraditionEvangelical {
+// defaultPrayerActionFor é a oração assumida quando o cliente não escolhe uma.
+// Pura, para poder ser usada onde o usuário já foi carregado.
+func defaultPrayerActionFor(tradition models.Tradition) models.PrayerActionType {
+	if tradition == models.TraditionEvangelical {
 		return models.PrayerActionIPrayed
 	}
 	return models.PrayerActionHailMary
 }
 
-func (s *Service) ListFriendsPrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 20
+func (s *Service) DefaultPrayerActionFor(ctx context.Context, userID string) models.PrayerActionType {
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return models.PrayerActionHailMary
 	}
-	if offset < 0 {
-		offset = 0
-	}
-	return s.repo.ListFriendsPrayerRequests(ctx, userID, limit, offset)
-}
-
-func (s *Service) CountFriendsPrayerRequests(ctx context.Context, userID string) (int64, error) {
-	return s.cachedCount(ctx, "friends:"+userID, func(ctx context.Context) (int64, error) {
-		return s.repo.CountFriendsPrayerRequests(ctx, userID)
-	})
+	return defaultPrayerActionFor(user.Tradition)
 }
 
 func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]models.Group, error) {
@@ -1414,6 +1410,9 @@ func (s *Service) RecordVerseShareAction(ctx context.Context, userID, shareID st
 	viewer, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
+	}
+	if actionType == "" {
+		actionType = defaultPrayerActionFor(viewer.Tradition)
 	}
 	if !isValidPrayerActionTypeFor(viewer.Tradition, actionType) {
 		return ErrInvalidPrayerActionType
