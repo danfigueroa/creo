@@ -23,6 +23,7 @@ type Service struct {
 	repo       repositories.Repository
 	bible      bible.TextProvider
 	feedCounts *ttlCounts
+	syncedAuth *ttlSeen
 }
 
 // feedCountTTL limita a frequência dos COUNT(*) de feed, que reexecutam a CTE
@@ -38,6 +39,43 @@ type ttlCountEntry struct {
 type ttlCounts struct {
 	mu      sync.Mutex
 	entries map[string]ttlCountEntry
+}
+
+// authSyncTTL é por quanto tempo um usuário já sincronizado é considerado
+// sincronizado. O upsert de ensureAuthUser roda hoje em toda requisição
+// autenticada, mas só faz trabalho de verdade no primeiro acesso.
+const authSyncTTL = 60 * time.Second
+
+// ttlSeen é um conjunto com expiração: responde "já vi essa chave há pouco?".
+type ttlSeen struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+}
+
+// seen marca a chave e devolve se ela já havia sido marcada e ainda está no
+// prazo. A limpeza é oportunista, no mesmo espírito do cachedCount.
+func (t *ttlSeen) seen(key string, ttl time.Duration) bool {
+	now := time.Now()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if expiresAt, ok := t.entries[key]; ok && now.Before(expiresAt) {
+		return true
+	}
+	if len(t.entries) > 4096 {
+		for k, expiresAt := range t.entries {
+			if !now.Before(expiresAt) {
+				delete(t.entries, k)
+			}
+		}
+	}
+	t.entries[key] = now.Add(ttl)
+	return false
+}
+
+func (t *ttlSeen) forget(key string) {
+	t.mu.Lock()
+	delete(t.entries, key)
+	t.mu.Unlock()
 }
 
 func (s *Service) cachedCount(ctx context.Context, key string, fetch func(context.Context) (int64, error)) (int64, error) {
@@ -100,6 +138,7 @@ func NewService(repo repositories.Repository, bibleProvider bible.TextProvider) 
 		repo:       repo,
 		bible:      bibleProvider,
 		feedCounts: &ttlCounts{entries: map[string]ttlCountEntry{}},
+		syncedAuth: &ttlSeen{entries: map[string]time.Time{}},
 	}
 }
 
@@ -698,7 +737,21 @@ func (s *Service) EnsureAuthUser(ctx context.Context, userID, email, preferredUs
 	preferredUsername = normalizeUsername(preferredUsername)
 	preferredDisplayName = strings.TrimSpace(preferredDisplayName)
 	preferredTradition = strings.ToUpper(strings.TrimSpace(preferredTradition))
-	return s.repo.UpsertAuthUser(ctx, userID, email, preferredUsername, preferredDisplayName, preferredTradition)
+
+	// A chave carrega os dados do token, não só o id: se qualquer um deles
+	// mudar no Supabase, a sincronia acontece na hora em vez de esperar o TTL.
+	// Sem isso, o upsert custaria uma ida ao banco em toda requisição
+	// autenticada, antes mesmo de o handler começar o trabalho de verdade.
+	key := strings.Join([]string{userID, email, preferredUsername, preferredDisplayName, preferredTradition}, "|")
+	if s.syncedAuth.seen(key, authSyncTTL) {
+		return nil
+	}
+	if err := s.repo.UpsertAuthUser(ctx, userID, email, preferredUsername, preferredDisplayName, preferredTradition); err != nil {
+		// Falhou: não deixa a marca no cache esconder o erro da próxima vez.
+		s.syncedAuth.forget(key)
+		return err
+	}
+	return nil
 }
 
 func normalizeUsername(value string) string {
