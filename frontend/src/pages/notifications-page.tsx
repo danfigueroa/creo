@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Avatar } from '@/components/avatar'
+import { Glyph } from '@/components/glyph'
+import { prayerActionByType } from '@/lib/traditions'
 import { api } from '@/lib/api'
 import i18n from '@/lib/i18n'
 
@@ -259,6 +261,12 @@ export function NotificationsPage() {
                       avatarUrl: n.actor.avatarUrl
                     }
                   : { displayName: '·' }
+                // O tipo de oração vem no payload da reação; mostrar qual foi
+                // diz mais do que "orou pelo seu pedido".
+                const action =
+                  n.type === 'PRAYED' || n.type === 'VERSE_SHARE_PRAYED'
+                    ? prayerActionByType(n.payload?.actionType)
+                    : undefined
                 return (
                   <li key={n.id}>
                     <button
@@ -270,7 +278,26 @@ export function NotificationsPage() {
                       <Avatar user={actorUser} size="md" />
                       <div className="notif__body">
                         <div className="notif__line">{copyFor(n)}</div>
-                        <div className="notif__when">{relativeTime(n.createdAt)}</div>
+                        <div className="notif__meta">
+                          {action && (
+                            <span
+                              className="notif__rx"
+                              style={
+                                {
+                                  '--rx-bg': action.bg,
+                                  '--rx-border': action.border,
+                                  '--rx-fg': action.fg
+                                } as CSSProperties
+                              }
+                            >
+                              <span className="notif__rx-glyph">
+                                <Glyph kind={action.glyph} size={11} />
+                              </span>
+                              {action.label}
+                            </span>
+                          )}
+                          <span className="notif__when">{relativeTime(n.createdAt)}</span>
+                        </div>
                       </div>
                     </button>
                   </li>
