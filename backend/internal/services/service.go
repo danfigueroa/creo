@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -298,24 +299,56 @@ func (s *Service) GetPrayerRequestByID(ctx context.Context, userID, requestID st
 	return s.repo.GetPrayerRequestByID(ctx, userID, requestID)
 }
 
-// RecordPrayerAction registra uma reação. actionType vazio assume a oração
-// padrão da tradição do usuário: resolver isso aqui, e não no handler, evita
-// buscar a mesma linha de users duas vezes na mesma requisição.
-func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error {
+// prayerActionRules é a fonte única de quais orações cada tradição registra e
+// de qual vale por padrão. O repositório aplica essas regras dentro do próprio
+// statement da reação, contra a tradição atual do usuário no banco.
+var prayerActionRules = models.PrayerActionRules{
+	Catholic: []models.PrayerActionType{
+		models.PrayerActionHailMary, models.PrayerActionOurFather, models.PrayerActionGloryBe,
+		models.PrayerActionRosaryDecade, models.PrayerActionRosaryFull,
+	},
+	Evangelical: []models.PrayerActionType{
+		models.PrayerActionIPrayed, models.PrayerActionIntercession, models.PrayerActionFasting,
+		models.PrayerActionGratitude, models.PrayerActionCryingOut, models.PrayerActionPurpose,
+	},
+	CatholicDefault:    models.PrayerActionHailMary,
+	EvangelicalDefault: models.PrayerActionIPrayed,
+}
+
+// newReactionInput valida o que dá para validar sem banco e monta a entrada da
+// reação. Um tipo que não existe em nenhuma tradição morre aqui, sem viagem; o
+// casamento tipo × tradição do usuário fica para o statement.
+func newReactionInput(userID, subjectID string, actionType models.PrayerActionType, windowHours int) (models.ReactionInput, error) {
 	if windowHours < 1 {
 		windowHours = 12
 	}
-	viewer, err := s.repo.GetUserByID(ctx, userID)
+	if actionType != "" && !isKnownPrayerActionType(actionType) {
+		return models.ReactionInput{}, ErrInvalidPrayerActionType
+	}
+	return models.ReactionInput{
+		UserID:      userID,
+		SubjectID:   subjectID,
+		ActionType:  actionType,
+		WindowHours: windowHours,
+		Rules:       prayerActionRules,
+	}, nil
+}
+
+func mapReactionError(err error) error {
+	if errors.Is(err, repositories.ErrPrayerActionNotAllowed) {
+		return ErrInvalidPrayerActionType
+	}
+	return err
+}
+
+// RecordPrayerAction registra uma reação num pedido visível ao usuário.
+// actionType vazio assume a oração padrão da tradição dele.
+func (s *Service) RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error {
+	in, err := newReactionInput(userID, requestID, actionType, windowHours)
 	if err != nil {
 		return err
 	}
-	if actionType == "" {
-		actionType = defaultPrayerActionFor(viewer.Tradition)
-	}
-	if !isValidPrayerActionTypeFor(viewer.Tradition, actionType) {
-		return ErrInvalidPrayerActionType
-	}
-	return s.repo.RecordPrayerAction(ctx, userID, requestID, actionType, windowHours)
+	return mapReactionError(s.repo.RecordPrayerAction(ctx, in))
 }
 
 // ListMyPrayers returns the authenticated user's prayer actions, newest first.
@@ -440,9 +473,9 @@ func (s *Service) SetUserLanguage(ctx context.Context, userID string, language m
 // Pura, para poder ser usada onde o usuário já foi carregado.
 func defaultPrayerActionFor(tradition models.Tradition) models.PrayerActionType {
 	if tradition == models.TraditionEvangelical {
-		return models.PrayerActionIPrayed
+		return prayerActionRules.EvangelicalDefault
 	}
-	return models.PrayerActionHailMary
+	return prayerActionRules.CatholicDefault
 }
 
 func (s *Service) DefaultPrayerActionFor(ctx context.Context, userID string) models.PrayerActionType {
@@ -760,21 +793,10 @@ func isValidVisibility(visibility models.Visibility) bool {
 	}
 }
 
-func isValidPrayerActionTypeFor(tradition models.Tradition, actionType models.PrayerActionType) bool {
-	switch tradition {
-	case models.TraditionEvangelical:
-		switch actionType {
-		case models.PrayerActionIPrayed, models.PrayerActionIntercession, models.PrayerActionFasting, models.PrayerActionGratitude, models.PrayerActionCryingOut, models.PrayerActionPurpose:
-			return true
-		}
-		return false
-	default:
-		switch actionType {
-		case models.PrayerActionHailMary, models.PrayerActionOurFather, models.PrayerActionGloryBe, models.PrayerActionRosaryDecade, models.PrayerActionRosaryFull:
-			return true
-		}
-		return false
-	}
+// isKnownPrayerActionType diz se o tipo existe em alguma tradição.
+func isKnownPrayerActionType(actionType models.PrayerActionType) bool {
+	return slices.Contains(prayerActionRules.Catholic, actionType) ||
+		slices.Contains(prayerActionRules.Evangelical, actionType)
 }
 
 func isValidTradition(tradition models.Tradition) bool {
@@ -1438,27 +1460,14 @@ func (s *Service) DeleteVerseShare(ctx context.Context, userID, shareID string) 
 	return s.repo.DeleteVerseShare(ctx, userID, shareID)
 }
 
-// RecordVerseShareAction registra uma reação, validando o tipo contra a
-// tradição do usuário — mesma regra de RecordPrayerAction.
+// RecordVerseShareAction registra uma reação num compartilhamento visível ao
+// usuário — mesmas regras e mesmo custo de RecordPrayerAction.
 func (s *Service) RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error {
-	if windowHours < 1 {
-		windowHours = 12
-	}
-	viewer, err := s.repo.GetUserByID(ctx, userID)
+	in, err := newReactionInput(userID, shareID, actionType, windowHours)
 	if err != nil {
 		return err
 	}
-	if actionType == "" {
-		actionType = defaultPrayerActionFor(viewer.Tradition)
-	}
-	if !isValidPrayerActionTypeFor(viewer.Tradition, actionType) {
-		return ErrInvalidPrayerActionType
-	}
-	// Reagir exige enxergar: reusa o predicado de visibilidade do GET.
-	if _, err := s.repo.GetVerseShareByID(ctx, userID, shareID); err != nil {
-		return err
-	}
-	return s.repo.RecordVerseShareAction(ctx, userID, shareID, actionType, windowHours)
+	return mapReactionError(s.repo.RecordVerseShareAction(ctx, in))
 }
 
 // ListVerseShareActions lista quem rezou num compartilhamento visível ao viewer.

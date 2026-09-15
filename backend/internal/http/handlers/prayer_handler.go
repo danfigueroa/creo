@@ -416,6 +416,10 @@ func (h *PrayerHandler) Pray(w http.ResponseWriter, r *http.Request) {
 	// actionType vazio é resolvido no service, que já carrega o usuário.
 	err := h.service.RecordPrayerAction(r.Context(), userID, requestID, models.PrayerActionType(req.ActionType), h.prayedWindowHour)
 	if err != nil {
+		if errors.Is(err, repositories.ErrPrayerRequestNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "REQUEST_NOT_FOUND", "Prayer request not found", nil)
+			return
+		}
 		if errors.Is(err, repositories.ErrDuplicatePrayedAction) {
 			shared.WriteError(w, http.StatusTooManyRequests, "PRAYED_RATE_LIMITED", "You can pray again later for this request", nil)
 			return

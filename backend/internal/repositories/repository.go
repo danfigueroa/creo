@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,7 +65,7 @@ type Repository interface {
 	ListHomePrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error)
 	CountHomePrayerRequests(ctx context.Context, userID string) (int64, error)
 	EnrichPrayerRequests(ctx context.Context, viewerUserID string, items []*models.PrayerRequest) error
-	RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error
+	RecordPrayerAction(ctx context.Context, in models.ReactionInput) error
 	ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error)
 	ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error)
 	CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error)
@@ -127,7 +128,7 @@ type Repository interface {
 	CreateVerseShare(ctx context.Context, in models.CreateVerseShareInput) (models.VerseShare, error)
 	GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error)
 	DeleteVerseShare(ctx context.Context, userID, shareID string) error
-	RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error
+	RecordVerseShareAction(ctx context.Context, in models.ReactionInput) error
 	ListVerseShareActions(ctx context.Context, shareID string) ([]models.PrayerActionRecord, error)
 	EnrichVerseShares(ctx context.Context, viewerUserID string, items []*models.VerseShare) error
 
@@ -772,163 +773,219 @@ func (r *PostgresRepository) CountPublicPrayerRequests(ctx context.Context, view
 	return total, err
 }
 
-func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, userID, requestID string, actionType models.PrayerActionType, windowHours int) error {
-	ct, err := r.db.Exec(ctx, `
-		INSERT INTO prayer_actions (user_id, prayer_request_id, action_type)
-		SELECT $1, $2, $3
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM prayer_actions
-			WHERE user_id = $1
-			AND prayer_request_id = $2
-			AND action_type = $3
-			AND created_at > NOW() - ($4::text || ' hours')::interval
-		)
-	`, userID, requestID, actionType, windowHours)
+// ErrPrayerActionNotAllowed indica um tipo de oração que não pertence à
+// tradição do usuário. O service traduz para a sua própria sentinela de
+// validação.
+var ErrPrayerActionNotAllowed = errors.New("prayer action not allowed for tradition")
+
+// reactionSQL monta o statement único de uma reação.
+//
+// Uma reação precisava de cinco a sete idas ao banco em série: ler o usuário
+// para descobrir a tradição, checar a visibilidade do alvo, inserir, atualizar
+// o contador, notificar e checar dois marcos. Aqui a parte que decide o
+// resultado vira um só statement com CTEs de escrita:
+//
+//   - viewer resolve o tipo padrão e valida o tipo pedido contra a tradição;
+//   - target aplica o predicado canônico de visibilidade (o mesmo do GET);
+//   - inserted grava só se o tipo vale, o alvo é visível e não há reação igual
+//     dentro da janela;
+//   - afterInsert (opcional) roda sobre o que foi inserido, na mesma
+//     transação: é o contador desnormalizado dos pedidos.
+//
+// A linha final devolve os quatro fatos que o chamador precisa para escolher o
+// erro certo, sem outra consulta. Parâmetros: $1 viewer, $2 alvo, $3 tipo
+// (vazio = padrão), $4/$5 tipos católicos/evangélicos em CSV, $6/$7 padrões,
+// $8 janela em horas.
+func reactionSQL(target, column, afterInsert string) string {
+	return `
+		WITH viewer AS (
+			SELECT
+				u.id,
+				COALESCE(NULLIF($3, ''), CASE WHEN u.tradition = 'EVANGELICAL' THEN $7 ELSE $6 END) AS action_type,
+				string_to_array(CASE WHEN u.tradition = 'EVANGELICAL' THEN $5 ELSE $4 END, ',') AS allowed
+			FROM users u
+			WHERE u.id = $1::uuid AND u.deleted_at IS NULL
+		),
+		target AS (` + target + `),
+		inserted AS (
+			INSERT INTO prayer_actions (user_id, ` + column + `, action_type)
+			SELECT v.id, t.id, v.action_type
+			FROM viewer v, target t
+			WHERE v.action_type = ANY (v.allowed)
+			  AND NOT EXISTS (
+				SELECT 1 FROM prayer_actions pa
+				WHERE pa.user_id = v.id
+				  AND pa.` + column + ` = t.id
+				  AND pa.action_type = v.action_type
+				  AND pa.created_at > NOW() - make_interval(hours => $8::int)
+			  )
+			RETURNING ` + column + ` AS subject_id
+		)` + afterInsert + `
+		SELECT
+			COALESCE((SELECT action_type = ANY (allowed) FROM viewer), false),
+			EXISTS (SELECT 1 FROM target),
+			EXISTS (SELECT 1 FROM inserted),
+			COALESCE((SELECT action_type FROM viewer), ''),
+			COALESCE((SELECT author_id::text FROM target), '')
+	`
+}
+
+var recordPrayerActionSQL = reactionSQL(
+	`SELECT pr.id, pr.author_id FROM prayer_requests pr WHERE pr.id = $2::uuid AND `+prayerRequestVisibleTo("$1::uuid"),
+	"prayer_request_id",
+	`,
+		bumped AS (
+			UPDATE prayer_requests
+			SET prayed_count = prayed_count + 1, updated_at = NOW()
+			WHERE id IN (SELECT subject_id FROM inserted)
+		)`,
+)
+
+// recordReaction executa o statement de reação e traduz o resultado em erro.
+// Com a reação gravada, dispara os efeitos colaterais best-effort.
+func (r *PostgresRepository) recordReaction(ctx context.Context, sql string, in models.ReactionInput, notFound error, notifType models.NotificationType, subjectType models.NotificationSubjectType) error {
+	var (
+		actionAllowed, targetVisible, inserted bool
+		actionType, authorID                   string
+	)
+	err := r.db.QueryRow(ctx, sql,
+		in.UserID, in.SubjectID, string(in.ActionType),
+		actionTypesCSV(in.Rules.Catholic), actionTypesCSV(in.Rules.Evangelical),
+		string(in.Rules.CatholicDefault), string(in.Rules.EvangelicalDefault),
+		in.WindowHours,
+	).Scan(&actionAllowed, &targetVisible, &inserted, &actionType, &authorID)
 	if err != nil {
 		return err
 	}
-	if ct.RowsAffected() == 0 {
+	switch {
+	case !actionAllowed:
+		return ErrPrayerActionNotAllowed
+	case !targetVisible:
+		return notFound
+	case !inserted:
 		return ErrDuplicatePrayedAction
 	}
-
-	// O contador e a notificação são independentes entre si e ambos vêm depois
-	// da escrita que o usuário pediu, então viajam juntos num batch.
-	//
-	// A notificação virou um INSERT ... SELECT único: descobrir o autor, checar
-	// a janela de dedupe e inserir eram três idas em série. Agora o SELECT acha
-	// o autor, o author_id <> actor evita a auto-notificação e o NOT EXISTS
-	// aplica a mesma janela de 60 minutos, que existe para que reagir várias
-	// vezes no mesmo pedido não vire enxurrada.
-	payload, err := json.Marshal(map[string]any{"actionType": string(actionType)})
-	if err != nil {
-		payload = []byte(`{}`)
-	}
-	tail := &pgx.Batch{}
-	tail.Queue(`
-		UPDATE prayer_requests
-		SET prayed_count = prayed_count + 1, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, requestID)
-	tail.Queue(`
-		INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
-		SELECT pr.author_id, $3, $1::uuid, $4, $2::uuid, $5::jsonb
-		FROM prayer_requests pr
-		WHERE pr.id = $2::uuid
-		  AND pr.deleted_at IS NULL
-		  AND pr.author_id <> $1::uuid
-		  AND NOT EXISTS (
-		      SELECT 1 FROM notifications n
-		      WHERE n.user_id = pr.author_id
-		        AND n.type = $3
-		        AND n.actor_user_id = $1::uuid
-		        AND n.subject_id = $2::uuid
-		        AND n.created_at > NOW() - INTERVAL '60 minutes'
-		  )
-	`, userID, requestID, string(models.NotificationTypePrayed),
-		string(models.NotificationSubjectPrayerRequest), string(payload))
-
-	tailResults := r.db.SendBatch(ctx, tail)
-	if _, err := tailResults.Exec(); err != nil {
-		tailResults.Close()
-		return err
-	}
-	// A notificação é best-effort: falhar aqui não desfaz a reação.
-	if _, err := tailResults.Exec(); err != nil {
-		log.Printf("prayed notification failed: request=%s actor=%s err=%v", requestID, userID, err)
-	}
-	if err := tailResults.Close(); err != nil {
-		return err
-	}
-
-	r.maybeEmitPrayedMilestone(ctx, userID)
-	r.maybeEmitStreakMilestone(ctx, userID)
-
+	r.emitReactionSideEffects(ctx, in.UserID, authorID, in.SubjectID, actionType, notifType, subjectType)
 	return nil
+}
+
+// RecordPrayerAction registra uma reação num pedido visível ao usuário.
+// Uma viagem decide e grava; uma segunda leva os efeitos colaterais.
+func (r *PostgresRepository) RecordPrayerAction(ctx context.Context, in models.ReactionInput) error {
+	return r.recordReaction(ctx, recordPrayerActionSQL, in, ErrPrayerRequestNotFound,
+		models.NotificationTypePrayed, models.NotificationSubjectPrayerRequest)
 }
 
 var prayedMilestones = []int{10, 50, 100, 500, 1000}
 var createdMilestones = []int{1, 10, 50, 100}
 var streakMilestones = []int{7, 30, 100, 365}
 
-// maybeEmitPrayedMilestone fires MILESTONE_PRAYED when the user's total prayer
-// actions hits one of the threshold values exactly. Idempotent because the
-// count crosses each threshold once.
-func (r *PostgresRepository) maybeEmitPrayedMilestone(ctx context.Context, userID string) {
-	var total int
-	if err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*)::int FROM prayer_actions WHERE user_id = $1
-	`, userID).Scan(&total); err != nil {
-		return
+// reactionNotifySQL avisa o autor. O NOT EXISTS aplica a janela de 60 minutos
+// para que reagir várias vezes ao mesmo conteúdo não vire enxurrada.
+const reactionNotifySQL = `
+	INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
+	SELECT $1::uuid, $2, $3::uuid, $4, $5::uuid, jsonb_build_object('actionType', $6::text)
+	WHERE NOT EXISTS (
+		SELECT 1 FROM notifications n
+		WHERE n.user_id = $1::uuid
+		  AND n.type = $2
+		  AND n.actor_user_id = $3::uuid
+		  AND n.subject_id = $5::uuid
+		  AND n.created_at > NOW() - INTERVAL '60 minutes'
+	)
+`
+
+// prayedMilestoneSQL emite MILESTONE_PRAYED quando o total de reações do
+// usuário bate exatamente um marco. Idempotente: cada marco é cruzado uma vez.
+const prayedMilestoneSQL = `
+	INSERT INTO notifications (user_id, type, subject_type, subject_id, payload)
+	SELECT $1::uuid, $2, $3, $1::uuid, jsonb_build_object('count', c.total)
+	FROM (SELECT COUNT(*)::int AS total FROM prayer_actions WHERE user_id = $1::uuid) c
+	WHERE c.total = ANY (string_to_array($4, ',')::int[])
+`
+
+// streakMilestoneSQL emite MILESTONE_STREAK na primeira reação do dia (fuso de
+// São Paulo) quando a sequência de dias bate um marco. Idempotente: a porta
+// "primeira do dia" só abre uma vez por dia.
+const streakMilestoneSQL = `
+	WITH today AS (
+		SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS day
+	),
+	first_today AS (
+		SELECT COUNT(*) = 1 AS ok
+		FROM prayer_actions pa, today
+		WHERE pa.user_id = $1::uuid
+		  AND (pa.created_at AT TIME ZONE 'America/Sao_Paulo')::date = today.day
+	),
+	days AS (
+		SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day
+		FROM prayer_actions
+		WHERE user_id = $1::uuid
+	),
+	ranked AS (
+		SELECT day, day - (ROW_NUMBER() OVER (ORDER BY day))::int AS grp
+		FROM days
+	),
+	runs AS (
+		SELECT MAX(day) AS last_day, COUNT(*)::int AS streak
+		FROM ranked
+		GROUP BY grp
+	),
+	current_streak AS (
+		SELECT COALESCE(MAX(runs.streak), 0)::int AS days
+		FROM runs, today
+		WHERE runs.last_day = today.day OR runs.last_day = today.day - 1
+	)
+	INSERT INTO notifications (user_id, type, subject_type, subject_id, payload)
+	SELECT $1::uuid, $2, $3, $1::uuid, jsonb_build_object('days', s.days)
+	FROM current_streak s, first_today f
+	WHERE f.ok AND s.days = ANY (string_to_array($4, ',')::int[])
+`
+
+// emitReactionSideEffects manda num único batch a notificação ao autor e os
+// dois marcos. Tudo é best-effort: a reação já foi gravada, então uma falha
+// aqui só é registrada. Com simple protocol o batch roda numa transação
+// implícita, logo uma falha descarta o batch inteiro — aceitável para efeitos
+// que nunca podem derrubar a ação principal.
+//
+// Não dá para ir junto com a reação: ela precisa estar confirmada antes, e o
+// autor só é conhecido depois dela.
+func (r *PostgresRepository) emitReactionSideEffects(ctx context.Context, userID, authorID, subjectID, actionType string, notifType models.NotificationType, subjectType models.NotificationSubjectType) {
+	batch := &pgx.Batch{}
+	if authorID != "" && authorID != userID {
+		batch.Queue(reactionNotifySQL, authorID, string(notifType), userID, string(subjectType), subjectID, actionType)
 	}
-	for _, m := range prayedMilestones {
-		if total == m {
-			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
-				UserID:      userID,
-				Type:        models.NotificationTypeMilestonePrayed,
-				SubjectType: models.NotificationSubjectMilestone,
-				SubjectID:   userID,
-				Payload:     map[string]any{"count": m},
-			})
-			return
+	batch.Queue(prayedMilestoneSQL, userID, string(models.NotificationTypeMilestonePrayed),
+		string(models.NotificationSubjectMilestone), intsCSV(prayedMilestones))
+	batch.Queue(streakMilestoneSQL, userID, string(models.NotificationTypeMilestoneStreak),
+		string(models.NotificationSubjectMilestone), intsCSV(streakMilestones))
+
+	br := r.db.SendBatch(ctx, batch)
+	for i := 0; i < batch.Len(); i++ {
+		if _, err := br.Exec(); err != nil {
+			log.Printf("reaction side effects failed: subject=%s actor=%s err=%v", subjectID, userID, err)
+			break
 		}
+	}
+	if err := br.Close(); err != nil {
+		log.Printf("reaction side effects close failed: subject=%s actor=%s err=%v", subjectID, userID, err)
 	}
 }
 
-// maybeEmitStreakMilestone fires MILESTONE_STREAK when, on the user's first
-// prayer action of today (in São Paulo time), the running streak hits one of
-// the threshold values. Idempotent because the "first action of today" gate
-// only opens once per day.
-func (r *PostgresRepository) maybeEmitStreakMilestone(ctx context.Context, userID string) {
-	var todayCount int
-	if err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*)::int FROM prayer_actions
-		WHERE user_id = $1::uuid
-		  AND (created_at AT TIME ZONE 'America/Sao_Paulo')::date = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
-	`, userID).Scan(&todayCount); err != nil {
-		return
+func actionTypesCSV(types []models.PrayerActionType) string {
+	parts := make([]string, len(types))
+	for i, t := range types {
+		parts[i] = string(t)
 	}
-	if todayCount != 1 {
-		return
-	}
+	return strings.Join(parts, ",")
+}
 
-	var streak int
-	if err := r.db.QueryRow(ctx, `
-		WITH days AS (
-			SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS day
-			FROM prayer_actions
-			WHERE user_id = $1::uuid
-		),
-		ranked AS (
-			SELECT day, day - (ROW_NUMBER() OVER (ORDER BY day))::int AS grp
-			FROM days
-		),
-		runs AS (
-			SELECT grp, MAX(day) AS last_day, COUNT(*)::int AS streak
-			FROM ranked
-			GROUP BY grp
-		),
-		today AS (
-			SELECT (NOW() AT TIME ZONE 'America/Sao_Paulo')::date AS today
-		)
-		SELECT COALESCE(MAX(streak), 0)::int
-		FROM runs, today
-		WHERE last_day = today.today OR last_day = today.today - 1
-	`, userID).Scan(&streak); err != nil {
-		return
+func intsCSV(values []int) string {
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = strconv.Itoa(v)
 	}
-	for _, m := range streakMilestones {
-		if streak == m {
-			_ = insertNotificationOn(ctx, r.db, models.CreateNotificationInput{
-				UserID:      userID,
-				Type:        models.NotificationTypeMilestoneStreak,
-				SubjectType: models.NotificationSubjectMilestone,
-				SubjectID:   userID,
-				Payload:     map[string]any{"days": m},
-			})
-			return
-		}
-	}
+	return strings.Join(parts, ",")
 }
 
 // maybeEmitCreatedMilestone fires MILESTONE_CREATED when the user crosses an
@@ -3379,6 +3436,13 @@ func verseShareVisibleTo(viewer string) string {
 		)`, ":viewer", viewer)
 }
 
+// verseShareTargetFrom restringe o compartilhamento a autores ativos, como o
+// FROM do feed faz.
+const verseShareTargetFrom = `
+	FROM verse_shares vs
+	INNER JOIN users author ON author.id = vs.author_id AND author.deleted_at IS NULL
+`
+
 var getVerseShareByIDSQL = `SELECT ` + verseShareColumns + verseShareFrom + `
 	WHERE vs.id = $1::uuid AND ` + verseShareVisibleTo("NULLIF($2, '')::uuid")
 
@@ -3420,62 +3484,19 @@ func (r *PostgresRepository) DeleteVerseShare(ctx context.Context, userID, share
 	return nil
 }
 
-// RecordVerseShareAction registra uma reação num compartilhamento, com o mesmo
-// dedupe por janela de RecordPrayerAction. Ao contrário de prayer_requests, não
-// há contador desnormalizado: PrayedCount é somado no enrich a partir das
-// próprias reações, então não existe contador para dessincronizar.
-func (r *PostgresRepository) RecordVerseShareAction(ctx context.Context, userID, shareID string, actionType models.PrayerActionType, windowHours int) error {
-	ct, err := r.db.Exec(ctx, `
-		INSERT INTO prayer_actions (user_id, verse_share_id, action_type)
-		SELECT $1::uuid, $2::uuid, $3
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM prayer_actions
-			WHERE user_id = $1::uuid
-			  AND verse_share_id = $2::uuid
-			  AND action_type = $3
-			  AND created_at > NOW() - ($4::text || ' hours')::interval
-		)
-	`, userID, shareID, actionType, windowHours)
-	if err != nil {
-		return err
-	}
-	if ct.RowsAffected() == 0 {
-		return ErrDuplicatePrayedAction
-	}
+// verseShares não têm contador desnormalizado: PrayedCount é somado no enrich
+// a partir das próprias reações, então a reação não tem afterInsert.
+var recordVerseShareActionSQL = reactionSQL(
+	`SELECT vs.id, vs.author_id`+verseShareTargetFrom+`WHERE vs.id = $2::uuid AND `+verseShareVisibleTo("$1::uuid"),
+	"verse_share_id",
+	"",
+)
 
-	// Descobrir o autor, checar o dedupe e inserir a notificação eram três idas
-	// ao banco em série. Resolvidas numa só: o SELECT acha o autor, o
-	// author_id <> actor evita a auto-notificação e o NOT EXISTS aplica a mesma
-	// janela de 60 minutos, para que reagir várias vezes não vire enxurrada.
-	// Best-effort, como toda notificação: falhar aqui não desfaz a reação.
-	payload, err := json.Marshal(map[string]any{"actionType": string(actionType)})
-	if err != nil {
-		payload = []byte(`{}`)
-	}
-	if _, err := r.db.Exec(ctx, `
-		INSERT INTO notifications (user_id, type, actor_user_id, subject_type, subject_id, payload)
-		SELECT vs.author_id, $3, $1::uuid, $4, $2::uuid, $5::jsonb
-		FROM verse_shares vs
-		WHERE vs.id = $2::uuid
-		  AND vs.deleted_at IS NULL
-		  AND vs.author_id <> $1::uuid
-		  AND NOT EXISTS (
-		      SELECT 1 FROM notifications n
-		      WHERE n.user_id = vs.author_id
-		        AND n.type = $3
-		        AND n.actor_user_id = $1::uuid
-		        AND n.subject_id = $2::uuid
-		        AND n.created_at > NOW() - INTERVAL '60 minutes'
-		  )
-	`, userID, shareID, string(models.NotificationTypeVerseSharePrayed),
-		string(models.NotificationSubjectVerseShare), string(payload)); err != nil {
-		log.Printf("verse share notification failed: share=%s actor=%s err=%v", shareID, userID, err)
-	}
-
-	r.maybeEmitPrayedMilestone(ctx, userID)
-	r.maybeEmitStreakMilestone(ctx, userID)
-	return nil
+// RecordVerseShareAction registra uma reação num compartilhamento visível ao
+// usuário, com as mesmas regras e o mesmo custo de RecordPrayerAction.
+func (r *PostgresRepository) RecordVerseShareAction(ctx context.Context, in models.ReactionInput) error {
+	return r.recordReaction(ctx, recordVerseShareActionSQL, in, ErrVerseShareNotFound,
+		models.NotificationTypeVerseSharePrayed, models.NotificationSubjectVerseShare)
 }
 
 // ListVerseShareActions lista quem rezou num compartilhamento.

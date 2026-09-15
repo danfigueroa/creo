@@ -223,6 +223,26 @@ type PrayerActionRecord struct {
 	CreatedAt   time.Time        `json:"createdAt"`
 }
 
+// PrayerActionRules diz quais orações cada tradição pode registrar e qual vale
+// quando o cliente não escolhe. Vive no service e viaja até o repositório para
+// que a reação seja resolvida num único statement, sem ler o usuário antes.
+type PrayerActionRules struct {
+	Catholic           []PrayerActionType
+	Evangelical        []PrayerActionType
+	CatholicDefault    PrayerActionType
+	EvangelicalDefault PrayerActionType
+}
+
+// ReactionInput é a entrada comum das reações em pedidos e em versículos
+// compartilhados. ActionType vazio assume o padrão da tradição do usuário.
+type ReactionInput struct {
+	UserID      string
+	SubjectID   string
+	ActionType  PrayerActionType
+	WindowHours int
+	Rules       PrayerActionRules
+}
+
 // MyPrayerEntry — pedido + reação do próprio usuário, pra aba "Rezadas (privado)"
 // no perfil. AuthorDisplayName e AuthorUsername são do autor do pedido.
 type MyPrayerEntry struct {
