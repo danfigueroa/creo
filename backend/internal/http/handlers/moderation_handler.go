@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -86,11 +85,9 @@ func (h *ModerationHandler) applyAction(w http.ResponseWriter, r *http.Request, 
 	requestID := chi.URLParam(r, "requestId")
 
 	var in moderationActionInput
-	if r.ContentLength > 0 {
-		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
-			shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
-			return
-		}
+	if err := decodeOptionalJSON(r, &in); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
+		return
 	}
 
 	err := h.service.ApplyModerationAction(r.Context(), userID, requestID, action, in.Reason)

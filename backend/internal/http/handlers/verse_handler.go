@@ -121,7 +121,7 @@ func (h *VerseHandler) PrayShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req prayVerseShareRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeOptionalJSON(r, &req); err != nil {
 		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
 		return
 	}

@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -280,7 +279,7 @@ func (h *PrayerHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req answerRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+	if err := decodeOptionalJSON(r, &req); err != nil {
 		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
 		return
 	}
@@ -412,7 +411,10 @@ func (h *PrayerHandler) Pray(w http.ResponseWriter, r *http.Request) {
 	}
 	requestID := chi.URLParam(r, "id")
 	var req prayRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := decodeOptionalJSON(r, &req); err != nil {
+		shared.WriteError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON payload", nil)
+		return
+	}
 	// actionType vazio é resolvido no service, que já carrega o usuário.
 	err := h.service.RecordPrayerAction(r.Context(), userID, requestID, models.PrayerActionType(req.ActionType), h.prayedWindowHour)
 	if err != nil {
