@@ -977,10 +977,6 @@ func (s *Service) ListAnnouncementsByGroup(ctx context.Context, viewerUserID, gr
 	return items, total, nil
 }
 
-// mergeFeedItems merges two pre-sorted (created_at DESC) lists into one,
-// preserving DESC order. Used to overlay announcements onto prayer-request feeds.
-// Note: assumes inputs already include enough rows to satisfy the requested page
-// (callers fetch limit+offset from each side and slice afterwards).
 // maxParallelQueries limita quantas consultas uma única requisição dispara ao
 // mesmo tempo. O pool tem teto de DB_MAX_CONNS (8) para o processo inteiro, e
 // esse teto existe por causa do pooler do Supabase: sem trava, um fanout de seis
