@@ -1,0 +1,2338 @@
+openapi: 3.1.0
+info:
+  title: Creo API
+  version: "1.0.0"
+  description: |
+    API do **Creo**, a rede social de oração para comunidades católicas e evangélicas.
+
+    ## Como autenticar
+
+    Quase todas as rotas pedem um JWT do Supabase Auth no header
+    `Authorization: Bearer <token>`. Clique em **Authorize** e cole só o token,
+    sem o prefixo `Bearer`.
+
+    **Opção 1: login com senha pela API do Supabase.**
+
+    ```bash
+    curl -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
+      -H "apikey: $SUPABASE_ANON_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"email":"qa@exemplo.com","password":"..."}'
+    ```
+
+    Use o campo `access_token` da resposta. O token expira em cerca de 1 hora.
+    `SUPABASE_URL` e `SUPABASE_ANON_KEY` são os mesmos de `frontend/.env`.
+    A tela inicial do app entra por magic link, então crie a conta de teste
+    **com senha** pelo dashboard do Supabase (Authentication → Users → Add user).
+
+    **Opção 2: copiar do app.** Entre no app pelo navegador, abra o DevTools
+    (Application → Local Storage) e copie o valor de `accessToken`.
+
+    ## Comportamentos que valem saber antes de testar
+
+    - **Primeiro acesso.** A primeira chamada autenticada cria o usuário na base
+      interna a partir dos dados do token. Se isso falhar, a resposta é
+      `500 USER_SYNC_FAILED`.
+    - **Tradição.** Os feeds mostram só conteúdo da tradição do usuário
+      (`CATHOLIC` ou `EVANGELICAL`). Dois usuários de tradições diferentes não
+      se veem nos feeds, e isso é o comportamento esperado. Para trocar, use
+      `PATCH /profile/tradition`.
+    - **Tipos de oração por tradição.** `actionType` aceita
+      `HAIL_MARY`, `OUR_FATHER`, `GLORY_BE`, `ROSARY_DECADE` e `ROSARY_FULL` para
+      católicos, e `I_PRAYED`, `INTERCESSION`, `FASTING`, `GRATITUDE`,
+      `CRYING_OUT` e `PURPOSE` para evangélicos. Um tipo da outra tradição
+      responde `400 VALIDATION_ERROR`.
+    - **Janela de reação.** O mesmo usuário só registra o mesmo tipo de oração
+      no mesmo conteúdo uma vez a cada 12 horas (`PRAYED_WINDOW_HOURS`). A
+      repetição responde `429 PRAYED_RATE_LIMITED`.
+    - **Rate limit global.** 120 requisições por minuto por IP. Acima disso
+      a resposta é `429`, com corpo em texto puro.
+    - **IDs.** Os IDs são UUID. Um ID mal formado na URL responde
+      `400 INVALID_ID`, com o nome do parâmetro em `details.param`. Um UUID
+      válido que não existe responde `404`.
+    - **Soft delete.** Conteúdo apagado some das listagens e das buscas por ID,
+      mas continua no banco.
+    - **Bloqueio.** Com bloqueio entre dois usuários (em qualquer direção), um
+      não vê nem reage ao conteúdo do outro; por ID a resposta é `404`.
+    - **Grupo inexistente.** Toda rota `/groups/{id}/...` responde
+      `404 GROUP_NOT_FOUND` para grupo que não existe, antes de checar permissão.
+
+    ## Formato de erro
+
+    Todos os erros da aplicação seguem o mesmo envelope:
+
+    ```json
+    { "error": { "code": "VALIDATION_ERROR", "message": "invalid title", "details": {} } }
+    ```
+
+    Faça as asserções pelo `code`. O `message` é texto livre e pode mudar.
+
+    ## Paginação
+
+    Feeds e avisos usam `limit` (padrão 20, máximo 100; valores fora da faixa
+    voltam ao padrão) e `offset`. A resposta traz
+    `pagination { page, pageSize, total, totalPages }`.
+servers:
+  - url: ../api/v1
+    description: Mesmo servidor que serve esta documentação
+  - url: http://localhost:8080/api/v1
+    description: Backend local (make dev)
+security:
+  - bearerAuth: []
+tags:
+  - name: Health
+  - name: Perfil
+  - name: Feed
+  - name: Pedidos
+    description: Pedidos de oração, reações, atualizações e graça alcançada.
+  - name: Grupos
+    description: Grupos, membros e solicitações de entrada. Hierarquia de papéis ADMIN > MODERATOR > MEMBER.
+  - name: Avisos
+    description: Avisos de grupo (eventos) publicados por moderadores e admins.
+  - name: Amigos
+  - name: Bloqueios
+  - name: Versículos
+    description: Versículo do dia e compartilhamentos de versículo no feed.
+  - name: Moderação
+  - name: Notificações
+
+paths:
+  # ---------------------------------------------------------------- Health
+  /health:
+    servers:
+      - url: ..
+        description: Mesmo servidor que serve esta documentação
+      - url: http://localhost:8080
+        description: Backend local
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Fora do prefixo `/api/v1`. Não toca no banco.
+      security: []
+      responses:
+        "200":
+          description: Servidor no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  # ---------------------------------------------------------------- Perfil
+  /username-availability:
+    get:
+      tags: [Perfil]
+      summary: Verificar se um username está livre
+      description: Rota pública. O username é normalizado (minúsculas, sem `@`) antes da checagem.
+      security: []
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 30, pattern: "^@?[a-zA-Z0-9_]+$" }
+      responses:
+        "200":
+          description: Resultado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available]
+                properties:
+                  available: { type: boolean }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /profile:
+    get:
+      tags: [Perfil]
+      summary: Perfil do usuário autenticado
+      responses:
+        "200":
+          description: Perfil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`USER_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/UserSyncFailed" }
+    patch:
+      tags: [Perfil]
+      summary: Atualizar perfil
+      description: |
+        `username` é obrigatório em toda chamada. `displayName` vazio mantém o atual.
+        `avatarUrl` e `bio` só mudam se a chave estiver presente no JSON; enviar
+        `null` limpa o campo. `bio` só com espaços também limpa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfileInput" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`USERNAME_TAKEN`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /profile/stats:
+    get:
+      tags: [Perfil]
+      summary: Estatísticas do usuário autenticado
+      responses:
+        "200":
+          description: Estatísticas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProfileStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /profile/tradition:
+    patch:
+      tags: [Perfil]
+      summary: Definir tradição
+      description: Muda o que o usuário vê nos feeds e quais tipos de oração ele pode usar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tradition]
+              properties:
+                tradition: { $ref: "#/components/schemas/Tradition" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /profile/language:
+    patch:
+      tags: [Perfil]
+      summary: Definir idioma
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [language]
+              properties:
+                language: { $ref: "#/components/schemas/Language" }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /me/prayers:
+    get:
+      tags: [Perfil]
+      summary: Orações que eu fiz
+      description: Últimas 30 reações do usuário autenticado, da mais recente para a mais antiga. Sem paginação.
+      responses:
+        "200":
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MyPrayerEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /users/{username}:
+    get:
+      tags: [Perfil]
+      summary: Perfil público de um usuário
+      description: |
+        `stats` só vem quando o viewer é o próprio usuário ou amigo dele.
+        Com bloqueio em qualquer direção, `friendshipStatus` vira
+        `BLOCKED_BY_ME` ou `BLOCKED_BY_THEM`, e `stats` e os IDs de convite não vêm.
+      parameters:
+        - name: username
+          in: path
+          required: true
+          description: Aceita com ou sem `@`, sem diferenciar maiúsculas.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Perfil público
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`USER_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Feed
+  /feed:
+    get:
+      tags: [Feed]
+      summary: Feed público (alias de /feed/public)
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /feed/public:
+    get:
+      tags: [Feed]
+      summary: Feed público
+      description: |
+        Pedidos e versículos com visibilidade `PUBLIC`. O token é opcional:
+        - **Sem token:** resposta com `Cache-Control: public, s-maxage=30`, que pode vir do cache da CDN por até 30 s.
+        - **Com token:** filtra pela tradição do usuário, esconde usuários bloqueados e preenche `myPrayerTypes`.
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /feed/home:
+    get:
+      tags: [Feed]
+      summary: Feed "Mural" (início)
+      description: Mistura pedidos, avisos dos grupos do usuário e versículos compartilhados.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /feed/groups:
+    get:
+      tags: [Feed]
+      summary: Feed dos meus grupos
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /feed/friends:
+    get:
+      tags: [Feed]
+      summary: Feed dos meus amigos
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Pedidos
+  /requests:
+    post:
+      tags: [Pedidos]
+      summary: Criar pedido de oração
+      description: |
+        Regras:
+        - `title` precisa ter de 3 a 120 caracteres.
+        - `body` precisa ter de 10 a 4000 caracteres.
+        - Com `visibility` = `GROUP_ONLY`, `groupIds` é obrigatório e o autor precisa ser membro de todos os grupos informados.
+        - Com `visibility` = `PRIVATE`, `groupIds` não pode ser enviado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrayerRequestInput" }
+      responses:
+        "201":
+          description: Pedido criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequest" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`GROUP_ACCESS_DENIED`: o autor não é membro de um dos `groupIds`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /requests/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [Pedidos]
+      summary: Detalhe de um pedido
+      description: |
+        Visibilidade (a mesma regra vale para reações, "quem rezou" e atualizações):
+        - o autor sempre vê o próprio pedido, inclusive em `PENDING_REVIEW` e depois de trocar de tradição;
+        - os demais só veem pedidos `ACTIVE` da própria tradição, `PUBLIC` ou de um grupo do qual são membros, e nunca com bloqueio entre os dois usuários (em qualquer direção).
+
+        O que o viewer não pode ver responde `404`, não `403`, para não revelar que o pedido existe.
+      responses:
+        "200":
+          description: Pedido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequest" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [Pedidos]
+      summary: Editar pedido
+      description: |
+        Só o autor edita. Para outro usuário a resposta é `404`. É uma
+        substituição completa: todos os campos são revalidados com as mesmas
+        regras da criação.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrayerRequestInput" }
+      responses:
+        "200":
+          description: Pedido atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequest" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`GROUP_ACCESS_DENIED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Pedidos]
+      summary: Apagar pedido
+      description: Soft delete. Só o autor apaga; para outro usuário a resposta é `404`.
+      responses:
+        "200": { $ref: "#/components/responses/StatusDeleted" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /requests/{id}/answer:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      tags: [Pedidos]
+      summary: Marcar como graça alcançada
+      description: |
+        Só o autor pode marcar. O corpo é opcional e o testemunho tem no máximo
+        2000 caracteres. Quem rezou pelo pedido recebe a notificação
+        `REQUEST_ANSWERED`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                testimony: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: Pedido com `answeredAt` preenchido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequest" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Pedidos]
+      summary: Desfazer graça alcançada
+      description: Só o autor.
+      responses:
+        "200":
+          description: Pedido sem `answeredAt`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequest" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /requests/{id}/pray:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      tags: [Pedidos]
+      summary: Rezar por um pedido (reação)
+      description: |
+        Sem corpo, ou com `actionType` vazio, vale a oração padrão da tradição:
+        `HAIL_MARY` para católicos e `I_PRAYED` para evangélicos.
+
+        Só é possível rezar por um pedido que o usuário consegue ver (veja
+        `GET /requests/{id}`). Pedido apagado, privado de outra pessoa, de
+        grupo alheio ou com bloqueio responde `404`.
+
+        O autor recebe a notificação `PRAYED`, com no máximo uma a cada 60
+        minutos por pessoa. Corpo JSON mal formado responde `400 INVALID_JSON`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrayInput" }
+      responses:
+        "200": { $ref: "#/components/responses/StatusRecorded" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "429": { $ref: "#/components/responses/PrayedRateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /requests/{id}/actions:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [Pedidos]
+      summary: Quem rezou por um pedido
+      responses:
+        "200":
+          description: Reações
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PrayerActionRecord" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /requests/{id}/updates:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      tags: [Pedidos]
+      summary: Atualizações do autor
+      description: Se o pedido for anônimo e o viewer não for o autor, `authorUsername` vem vazio e `authorDisplayName` vem como "Anônimo".
+      responses:
+        "200":
+          description: Atualizações
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PrayerRequestUpdate" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Pedidos]
+      summary: Publicar atualização
+      description: Só o autor. `body` com 1 a 2000 caracteres.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        "201":
+          description: Atualização criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrayerRequestUpdate" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/RequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Grupos
+  /groups:
+    get:
+      tags: [Grupos]
+      summary: Meus grupos
+      responses:
+        "200":
+          description: Grupos dos quais o usuário é membro
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Grupos]
+      summary: Criar grupo
+      description: O criador vira ADMIN. Sem `joinPolicy`, o padrão é `REQUEST`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 3, maxLength: 80 }
+                description: { type: string, maxLength: 500 }
+                imageUrl: { type: [string, "null"] }
+                joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
+      responses:
+        "201":
+          description: Grupo criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/search:
+    get:
+      tags: [Grupos]
+      summary: Buscar grupos por nome
+      description: Até 20 resultados. Com `q` vazio, a lista volta vazia.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Resultados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GroupSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [Grupos]
+      summary: Detalhe do grupo
+      responses:
+        "200":
+          description: Grupo, com dados do viewer (`myRole`, `isMember` e `hasPendingJoin`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetails" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [Grupos]
+      summary: Editar grupo
+      description: Só ADMIN. Só os campos enviados são alterados.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 3, maxLength: 80 }
+                description: { type: string, maxLength: 500 }
+                imageUrl: { type: string }
+                joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
+      responses:
+        "200":
+          description: Grupo atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/feed:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [Grupos]
+      summary: Mural do grupo
+      description: Pedidos e avisos do grupo. Em grupos `INVITE_ONLY`, só membros acessam; os demais recebem `403`.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200": { $ref: "#/components/responses/FeedPage" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/members:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [Grupos]
+      summary: Membros do grupo
+      description: Só membros. `limit` tem padrão 50 e máximo 200.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Membros
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GroupMember" }
+                  total: { type: integer, format: int64 }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      tags: [Grupos]
+      summary: Mudar papel de um membro
+      description: |
+        Só ADMIN; moderador recebe `403`. Rebaixar o último admin responde
+        `409 LAST_ADMIN`. Definir o papel que o membro já tem é um no-op e
+        responde `200`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: "#/components/schemas/GroupRole" }
+      responses:
+        "200": { $ref: "#/components/responses/StatusUpdated" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/MembershipNotFound" }
+        "409": { $ref: "#/components/responses/LastAdmin" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Grupos]
+      summary: Remover membro
+      description: |
+        Quem remove precisa ter papel **acima** do alvo: admin remove moderador
+        e membro, moderador remove só membro.
+        - Para remover a si mesmo, a resposta é `400 VALIDATION_ERROR`; use `POST /groups/{id}/leave`.
+        - Remover o último admin responde `409 LAST_ADMIN`.
+      responses:
+        "200": { $ref: "#/components/responses/StatusRemoved" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/MembershipNotFound" }
+        "409": { $ref: "#/components/responses/LastAdmin" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/leave:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [Grupos]
+      summary: Sair do grupo
+      description: O último admin não pode sair; a resposta é `409 LAST_ADMIN`.
+      responses:
+        "200":
+          description: Saiu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusLeft" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/MembershipNotFound" }
+        "409": { $ref: "#/components/responses/LastAdmin" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/join-requests:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [Grupos]
+      summary: Entrar ou pedir para entrar no grupo
+      description: |
+        O efeito depende de `joinPolicy`:
+        - `OPEN`: o usuário vira MEMBER na hora.
+        - `REQUEST`: cria uma solicitação `PENDING` e notifica os admins.
+        - `INVITE_ONLY`: responde `403 GROUP_INVITE_ONLY`.
+
+        Nos dois casos de sucesso a resposta é `{"status":"requested"}`.
+      responses:
+        "200":
+          description: Solicitado (ou já membro, se o grupo for OPEN)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusRequested" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`GROUP_INVITE_ONLY`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    get:
+      tags: [Grupos]
+      summary: Solicitações de entrada pendentes
+      description: Só ADMIN.
+      responses:
+        "200":
+          description: Solicitações
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GroupJoinRequest" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/join-requests/{requestId}/approve:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/JoinRequestId"
+    post:
+      tags: [Grupos]
+      summary: Aprovar solicitação de entrada
+      description: Só ADMIN. O solicitante vira MEMBER e recebe a notificação `GROUP_JOIN_APPROVED`.
+      responses:
+        "200":
+          description: Aprovada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusApproved" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/JoinRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/join-requests/{requestId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/JoinRequestId"
+    post:
+      tags: [Grupos]
+      summary: Recusar solicitação de entrada
+      description: Só ADMIN.
+      responses:
+        "200":
+          description: Recusada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusRejected" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/JoinRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Avisos
+  /groups/{id}/announcements:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [Avisos]
+      summary: Criar aviso
+      description: |
+        Só MODERATOR ou ADMIN do grupo. Regras dos campos:
+        - `title`: 3 a 120 caracteres.
+        - `body`: 10 a 2000 caracteres.
+        - `eventAt`: RFC 3339 (`2026-10-01T19:30:00-03:00`) ou `YYYY-MM-DDTHH:MM` (interpretado como UTC), entre 5 anos atrás e 10 anos à frente.
+
+        Os membros do grupo recebem `GROUP_ANNOUNCEMENT_POSTED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body, eventAt]
+              properties:
+                title: { type: string, minLength: 3, maxLength: 120 }
+                body: { type: string, minLength: 10, maxLength: 2000 }
+                eventAt: { type: string, examples: ["2026-10-01T19:30:00-03:00"] }
+                imageUrl: { type: [string, "null"] }
+      responses:
+        "201":
+          description: Aviso criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupAnnouncement" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    get:
+      tags: [Avisos]
+      summary: Avisos do grupo
+      description: Em grupos `INVITE_ONLY`, só membros.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Página de avisos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/GroupAnnouncement" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/GroupNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /groups/{id}/announcements/{aid}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/AnnouncementId"
+    patch:
+      tags: [Avisos]
+      summary: Editar aviso
+      description: |
+        Pode editar o autor, ou MODERATOR/ADMIN do grupo. Só os campos enviados
+        mudam, mas o resultado final é revalidado com as regras da criação.
+
+        O aviso precisa pertencer ao grupo `{id}` da URL; caso contrário a
+        resposta é `404 ANNOUNCEMENT_NOT_FOUND`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, minLength: 3, maxLength: 120 }
+                body: { type: string, minLength: 10, maxLength: 2000 }
+                eventAt: { type: string }
+                imageUrl: { type: string }
+      responses:
+        "200":
+          description: Aviso atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupAnnouncement" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AnnouncementNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Avisos]
+      summary: Apagar aviso
+      description: Mesmas permissões e mesma checagem de grupo da edição. Soft delete.
+      responses:
+        "200": { $ref: "#/components/responses/StatusDeleted" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AnnouncementNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Amigos
+  /friends:
+    get:
+      tags: [Amigos]
+      summary: Meus amigos
+      responses:
+        "200":
+          description: Amigos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Friend" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /friends/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Amigos]
+      summary: Desfazer amizade
+      responses:
+        "200": { $ref: "#/components/responses/StatusRemoved" }
+        "400":
+          description: "`CANNOT_TARGET_SELF` ou `INVALID_ID`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`FRIENDSHIP_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /friends/requests:
+    get:
+      tags: [Amigos]
+      summary: Convites de amizade recebidos (pendentes)
+      responses:
+        "200":
+          description: Convites
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/FriendRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Amigos]
+      summary: Enviar convite de amizade
+      description: O alvo recebe a notificação `FRIEND_REQUEST_RECEIVED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUsername]
+              properties:
+                targetUsername:
+                  type: string
+                  minLength: 3
+                  description: Aceita com ou sem `@`.
+      responses:
+        "201":
+          description: Convite enviado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusRequested" }
+        "400":
+          description: "`VALIDATION_ERROR` ou `CANNOT_ADD_SELF`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`USER_BLOCKED`: há bloqueio entre os dois usuários"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: "`USER_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "`FRIEND_REQUEST_EXISTS`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /friends/requests/{requestId}:
+    parameters:
+      - $ref: "#/components/parameters/FriendRequestId"
+    delete:
+      tags: [Amigos]
+      summary: Cancelar convite que eu enviei
+      responses:
+        "200":
+          description: Cancelado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusCancelled" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FriendRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /friends/requests/{requestId}/accept:
+    parameters:
+      - $ref: "#/components/parameters/FriendRequestId"
+    post:
+      tags: [Amigos]
+      summary: Aceitar convite
+      description: Quem enviou recebe a notificação `FRIEND_REQUEST_ACCEPTED`.
+      responses:
+        "200":
+          description: Aceito
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusAccepted" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FriendRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /friends/requests/{requestId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/FriendRequestId"
+    post:
+      tags: [Amigos]
+      summary: Recusar convite
+      responses:
+        "200":
+          description: Recusado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusRejected" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/FriendRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /users/search:
+    get:
+      tags: [Amigos]
+      summary: Buscar usuários
+      description: Até 20 resultados, cada um com `friendshipStatus` preenchido. Com `q` vazio, a lista volta vazia.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Resultados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/UserSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /users/suggested:
+    get:
+      tags: [Amigos]
+      summary: Sugestões de amizade
+      description: Até 10 usuários, ordenados por amigos em comum e grupos compartilhados.
+      responses:
+        "200":
+          description: Sugestões
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/UserSuggestion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Bloqueios
+  /blocks:
+    get:
+      tags: [Bloqueios]
+      summary: Usuários que bloqueei
+      responses:
+        "200":
+          description: Bloqueados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/BlockedUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Bloqueios]
+      summary: Bloquear usuário
+      description: Um bloqueio esconde o conteúdo nas duas direções e impede convites de amizade.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUsername]
+              properties:
+                targetUsername: { type: string, minLength: 3 }
+      responses:
+        "201":
+          description: Bloqueado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BlockedUser" }
+        "400":
+          description: "`VALIDATION_ERROR` ou `CANNOT_TARGET_SELF`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`USER_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "`ALREADY_BLOCKED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /blocks/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    delete:
+      tags: [Bloqueios]
+      summary: Desbloquear
+      responses:
+        "200":
+          description: Desbloqueado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatusUnblocked" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`BLOCK_NOT_FOUND`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Versículos
+  /verses/today:
+    get:
+      tags: [Versículos]
+      summary: Versículo do dia
+      description: |
+        A escolha é determinística por usuário e por dia, no fuso de São Paulo,
+        e muda à meia-noite. O `text` pode vir vazio se a API bíblica externa
+        falhar; nesse caso o app mostra só a referência.
+      responses:
+        "200":
+          description: Versículo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyVerse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerseNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /verses/shares:
+    post:
+      tags: [Versículos]
+      summary: Compartilhar versículo no feed
+      description: |
+        - `comment` tem no máximo 500 caracteres.
+        - `GROUP_ONLY` exige `groupIds`, e o autor precisa ser membro dos grupos.
+        - Qualquer outra visibilidade **não** aceita `groupIds`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verseId, visibility]
+              properties:
+                verseId: { type: string, format: uuid, description: "`verse.id` vindo de `GET /verses/today`" }
+                comment: { type: string, maxLength: 500 }
+                visibility: { $ref: "#/components/schemas/VerseShareVisibility" }
+                groupIds:
+                  type: array
+                  items: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Compartilhamento criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerseShare" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: "`GROUP_ACCESS_DENIED`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/VerseNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /verses/shares/{id}:
+    parameters:
+      - $ref: "#/components/parameters/VerseShareId"
+    get:
+      tags: [Versículos]
+      summary: Detalhe de um compartilhamento
+      description: |
+        Token opcional. Sem token, só compartilhamentos `PUBLIC` são visíveis.
+        O autor sempre vê os seus. Os demais precisam ser da mesma tradição, não
+        ter bloqueio com o autor e: `PUBLIC` é aberto, `FRIENDS` exige amizade
+        aceita, `GROUP_ONLY` exige membresia num dos grupos, `PRIVATE` só o autor.
+        O que o viewer não pode ver responde `404`.
+      security: [{}, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Compartilhamento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerseShare" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "404": { $ref: "#/components/responses/VerseShareNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [Versículos]
+      summary: Apagar compartilhamento
+      description: Só o autor; para outro usuário a resposta é `404`.
+      responses:
+        "200": { $ref: "#/components/responses/StatusDeleted" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerseShareNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /verses/shares/{id}/pray:
+    parameters:
+      - $ref: "#/components/parameters/VerseShareId"
+    post:
+      tags: [Versículos]
+      summary: Rezar por um compartilhamento
+      description: |
+        Mesmas regras de `POST /requests/{id}/pray`: corpo opcional (sem corpo
+        vale a oração padrão da tradição) e só em compartilhamentos que o
+        usuário consegue ver.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrayInput" }
+      responses:
+        "200": { $ref: "#/components/responses/StatusRecorded" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerseShareNotFound" }
+        "429": { $ref: "#/components/responses/PrayedRateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /verses/shares/{id}/actions:
+    parameters:
+      - $ref: "#/components/parameters/VerseShareId"
+    get:
+      tags: [Versículos]
+      summary: Quem rezou por um compartilhamento
+      responses:
+        "200":
+          description: Reações
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PrayerActionRecord" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerseShareNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Moderação
+  /moderation/queue:
+    get:
+      tags: [Moderação]
+      summary: Fila de moderação
+      description: Pedidos `PENDING_REVIEW` dos grupos onde o usuário é MODERATOR ou ADMIN. `limit` tem padrão 30 e máximo 100.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 30, maximum: 100 }
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Itens pendentes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModerationQueueItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /moderation/{requestId}/approve:
+    parameters:
+      - $ref: "#/components/parameters/ModerationRequestId"
+    post:
+      tags: [Moderação]
+      summary: Aprovar pedido
+      description: "`reason` é opcional; o corpo pode vir vazio."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModerationInput" }
+      responses:
+        "200": { $ref: "#/components/responses/StatusOk" }
+        "400": { $ref: "#/components/responses/ModerationBadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PrayerRequestNotFound" }
+        "409": { $ref: "#/components/responses/ModerationNotApplicable" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /moderation/{requestId}/reject:
+    parameters:
+      - $ref: "#/components/parameters/ModerationRequestId"
+    post:
+      tags: [Moderação]
+      summary: Rejeitar pedido
+      description: "`reason` é obrigatório. Sem ele, a resposta é `400 MODERATION_REASON_REQUIRED`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/ModerationInput"
+                - required: [reason]
+      responses:
+        "200": { $ref: "#/components/responses/StatusOk" }
+        "400": { $ref: "#/components/responses/ModerationBadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PrayerRequestNotFound" }
+        "409": { $ref: "#/components/responses/ModerationNotApplicable" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /moderation/{requestId}/request-changes:
+    parameters:
+      - $ref: "#/components/parameters/ModerationRequestId"
+    post:
+      tags: [Moderação]
+      summary: Pedir alterações
+      description: "`reason` é obrigatório."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/ModerationInput"
+                - required: [reason]
+      responses:
+        "200": { $ref: "#/components/responses/StatusOk" }
+        "400": { $ref: "#/components/responses/ModerationBadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PrayerRequestNotFound" }
+        "409": { $ref: "#/components/responses/ModerationNotApplicable" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /moderation/{requestId}/history:
+    parameters:
+      - $ref: "#/components/parameters/ModerationRequestId"
+    get:
+      tags: [Moderação]
+      summary: Histórico de moderação de um pedido
+      description: Só o autor do pedido e os MODERATOR/ADMIN de um grupo do pedido podem ler. Os demais recebem `403`.
+      responses:
+        "200":
+          description: Ações registradas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ModerationActionRecord" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/PrayerRequestNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ---------------------------------------------------------------- Notificações
+  /notifications:
+    get:
+      tags: [Notificações]
+      summary: Listar notificações
+      description: "`limit` tem padrão 20 e máximo 50."
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 50 }
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Notificações e total de não lidas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, unreadCount]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Notification" }
+                  unreadCount: { type: integer, format: int64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /notifications/unread-count:
+    get:
+      tags: [Notificações]
+      summary: Total de não lidas
+      responses:
+        "200":
+          description: Total
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count: { type: integer, format: int64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /notifications/{id}/read:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Notificações]
+      summary: Marcar uma notificação como lida
+      description: Idempotente. Um ID inexistente ou de outro usuário também responde `200`.
+      responses:
+        "200": { $ref: "#/components/responses/StatusRead" }
+        "400": { $ref: "#/components/responses/InvalidId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /notifications/read-all:
+    post:
+      tags: [Notificações]
+      summary: Marcar todas como lidas
+      responses:
+        "200": { $ref: "#/components/responses/StatusRead" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: access_token do Supabase Auth (veja "Como autenticar" no topo).
+
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Itens por página. Fora de 1 a 100, volta ao padrão.
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    Offset:
+      name: offset
+      in: query
+      schema: { type: integer, default: 0, minimum: 0 }
+    RequestId:
+      name: id
+      in: path
+      required: true
+      description: ID do pedido de oração
+      schema: { type: string, format: uuid }
+    GroupId:
+      name: id
+      in: path
+      required: true
+      description: ID do grupo
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    JoinRequestId:
+      name: requestId
+      in: path
+      required: true
+      description: ID da solicitação de entrada
+      schema: { type: string, format: uuid }
+    FriendRequestId:
+      name: requestId
+      in: path
+      required: true
+      description: ID do convite de amizade
+      schema: { type: string, format: uuid }
+    AnnouncementId:
+      name: aid
+      in: path
+      required: true
+      description: ID do aviso
+      schema: { type: string, format: uuid }
+    VerseShareId:
+      name: id
+      in: path
+      required: true
+      description: ID do compartilhamento de versículo
+      schema: { type: string, format: uuid }
+    ModerationRequestId:
+      name: requestId
+      in: path
+      required: true
+      description: ID do pedido de oração em moderação
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: "`UNAUTHORIZED`: token ausente, inválido ou expirado"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: UNAUTHORIZED, message: Authentication is required } }
+    Forbidden:
+      description: "`FORBIDDEN`: sem permissão para a ação"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: "`VALIDATION_ERROR` (campo inválido), `INVALID_JSON` (corpo mal formado) ou `INVALID_ID` (ID da URL não é UUID)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: VALIDATION_ERROR, message: invalid title } }
+    InternalError:
+      description: "`INTERNAL_ERROR` ou `USER_SYNC_FAILED`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UserSyncFailed:
+      description: "`USER_SYNC_FAILED`: falha ao sincronizar o usuário do token"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RequestNotFound:
+      description: "`REQUEST_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PrayerRequestNotFound:
+      description: "`PRAYER_REQUEST_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    GroupNotFound:
+      description: "`GROUP_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    MembershipNotFound:
+      description: "`GROUP_NOT_FOUND` (grupo não existe) ou `MEMBERSHIP_NOT_FOUND` (usuário não é membro)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    JoinRequestNotFound:
+      description: "`GROUP_NOT_FOUND` ou `JOIN_REQUEST_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    AnnouncementNotFound:
+      description: "`ANNOUNCEMENT_NOT_FOUND` (inclusive quando o aviso é de outro grupo) ou `GROUP_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    FriendRequestNotFound:
+      description: "`FRIEND_REQUEST_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    VerseNotFound:
+      description: "`VERSE_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    VerseShareNotFound:
+      description: "`VERSE_SHARE_NOT_FOUND`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    LastAdmin:
+      description: "`LAST_ADMIN`: o grupo precisa manter pelo menos um admin"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PrayedRateLimited:
+      description: "`PRAYED_RATE_LIMITED`: mesmo tipo de oração no mesmo conteúdo dentro da janela"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ModerationBadRequest:
+      description: "`MODERATION_REASON_REQUIRED`, `VALIDATION_ERROR`, `INVALID_JSON` ou `INVALID_ID`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InvalidId:
+      description: "`INVALID_ID`: um ID da URL não é UUID"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: INVALID_ID, message: Invalid id in path, details: { param: id } } }
+    ModerationNotApplicable:
+      description: "`MODERATION_NOT_APPLICABLE`: o pedido não está em grupo ou não está `PENDING_REVIEW`"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    FeedPage:
+      description: Página do feed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [items, pagination]
+            properties:
+              items:
+                type: array
+                items: { $ref: "#/components/schemas/FeedItem" }
+              pagination: { $ref: "#/components/schemas/Pagination" }
+    StatusOk:
+      description: OK
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusOk" }
+    StatusDeleted:
+      description: Apagado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusDeleted" }
+    StatusRecorded:
+      description: Reação registrada
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusRecorded" }
+    StatusUpdated:
+      description: Atualizado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusUpdated" }
+    StatusRemoved:
+      description: Removido
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusRemoved" }
+    StatusRead:
+      description: Marcado como lido
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/StatusRead" }
+
+  schemas:
+    # ----- Envelopes
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [VALIDATION_ERROR] }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+    Pagination:
+      type: object
+      required: [page, pageSize, total, totalPages]
+      properties:
+        page: { type: integer, description: "Calculada como offset / limit + 1" }
+        pageSize: { type: integer }
+        total: { type: integer, format: int64 }
+        totalPages: { type: integer, minimum: 1 }
+    StatusOk:
+      type: object
+      properties: { status: { type: string, const: ok } }
+    StatusDeleted:
+      type: object
+      properties: { status: { type: string, const: deleted } }
+    StatusRecorded:
+      type: object
+      properties: { status: { type: string, const: recorded } }
+    StatusUpdated:
+      type: object
+      properties: { status: { type: string, const: updated } }
+    StatusRemoved:
+      type: object
+      properties: { status: { type: string, const: removed } }
+    StatusRead:
+      type: object
+      properties: { status: { type: string, const: read } }
+    StatusLeft:
+      type: object
+      properties: { status: { type: string, const: left } }
+    StatusRequested:
+      type: object
+      properties: { status: { type: string, const: requested } }
+    StatusApproved:
+      type: object
+      properties: { status: { type: string, const: approved } }
+    StatusRejected:
+      type: object
+      properties: { status: { type: string, const: rejected } }
+    StatusAccepted:
+      type: object
+      properties: { status: { type: string, const: accepted } }
+    StatusCancelled:
+      type: object
+      properties: { status: { type: string, const: cancelled } }
+    StatusUnblocked:
+      type: object
+      properties: { status: { type: string, const: unblocked } }
+
+    # ----- Enums
+    Visibility:
+      type: string
+      enum: [PUBLIC, GROUP_ONLY, PRIVATE]
+    VerseShareVisibility:
+      type: string
+      enum: [PUBLIC, FRIENDS, GROUP_ONLY, PRIVATE]
+    PrayerCategory:
+      type: string
+      enum: [HEALTH, FAMILY, WORK, GRIEF, THANKSGIVING, OTHER]
+    PrayerStatus:
+      type: string
+      enum: [PENDING_REVIEW, ACTIVE, CLOSED, ARCHIVED, REMOVED]
+    PrayerActionType:
+      type: string
+      description: |
+        Católicos: HAIL_MARY, OUR_FATHER, GLORY_BE, ROSARY_DECADE, ROSARY_FULL.
+        Evangélicos: I_PRAYED, INTERCESSION, FASTING, GRATITUDE, CRYING_OUT, PURPOSE.
+      enum:
+        [HAIL_MARY, OUR_FATHER, GLORY_BE, ROSARY_DECADE, ROSARY_FULL,
+         I_PRAYED, INTERCESSION, FASTING, GRATITUDE, CRYING_OUT, PURPOSE]
+    Tradition:
+      type: string
+      enum: [CATHOLIC, EVANGELICAL]
+    Language:
+      type: string
+      enum: [PT_BR, EN, ES]
+    GroupJoinPolicy:
+      type: string
+      enum: [OPEN, REQUEST, INVITE_ONLY]
+    GroupRole:
+      type: string
+      enum: [MEMBER, MODERATOR, ADMIN]
+    PublicFriendshipState:
+      type: string
+      enum: [SELF, FRIEND, PENDING_OUT, PENDING_IN, NONE, BLOCKED_BY_ME, BLOCKED_BY_THEM]
+    VerseTheme:
+      type: string
+      enum: [HOPE, GRIEF, GRATITUDE, FORGIVENESS, FAITH, FAMILY, HEALING, PROVISION, COURAGE, PEACE, GUIDANCE, LOVE]
+    NotificationType:
+      type: string
+      enum:
+        [PRAYED, FRIEND_REQUEST_RECEIVED, FRIEND_REQUEST_ACCEPTED, GROUP_JOIN_APPROVED,
+         GROUP_JOIN_REQUESTED, REQUEST_APPROVED, REQUEST_REJECTED, REQUEST_CHANGES_ASKED,
+         GROUP_ANNOUNCEMENT_POSTED, REQUEST_UPDATED, REQUEST_ANSWERED, MILESTONE_PRAYED,
+         MILESTONE_CREATED, MILESTONE_STREAK, VERSE_SHARE_PRAYED]
+    NotificationSubjectType:
+      type: string
+      enum: [PRAYER_REQUEST, MILESTONE, FRIENDSHIP, GROUP, VERSE_SHARE]
+    ModerationActionType:
+      type: string
+      enum: [APPROVE, REJECT, REQUEST_CHANGES, REMOVE, BAN]
+    FeedItemKind:
+      type: string
+      enum: [PRAYER_REQUEST, ANNOUNCEMENT, VERSE_SHARE]
+
+    # ----- Inputs
+    UpdateProfileInput:
+      type: object
+      required: [username]
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 80, description: "Vazio mantém o atual" }
+        username: { type: string, minLength: 3, maxLength: 30, pattern: "^[a-z0-9_]+$" }
+        avatarUrl: { type: [string, "null"] }
+        bio: { type: [string, "null"], maxLength: 280 }
+    PrayerRequestInput:
+      type: object
+      required: [title, body, category, visibility]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 120 }
+        body: { type: string, minLength: 10, maxLength: 4000 }
+        category: { $ref: "#/components/schemas/PrayerCategory" }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        allowAnonymous: { type: boolean, default: false }
+        groupIds:
+          type: array
+          description: Obrigatório com GROUP_ONLY e proibido com PRIVATE.
+          items: { type: string, format: uuid }
+    PrayInput:
+      type: object
+      properties:
+        actionType:
+          $ref: "#/components/schemas/PrayerActionType"
+    ModerationInput:
+      type: object
+      properties:
+        reason: { type: string }
+
+    # ----- Usuários
+    User:
+      type: object
+      required: [id, email, username, displayName, tradition, language, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        bio: { type: [string, "null"] }
+        tradition: { $ref: "#/components/schemas/Tradition" }
+        language: { $ref: "#/components/schemas/Language" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProfileStats:
+      type: object
+      required: [requestsCreated, prayerActionsTotal, prayerActionsReceived, streakDays, prayerActionsByType, prayerActionsByCategory]
+      properties:
+        requestsCreated: { type: integer }
+        prayerActionsTotal: { type: integer }
+        prayerActionsReceived: { type: integer }
+        streakDays: { type: integer }
+        prayerActionsByType:
+          type: object
+          additionalProperties: { type: integer }
+        prayerActionsByCategory:
+          type: object
+          additionalProperties: { type: integer }
+    PublicProfile:
+      type: object
+      required: [user, friendshipStatus]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        friendshipStatus: { $ref: "#/components/schemas/PublicFriendshipState" }
+        incomingFriendRequestId: { type: string, format: uuid }
+        outgoingFriendRequestId: { type: string, format: uuid }
+        stats: { $ref: "#/components/schemas/ProfileStats" }
+    UserSummary:
+      type: object
+      required: [userId, username, displayName]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        friendshipStatus: { $ref: "#/components/schemas/PublicFriendshipState" }
+    UserSuggestion:
+      allOf:
+        - $ref: "#/components/schemas/UserSummary"
+        - type: object
+          required: [mutualFriends, sharedGroups, reason]
+          properties:
+            mutualFriends: { type: integer }
+            sharedGroups: { type: integer }
+            reason: { type: string }
+    Friend:
+      type: object
+      required: [userId, username, displayName, connectedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        connectedAt: { type: string, format: date-time }
+    FriendRequest:
+      type: object
+      required: [id, fromUserId, username, displayName, requestedAt]
+      properties:
+        id: { type: string, format: uuid }
+        fromUserId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        requestedAt: { type: string, format: date-time }
+    BlockedUser:
+      type: object
+      required: [userId, username, displayName, blockedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        blockedAt: { type: string, format: date-time }
+
+    # ----- Pedidos
+    PrayerRequest:
+      type: object
+      required: [id, authorId, title, body, category, visibility, tradition, allowAnonymous, status, prayedCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        authorAvatarUrl: { type: [string, "null"] }
+        title: { type: string }
+        body: { type: string }
+        category: { $ref: "#/components/schemas/PrayerCategory" }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        tradition: { $ref: "#/components/schemas/Tradition" }
+        allowAnonymous: { type: boolean }
+        status: { $ref: "#/components/schemas/PrayerStatus" }
+        prayedCount: { type: integer, format: int64 }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+        groupNames:
+          type: array
+          items: { type: string }
+        prayerTypeCounts:
+          type: object
+          description: Total de reações por tipo de oração
+          additionalProperties: { type: integer, format: int64 }
+        myPrayerTypes:
+          type: array
+          description: Tipos de oração que o viewer já registrou neste pedido
+          items: { $ref: "#/components/schemas/PrayerActionType" }
+        answeredAt: { type: [string, "null"], format: date-time }
+        testimony: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PrayerActionRecord:
+      type: object
+      required: [userId, username, displayName, actionType, createdAt]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        actionType: { $ref: "#/components/schemas/PrayerActionType" }
+        createdAt: { type: string, format: date-time }
+    MyPrayerEntry:
+      type: object
+      required: [requestId, requestTitle, authorId, authorUsername, authorDisplayName, actionType, createdAt]
+      properties:
+        requestId: { type: string, format: uuid }
+        requestTitle: { type: string }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        actionType: { $ref: "#/components/schemas/PrayerActionType" }
+        createdAt: { type: string, format: date-time }
+    PrayerRequestUpdate:
+      type: object
+      required: [id, prayerRequestId, authorId, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        prayerRequestId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    # ----- Feed
+    FeedItem:
+      type: object
+      description: |
+        Item polimórfico do feed. Só um dos três objetos vem preenchido,
+        conforme `kind`:
+        - `PRAYER_REQUEST` traz `prayerRequest`.
+        - `ANNOUNCEMENT` traz `announcement`.
+        - `VERSE_SHARE` traz `verseShare`.
+      required: [kind, createdAt]
+      properties:
+        kind: { $ref: "#/components/schemas/FeedItemKind" }
+        createdAt: { type: string, format: date-time }
+        prayerRequest: { $ref: "#/components/schemas/PrayerRequest" }
+        announcement: { $ref: "#/components/schemas/GroupAnnouncement" }
+        verseShare: { $ref: "#/components/schemas/VerseShare" }
+
+    # ----- Grupos
+    Group:
+      type: object
+      required: [id, name, description, joinPolicy, requiresModeration, createdBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        imageUrl: { type: [string, "null"] }
+        joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
+        requiresModeration: { type: boolean }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    GroupDetails:
+      allOf:
+        - $ref: "#/components/schemas/Group"
+        - type: object
+          required: [memberCount, isMember, hasPendingJoin]
+          properties:
+            memberCount: { type: integer, format: int64 }
+            myRole: { $ref: "#/components/schemas/GroupRole" }
+            isMember: { type: boolean }
+            hasPendingJoin: { type: boolean }
+    GroupSummary:
+      type: object
+      required: [id, name, description, joinPolicy, isMember]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
+        isMember: { type: boolean }
+    GroupMember:
+      type: object
+      required: [userId, username, displayName, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        role: { $ref: "#/components/schemas/GroupRole" }
+        joinedAt: { type: string, format: date-time }
+    GroupJoinRequest:
+      type: object
+      required: [id, groupId, userId, username, displayName, status, requestedAt]
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        status: { type: string, examples: [PENDING] }
+        requestedAt: { type: string, format: date-time }
+    GroupAnnouncement:
+      type: object
+      required: [id, groupId, authorId, title, body, eventAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        groupName: { type: string }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        authorAvatarUrl: { type: [string, "null"] }
+        title: { type: string }
+        body: { type: string }
+        eventAt: { type: string, format: date-time }
+        imageUrl: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    # ----- Versículos
+    BibleVerse:
+      type: object
+      required: [id, bookSlug, bookName, chapter, verse, theme, translation, text, reference]
+      properties:
+        id: { type: string, format: uuid }
+        bookSlug: { type: string, examples: [john] }
+        bookName: { type: string, examples: [João] }
+        chapter: { type: integer }
+        verse: { type: integer }
+        theme: { $ref: "#/components/schemas/VerseTheme" }
+        tradition:
+          description: Ausente quando o versículo vale para as duas tradições
+          $ref: "#/components/schemas/Tradition"
+        translation: { type: string, examples: [almeida] }
+        text: { type: string, description: Pode vir vazio se a API bíblica externa falhar }
+        reference: { type: string, examples: ["João 3,16"] }
+    DailyVerse:
+      type: object
+      required: [verse, date, alreadyShared]
+      properties:
+        verse: { $ref: "#/components/schemas/BibleVerse" }
+        date: { type: string, format: date, description: Dia no fuso de São Paulo }
+        alreadyShared: { type: boolean }
+    VerseShare:
+      type: object
+      required: [id, authorId, verse, comment, visibility, tradition, prayedCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        authorAvatarUrl: { type: [string, "null"] }
+        verse: { $ref: "#/components/schemas/BibleVerse" }
+        comment: { type: string }
+        visibility: { $ref: "#/components/schemas/VerseShareVisibility" }
+        tradition: { $ref: "#/components/schemas/Tradition" }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+        groupNames:
+          type: array
+          items: { type: string }
+        prayedCount: { type: integer, format: int64 }
+        prayerTypeCounts:
+          type: object
+          additionalProperties: { type: integer, format: int64 }
+        myPrayerTypes:
+          type: array
+          items: { $ref: "#/components/schemas/PrayerActionType" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    # ----- Moderação
+    ModerationQueueItem:
+      type: object
+      required: [id, groupId, groupName, authorId, authorUsername, authorDisplayName, title, body, category, visibility, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        groupName: { type: string }
+        authorId: { type: string, format: uuid }
+        authorUsername: { type: string }
+        authorDisplayName: { type: string }
+        authorAvatarUrl: { type: [string, "null"] }
+        title: { type: string }
+        body: { type: string }
+        category: { $ref: "#/components/schemas/PrayerCategory" }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        createdAt: { type: string, format: date-time }
+    ModerationActionRecord:
+      type: object
+      required: [id, prayerRequestId, actorUserId, action, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        prayerRequestId: { type: string, format: uuid }
+        groupId: { type: [string, "null"], format: uuid }
+        actorUserId: { type: string, format: uuid }
+        action: { $ref: "#/components/schemas/ModerationActionType" }
+        reason: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    # ----- Notificações
+    Notification:
+      type: object
+      description: |
+        Use `subjectType` e `subjectId` para chegar ao conteúdo:
+        - `PRAYER_REQUEST` aponta para `/requests/{id}`.
+        - `GROUP` aponta para `/groups/{id}`.
+        - `VERSE_SHARE` aponta para `/verses/shares/{id}`.
+      required: [id, type, subjectType, subjectId, payload, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/NotificationType" }
+        subjectType: { $ref: "#/components/schemas/NotificationSubjectType" }
+        subjectId: { type: string, format: uuid }
+        actor:
+          type: object
+          required: [userId, username, displayName]
+          properties:
+            userId: { type: string, format: uuid }
+            username: { type: string }
+            displayName: { type: string }
+            avatarUrl: { type: [string, "null"] }
+        payload:
+          type: object
+          additionalProperties: true
+          description: Dados extras que variam com o tipo (ex. `actionType` em PRAYED)
+        readAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
