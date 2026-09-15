@@ -108,6 +108,10 @@ func (h *GroupHandler) RequestJoin(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, http.StatusForbidden, "GROUP_INVITE_ONLY", "This group is invite only", nil)
 			return
 		}
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
@@ -123,6 +127,10 @@ func (h *GroupHandler) ListJoinRequests(w http.ResponseWriter, r *http.Request) 
 	groupID := chi.URLParam(r, "id")
 	items, err := h.service.ListGroupJoinRequests(r.Context(), actorUserID, groupID)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, repositories.ErrGroupAdminRequired) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Group admin access required", nil)
 			return
@@ -163,6 +171,10 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	items, total, err := h.service.ListGroupMembers(r.Context(), viewerID, groupID, limit, offset)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, services.ErrPermissionDenied) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You must be a member of this group", nil)
 			return
@@ -191,6 +203,10 @@ func (h *GroupHandler) ChangeMemberRole(w http.ResponseWriter, r *http.Request) 
 	}
 	err := h.service.ChangeMemberRole(r.Context(), actorID, groupID, targetUserID, models.GroupRole(req.Role))
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, services.ErrPermissionDenied) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Only group admins can change roles", nil)
 			return
@@ -223,6 +239,10 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	targetUserID := chi.URLParam(r, "userId")
 	err := h.service.RemoveGroupMember(r.Context(), actorID, groupID, targetUserID)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, services.ErrPermissionDenied) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You don't have permission to remove this member", nil)
 			return
@@ -254,6 +274,10 @@ func (h *GroupHandler) Leave(w http.ResponseWriter, r *http.Request) {
 	groupID := chi.URLParam(r, "id")
 	err := h.service.LeaveGroup(r.Context(), userID, groupID)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, services.ErrLastAdmin) {
 			shared.WriteError(w, http.StatusConflict, "LAST_ADMIN", "Promote another admin before leaving the group", nil)
 			return
@@ -343,6 +367,10 @@ func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request
 	requestID := chi.URLParam(r, "requestId")
 	err := h.service.ApproveGroupJoinRequest(r.Context(), actorUserID, groupID, requestID)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, repositories.ErrGroupAdminRequired) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Group admin access required", nil)
 			return
@@ -367,6 +395,10 @@ func (h *GroupHandler) RejectJoinRequest(w http.ResponseWriter, r *http.Request)
 	requestID := chi.URLParam(r, "requestId")
 	err := h.service.RejectGroupJoinRequest(r.Context(), actorUserID, groupID, requestID)
 	if err != nil {
+		if errors.Is(err, repositories.ErrGroupNotFound) {
+			shared.WriteError(w, http.StatusNotFound, "GROUP_NOT_FOUND", "Group not found", nil)
+			return
+		}
 		if errors.Is(err, repositories.ErrGroupAdminRequired) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Group admin access required", nil)
 			return

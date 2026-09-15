@@ -1325,6 +1325,9 @@ func (r *PostgresRepository) RequestJoinGroup(ctx context.Context, userID, group
 		WHERE id = $1 AND deleted_at IS NULL
 	`, groupID).Scan(&joinPolicy)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrGroupNotFound
+		}
 		return err
 	}
 
@@ -1461,18 +1464,20 @@ func (r *PostgresRepository) ApproveGroupJoinRequest(ctx context.Context, actorU
 	return tx.Commit(ctx)
 }
 
+// isGroupAdmin diz se o usuário administra o grupo, devolvendo
+// ErrGroupNotFound quando o grupo não existe (mesma viagem).
 func (r *PostgresRepository) isGroupAdmin(ctx context.Context, userID, groupID string) (bool, error) {
-	var exists bool
+	var isAdmin bool
 	err := r.db.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM groups g
-			LEFT JOIN group_memberships gm ON gm.group_id = g.id AND gm.user_id = $1 AND gm.deleted_at IS NULL
-			WHERE g.id = $2 AND g.deleted_at IS NULL
-			AND (g.created_by = $1 OR gm.role = 'ADMIN')
-		)
-	`, userID, groupID).Scan(&exists)
-	return exists, err
+		SELECT COALESCE(g.created_by = $1::uuid OR gm.role = 'ADMIN', false)
+		FROM groups g
+		LEFT JOIN group_memberships gm ON gm.group_id = g.id AND gm.user_id = $1::uuid AND gm.deleted_at IS NULL
+		WHERE g.id = $2::uuid AND g.deleted_at IS NULL
+	`, userID, groupID).Scan(&isAdmin)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrGroupNotFound
+	}
+	return isAdmin, err
 }
 
 func scanPrayerRequests(rows pgx.Rows) ([]models.PrayerRequest, error) {
@@ -2005,19 +2010,29 @@ func (r *PostgresRepository) GetGroupDetails(ctx context.Context, viewerUserID, 
 	return d, nil
 }
 
+// GetGroupRoleOf devolve o papel do usuário no grupo. Parte de groups, e não
+// de group_memberships, para distinguir na mesma viagem "grupo não existe"
+// (ErrGroupNotFound) de "não é membro" (isMember false): sem isso, toda ação
+// num grupo inexistente virava 403 em vez de 404.
 func (r *PostgresRepository) GetGroupRoleOf(ctx context.Context, userID, groupID string) (models.GroupRole, bool, error) {
-	var role string
+	var role *string
 	err := r.db.QueryRow(ctx, `
-		SELECT role::text FROM group_memberships
-		WHERE group_id = $1 AND user_id = $2 AND deleted_at IS NULL
+		SELECT gm.role::text
+		FROM groups g
+		LEFT JOIN group_memberships gm
+			ON gm.group_id = g.id AND gm.user_id = $2::uuid AND gm.deleted_at IS NULL
+		WHERE g.id = $1::uuid AND g.deleted_at IS NULL
 	`, groupID, userID).Scan(&role)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", false, nil
+			return "", false, ErrGroupNotFound
 		}
 		return "", false, err
 	}
-	return models.GroupRole(role), true, nil
+	if role == nil {
+		return "", false, nil
+	}
+	return models.GroupRole(*role), true, nil
 }
 
 func (r *PostgresRepository) CountGroupAdmins(ctx context.Context, groupID string) (int64, error) {
