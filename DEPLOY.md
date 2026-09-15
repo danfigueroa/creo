@@ -30,11 +30,11 @@ Tudo é deployado num único projeto Vercel usando a feature **experimentalServi
 
 ## 1. Supabase — ajustes de produção
 
-Pegue a URL Vercel final (ou um palpite, ex: `https://paroquiaviva.vercel.app`) e:
+O domínio de produção é `https://www.creo.com.br` (`https://creo.com.br` redireciona para o `www`; `paroquiaviva.vercel.app` é o domínio da Vercel do mesmo deploy). Com ele:
 
 1. **Auth → URL Configuration**
-   - `Site URL` = `https://paroquiaviva.vercel.app`
-   - `Redirect URLs` = `https://paroquiaviva.vercel.app/auth` (e `http://localhost:5173/auth` para dev)
+   - `Site URL` = `https://www.creo.com.br`
+   - `Redirect URLs` = `https://www.creo.com.br/auth` (e `http://localhost:5173/auth` para dev)
    - Sem isso, magic link e reset de senha falham.
 
 2. **Backups**: confira a retenção do seu plano. Free tier é curto.
@@ -128,7 +128,7 @@ O repo já contém:
 | `VITE_SUPABASE_URL` | `https://<ref>.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | (Supabase → API → anon public) |
 
-> Caminho relativo `/_/backend/api/v1` funciona porque frontend e backend são servidos pelo mesmo domínio. Se quiser deixar absoluto, troque para `https://<vercel-domain>/_/backend/api/v1` depois do primeiro deploy.
+> Caminho relativo `/_/backend/api/v1` funciona porque frontend e backend são servidos pelo mesmo domínio. Se quiser deixar absoluto, troque para `https://www.creo.com.br/_/backend/api/v1`.
 
 ### 2.3 Env vars do **backend**
 
@@ -137,7 +137,7 @@ O repo já contém:
 | `DATABASE_URL` | string do **pooler** do Supabase (porta **6543**, Transaction mode) |
 | `JWT_ISSUER` | `https://<ref>.supabase.co/auth/v1` |
 | `JWKS_URL` | `https://<ref>.supabase.co/auth/v1/.well-known/jwks.json` |
-| `CORS_ALLOWED_ORIGINS` | `https://<vercel-domain>` (defense-in-depth; mesma origem não exige, mas não atrapalha) |
+| `CORS_ALLOWED_ORIGINS` | `https://www.creo.com.br` (defense-in-depth; mesma origem não exige, mas não atrapalha) |
 | `JWKS_CACHE_TTL` | `10m` |
 | `RATE_LIMIT_REQUESTS` | `120` |
 | `RATE_LIMIT_WINDOW` | `1m` |
@@ -156,13 +156,13 @@ Quando terminar, abrir a URL e fazer smoke:
 
 ```bash
 # Health do backend (via proxy Vercel)
-curl https://<vercel-domain>/_/backend/health
+curl https://www.creo.com.br/_/backend/health
 
 # Documentação da API (Swagger UI) — o "Try it out" já aponta pra /_/backend/api/v1
-open https://<vercel-domain>/_/backend/docs
+open https://www.creo.com.br/_/backend/docs
 
 # Frontend
-open https://<vercel-domain>
+open https://www.creo.com.br
 ```
 
 ### 2.5 Re-deploys e CLI
@@ -183,7 +183,7 @@ vercel logs            # logs em tempo real (incluem backend)
 ## 3. Smoke E2E
 
 1. Abrir URL final → landing.
-2. `/auth` → criar conta nova escolhendo tradição. Confirmar e-mail.
+2. Landing, aba **Criar** → criar conta com e-mail e senha escolhendo tradição (a confirmação de e-mail está automática no Supabase, a conta já entra).
 3. `/feed` → ver feed vazio do usuário novo. Criar pedido em `/requests/new`.
 4. Em outra aba (user diferente): ver o pedido, orar por ele.
 5. Em `/profile`: trocar tradição, confirmar que feed esvazia/se atualiza.
@@ -230,9 +230,9 @@ Se a feature experimental da Vercel der problema, segregar é simples:
    ```bash
    cd backend
    fly launch --no-deploy --copy-config --name parish-viva-api --region gru
-   fly secrets set DATABASE_URL=... JWT_ISSUER=... JWKS_URL=... CORS_ALLOWED_ORIGINS="https://<vercel-domain>"
+   fly secrets set DATABASE_URL=... JWT_ISSUER=... JWKS_URL=... CORS_ALLOWED_ORIGINS="https://www.creo.com.br"
    fly deploy
    ```
-5. Atualizar `CORS_ALLOWED_ORIGINS` com o domínio Vercel real.
+5. Conferir que `CORS_ALLOWED_ORIGINS` inclui o domínio de produção (`https://www.creo.com.br`).
 
 Os artefatos desse plano (`backend/Dockerfile`, `backend/fly.toml`) já estão no repo e continuam funcionando se precisar.

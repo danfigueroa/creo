@@ -17,6 +17,15 @@ Creo combines social graph and community feeds with prayer-specific privacy and 
 - Database and Auth: Supabase Postgres + Supabase Auth
 - Migrations: golang-migrate
 
+## API Docs
+
+Interactive Swagger UI with every endpoint, request/response schemas and a
+guide for getting a test token (use **Authorize**, then **Try it out**):
+
+- Production: https://www.creo.com.br/_/backend/docs
+- Local (`make dev`): http://localhost:8080/docs
+- OpenAPI spec: [`backend/internal/http/apidocs/openapi.yaml`](backend/internal/http/apidocs/openapi.yaml)
+
 ## Repository Structure
 
 - `backend/cmd/api`
@@ -44,9 +53,7 @@ Creo combines social graph and community feeds with prayer-specific privacy and 
   - auth required/optional
   - CORS for local frontend origins
   - IP rate limiting
-- API reference: OpenAPI spec + Swagger UI served by the backend at `/docs`
-  (local: `http://localhost:8080/docs`, prod: `https://<vercel-domain>/_/backend/docs`).
-  Spec lives in `backend/internal/http/apidocs/openapi.yaml`.
+- API reference: hand-written OpenAPI spec + Swagger UI at `/docs` (see [API Docs](#api-docs))
 - User profile API with unique username support
 - Auth user auto-sync from Supabase token to internal `users` table
 - Feed endpoints:
