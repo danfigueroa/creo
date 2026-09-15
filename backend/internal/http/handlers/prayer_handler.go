@@ -173,18 +173,32 @@ func (h *PrayerHandler) Create(w http.ResponseWriter, r *http.Request) {
 		GroupIDs:       req.GroupIDs,
 	})
 	if err != nil {
-		if errors.Is(err, repositories.ErrGroupAccessDenied) {
-			shared.WriteError(w, http.StatusForbidden, "GROUP_ACCESS_DENIED", "You can only post to groups where you are a member", nil)
-			return
-		}
-		if errors.Is(err, services.ErrInvalidCategory) || errors.Is(err, services.ErrInvalidVisibility) {
-			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
-			return
-		}
-		shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		writePrayerWriteError(w, err)
 		return
 	}
 	shared.WriteJSON(w, http.StatusCreated, prayer)
+}
+
+// writePrayerWriteError mapeia os erros de criar/editar pedido. Create e
+// Update validam as mesmas regras, então o mapeamento precisa ser o mesmo:
+// antes cada um tinha a sua lista, e um erro fora dela virava 400 num e 500
+// no outro.
+func writePrayerWriteError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, repositories.ErrGroupAccessDenied):
+		shared.WriteError(w, http.StatusForbidden, "GROUP_ACCESS_DENIED", "You can only post to groups where you are a member", nil)
+	case errors.Is(err, repositories.ErrPrayerRequestNotFound):
+		shared.WriteError(w, http.StatusNotFound, "REQUEST_NOT_FOUND", "Prayer request not found", nil)
+	case errors.Is(err, services.ErrInvalidTitle),
+		errors.Is(err, services.ErrInvalidBody),
+		errors.Is(err, services.ErrInvalidCategory),
+		errors.Is(err, services.ErrInvalidVisibility),
+		errors.Is(err, services.ErrGroupIDsRequired),
+		errors.Is(err, services.ErrPrivateCannotHaveGroups):
+		shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+	default:
+		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+	}
 }
 
 func (h *PrayerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
@@ -230,19 +244,7 @@ func (h *PrayerHandler) Update(w http.ResponseWriter, r *http.Request) {
 		GroupIDs:       req.GroupIDs,
 	})
 	if err != nil {
-		if errors.Is(err, repositories.ErrGroupAccessDenied) {
-			shared.WriteError(w, http.StatusForbidden, "GROUP_ACCESS_DENIED", "You can only post to groups where you are a member", nil)
-			return
-		}
-		if errors.Is(err, repositories.ErrPrayerRequestNotFound) {
-			shared.WriteError(w, http.StatusNotFound, "REQUEST_NOT_FOUND", "Prayer request not found", nil)
-			return
-		}
-		if errors.Is(err, services.ErrInvalidCategory) || errors.Is(err, services.ErrInvalidVisibility) || errors.Is(err, services.ErrInvalidTitle) || errors.Is(err, services.ErrInvalidBody) || errors.Is(err, services.ErrGroupIDsRequired) {
-			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
-			return
-		}
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		writePrayerWriteError(w, err)
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, prayer)
