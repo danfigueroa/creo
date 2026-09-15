@@ -243,6 +243,13 @@ type ReactionInput struct {
 	Rules       PrayerActionRules
 }
 
+// PrayerRequestAccess é o mínimo de um pedido visível ao viewer, para checar
+// autoria sem pagar a leitura completa e o enrich de GetPrayerRequestByID.
+type PrayerRequestAccess struct {
+	AuthorID       string
+	AllowAnonymous bool
+}
+
 // MyPrayerEntry — pedido + reação do próprio usuário, pra aba "Rezadas (privado)"
 // no perfil. AuthorDisplayName e AuthorUsername são do autor do pedido.
 type MyPrayerEntry struct {

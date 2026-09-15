@@ -364,14 +364,10 @@ func (s *Service) ListMyPrayers(ctx context.Context, userID string, limit, offse
 }
 
 // ListPrayerActionsByRequest returns every prayer action recorded for the
-// request, with the actor's display info. Visibility is delegated to whoever
-// shows the request — if the viewer can read the request body, they can see
-// who prayed.
+// request, with the actor's display info. If the viewer can read the request,
+// they can see who prayed; the repository checks both in one round trip.
 func (s *Service) ListPrayerActionsByRequest(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerActionRecord, error) {
-	if _, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID); err != nil {
-		return nil, err
-	}
-	return s.repo.ListPrayerActionsByRequest(ctx, requestID)
+	return s.repo.ListPrayerActionsByRequest(ctx, viewerUserID, requestID)
 }
 
 var ErrInvalidUpdateBody = errors.New("invalid update body")
@@ -386,28 +382,24 @@ func (s *Service) CreatePrayerRequestUpdate(ctx context.Context, actorUserID, re
 	if l := len([]rune(body)); l < requestUpdateMinBody || l > requestUpdateMaxBody {
 		return models.PrayerRequestUpdate{}, ErrInvalidUpdateBody
 	}
-	req, err := s.repo.GetPrayerRequestByID(ctx, actorUserID, requestID)
+	access, err := s.repo.GetPrayerRequestAccess(ctx, actorUserID, requestID)
 	if err != nil {
 		return models.PrayerRequestUpdate{}, err
 	}
-	if req.AuthorID != actorUserID {
+	if access.AuthorID != actorUserID {
 		return models.PrayerRequestUpdate{}, ErrPermissionDenied
 	}
 	return s.repo.CreatePrayerRequestUpdate(ctx, requestID, actorUserID, body)
 }
 
 func (s *Service) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerRequestUpdate, error) {
-	req, err := s.repo.GetPrayerRequestByID(ctx, viewerUserID, requestID)
-	if err != nil {
-		return nil, err
-	}
-	updates, err := s.repo.ListPrayerRequestUpdates(ctx, requestID)
+	updates, access, err := s.repo.ListPrayerRequestUpdates(ctx, viewerUserID, requestID)
 	if err != nil {
 		return nil, err
 	}
 	// Mirror the request-level anonymity onto the author-published updates so
 	// non-authors can't fingerprint the writer through the updates list.
-	if req.AllowAnonymous && req.AuthorID != viewerUserID {
+	if access.AllowAnonymous && access.AuthorID != viewerUserID {
 		for i := range updates {
 			updates[i].AuthorUsername = ""
 			updates[i].AuthorDisplayName = "Anônimo"
@@ -426,11 +418,11 @@ func (s *Service) AnswerPrayerRequest(ctx context.Context, in models.AnswerPraye
 	if len([]rune(in.Testimony)) > requestTestimonyMaxBody {
 		return models.PrayerRequest{}, ErrInvalidUpdateBody
 	}
-	req, err := s.repo.GetPrayerRequestByID(ctx, in.ActorUserID, in.RequestID)
+	access, err := s.repo.GetPrayerRequestAccess(ctx, in.ActorUserID, in.RequestID)
 	if err != nil {
 		return models.PrayerRequest{}, err
 	}
-	if req.AuthorID != in.ActorUserID {
+	if access.AuthorID != in.ActorUserID {
 		return models.PrayerRequest{}, ErrPermissionDenied
 	}
 	return s.repo.MarkPrayerRequestAnswered(ctx, in)
@@ -439,11 +431,11 @@ func (s *Service) AnswerPrayerRequest(ctx context.Context, in models.AnswerPraye
 // UnanswerPrayerRequest reverts a request out of the answered state. Only the
 // author may do it.
 func (s *Service) UnanswerPrayerRequest(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
-	req, err := s.repo.GetPrayerRequestByID(ctx, userID, requestID)
+	access, err := s.repo.GetPrayerRequestAccess(ctx, userID, requestID)
 	if err != nil {
 		return models.PrayerRequest{}, err
 	}
-	if req.AuthorID != userID {
+	if access.AuthorID != userID {
 		return models.PrayerRequest{}, ErrPermissionDenied
 	}
 	return s.repo.ClearPrayerRequestAnswered(ctx, userID, requestID)
@@ -1472,10 +1464,7 @@ func (s *Service) RecordVerseShareAction(ctx context.Context, userID, shareID st
 
 // ListVerseShareActions lista quem rezou num compartilhamento visível ao viewer.
 func (s *Service) ListVerseShareActions(ctx context.Context, viewerUserID, shareID string) ([]models.PrayerActionRecord, error) {
-	if _, err := s.repo.GetVerseShareByID(ctx, viewerUserID, shareID); err != nil {
-		return nil, err
-	}
-	return s.repo.ListVerseShareActions(ctx, shareID)
+	return s.repo.ListVerseShareActions(ctx, viewerUserID, shareID)
 }
 
 // ListPublicFeed devolve o feed público mesclado (pedidos + versículos).

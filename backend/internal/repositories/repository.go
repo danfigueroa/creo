@@ -56,6 +56,7 @@ type Repository interface {
 	MarkPrayerRequestAnswered(ctx context.Context, in models.AnswerPrayerRequestInput) (models.PrayerRequest, error)
 	ClearPrayerRequestAnswered(ctx context.Context, userID, requestID string) (models.PrayerRequest, error)
 	GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error)
+	GetPrayerRequestAccess(ctx context.Context, viewerUserID, requestID string) (models.PrayerRequestAccess, error)
 	ListPublicPrayerRequests(ctx context.Context, viewerUserID string, limit, offset int) ([]models.PrayerRequest, error)
 	CountPublicPrayerRequests(ctx context.Context, viewerUserID string) (int64, error)
 	ListGroupsPrayerRequests(ctx context.Context, userID string, limit, offset int) ([]models.PrayerRequest, error)
@@ -66,10 +67,10 @@ type Repository interface {
 	CountHomePrayerRequests(ctx context.Context, userID string) (int64, error)
 	EnrichPrayerRequests(ctx context.Context, viewerUserID string, items []*models.PrayerRequest) error
 	RecordPrayerAction(ctx context.Context, in models.ReactionInput) error
-	ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error)
+	ListPrayerActionsByRequest(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerActionRecord, error)
 	ListMyPrayers(ctx context.Context, userID string, limit, offset int) ([]models.MyPrayerEntry, error)
 	CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error)
-	ListPrayerRequestUpdates(ctx context.Context, requestID string) ([]models.PrayerRequestUpdate, error)
+	ListPrayerRequestUpdates(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerRequestUpdate, models.PrayerRequestAccess, error)
 	ListUserGroups(ctx context.Context, userID string) ([]models.Group, error)
 	SearchGroupsByName(ctx context.Context, userID, query string, limit int) ([]models.GroupSummary, error)
 	CreateGroup(ctx context.Context, userID, name, description string, imageURL *string, joinPolicy models.GroupJoinPolicy) (models.Group, error)
@@ -129,7 +130,7 @@ type Repository interface {
 	GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error)
 	DeleteVerseShare(ctx context.Context, userID, shareID string) error
 	RecordVerseShareAction(ctx context.Context, in models.ReactionInput) error
-	ListVerseShareActions(ctx context.Context, shareID string) ([]models.PrayerActionRecord, error)
+	ListVerseShareActions(ctx context.Context, viewerUserID, shareID string) ([]models.PrayerActionRecord, error)
 	EnrichVerseShares(ctx context.Context, viewerUserID string, items []*models.VerseShare) error
 
 	// Streams de feed. Devolvem linhas cruas (sem enrich), como os List*PrayerRequests
@@ -707,6 +708,22 @@ var getPrayerRequestByIDSQL = `
 	       pr.allow_anonymous, pr.status, pr.prayed_count, pr.created_at, pr.updated_at
 	FROM prayer_requests pr
 	WHERE pr.id = $1::uuid AND ` + prayerRequestVisibleTo("$2::uuid")
+
+var prayerRequestAccessSQL = `
+	SELECT pr.author_id::text, pr.allow_anonymous
+	FROM prayer_requests pr
+	WHERE pr.id = $1::uuid AND ` + prayerRequestVisibleTo("$2::uuid")
+
+// GetPrayerRequestAccess devolve autoria e anonimato de um pedido visível ao
+// viewer. Uma viagem, sem enrich: serve para quem só precisa decidir permissão.
+func (r *PostgresRepository) GetPrayerRequestAccess(ctx context.Context, viewerUserID, requestID string) (models.PrayerRequestAccess, error) {
+	var access models.PrayerRequestAccess
+	err := r.db.QueryRow(ctx, prayerRequestAccessSQL, requestID, viewerUserID).Scan(&access.AuthorID, &access.AllowAnonymous)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return access, ErrPrayerRequestNotFound
+	}
+	return access, err
+}
 
 func (r *PostgresRepository) GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
 	var pr models.PrayerRequest
@@ -3067,27 +3084,30 @@ func (r *PostgresRepository) ListMyPrayers(ctx context.Context, userID string, l
 	return items, rows.Err()
 }
 
-func (r *PostgresRepository) ListPrayerActionsByRequest(ctx context.Context, requestID string) ([]models.PrayerActionRecord, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT pa.user_id::text, u.username, u.display_name, u.avatar_url, pa.action_type, pa.created_at
-		FROM prayer_actions pa
-		INNER JOIN users u ON u.id = pa.user_id AND u.deleted_at IS NULL
-		WHERE pa.prayer_request_id = $1::uuid
-		ORDER BY pa.created_at DESC
-	`, requestID)
-	if err != nil {
+// ListPrayerActionsByRequest lista quem rezou num pedido visível ao viewer.
+// Visibilidade e lista viajam no mesmo batch, sem ler o pedido inteiro nem
+// enriquecê-lo só para decidir acesso.
+func (r *PostgresRepository) ListPrayerActionsByRequest(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerActionRecord, error) {
+	batch := &pgx.Batch{}
+	batch.Queue(prayerRequestAccessSQL, requestID, viewerUserID)
+	batch.Queue(prayerRequestActionsSQL, requestID)
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	var access models.PrayerRequestAccess
+	if err := br.QueryRow().Scan(&access.AuthorID, &access.AllowAnonymous); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPrayerRequestNotFound
+		}
 		return nil, err
 	}
-	defer rows.Close()
-	items := make([]models.PrayerActionRecord, 0)
-	for rows.Next() {
-		var rec models.PrayerActionRecord
-		if err := rows.Scan(&rec.UserID, &rec.Username, &rec.DisplayName, &rec.AvatarURL, &rec.ActionType, &rec.CreatedAt); err != nil {
-			return nil, err
-		}
-		items = append(items, rec)
-	}
-	return items, rows.Err()
+	var items []models.PrayerActionRecord
+	err := nextBatchRows(br, func(rows pgx.Rows) (err error) {
+		items, err = scanPrayerActionRecords(rows)
+		return
+	})
+	return items, err
 }
 
 func (r *PostgresRepository) CreatePrayerRequestUpdate(ctx context.Context, requestID, authorID, body string) (models.PrayerRequestUpdate, error) {
@@ -3127,8 +3147,13 @@ func (r *PostgresRepository) CreatePrayerRequestUpdate(ctx context.Context, requ
 	return out, nil
 }
 
-func (r *PostgresRepository) ListPrayerRequestUpdates(ctx context.Context, requestID string) ([]models.PrayerRequestUpdate, error) {
-	rows, err := r.db.Query(ctx, `
+// ListPrayerRequestUpdates lista as atualizações de um pedido visível ao
+// viewer e devolve junto o acesso, que o service usa para aplicar o anonimato.
+// Um batch, uma viagem.
+func (r *PostgresRepository) ListPrayerRequestUpdates(ctx context.Context, viewerUserID, requestID string) ([]models.PrayerRequestUpdate, models.PrayerRequestAccess, error) {
+	batch := &pgx.Batch{}
+	batch.Queue(prayerRequestAccessSQL, requestID, viewerUserID)
+	batch.Queue(`
 		SELECT pru.id::text, pru.prayer_request_id::text, pru.author_id::text,
 		       u.username, u.display_name,
 		       pru.body, pru.created_at
@@ -3137,23 +3162,33 @@ func (r *PostgresRepository) ListPrayerRequestUpdates(ctx context.Context, reque
 		WHERE pru.prayer_request_id = $1::uuid
 		ORDER BY pru.created_at DESC
 	`, requestID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := make([]models.PrayerRequestUpdate, 0)
-	for rows.Next() {
-		var u models.PrayerRequestUpdate
-		if err := rows.Scan(
-			&u.ID, &u.PrayerRequestID, &u.AuthorID,
-			&u.AuthorUsername, &u.AuthorDisplayName,
-			&u.Body, &u.CreatedAt,
-		); err != nil {
-			return nil, err
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	var access models.PrayerRequestAccess
+	if err := br.QueryRow().Scan(&access.AuthorID, &access.AllowAnonymous); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, access, ErrPrayerRequestNotFound
 		}
-		items = append(items, u)
+		return nil, access, err
 	}
-	return items, rows.Err()
+	items := make([]models.PrayerRequestUpdate, 0)
+	err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var u models.PrayerRequestUpdate
+			if err := rows.Scan(
+				&u.ID, &u.PrayerRequestID, &u.AuthorID,
+				&u.AuthorUsername, &u.AuthorDisplayName,
+				&u.Body, &u.CreatedAt,
+			); err != nil {
+				return err
+			}
+			items = append(items, u)
+		}
+		return nil
+	})
+	return items, access, err
 }
 
 // notifyPrayersOfRequestUpdate emits a REQUEST_UPDATED notification for every
@@ -3446,6 +3481,9 @@ const verseShareTargetFrom = `
 var getVerseShareByIDSQL = `SELECT ` + verseShareColumns + verseShareFrom + `
 	WHERE vs.id = $1::uuid AND ` + verseShareVisibleTo("NULLIF($2, '')::uuid")
 
+var verseShareVisibleSQL = `SELECT 1` + verseShareTargetFrom + `
+	WHERE vs.id = $1::uuid AND ` + verseShareVisibleTo("$2::uuid")
+
 // GetVerseShareByID devolve um compartilhamento visível ao viewer.
 // viewerUserID vazio representa visitante anônimo.
 func (r *PostgresRepository) GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error) {
@@ -3499,20 +3537,24 @@ func (r *PostgresRepository) RecordVerseShareAction(ctx context.Context, in mode
 		models.NotificationTypeVerseSharePrayed, models.NotificationSubjectVerseShare)
 }
 
-// ListVerseShareActions lista quem rezou num compartilhamento.
-func (r *PostgresRepository) ListVerseShareActions(ctx context.Context, shareID string) ([]models.PrayerActionRecord, error) {
-	rows, err := r.db.Query(ctx, `
+// prayerActionRecordsSQL lista as reações de um alvo; column é a coluna de
+// prayer_actions que aponta para ele.
+func prayerActionRecordsSQL(column string) string {
+	return `
 		SELECT pa.user_id::text, u.username, u.display_name, u.avatar_url, pa.action_type, pa.created_at
 		FROM prayer_actions pa
 		INNER JOIN users u ON u.id = pa.user_id AND u.deleted_at IS NULL
-		WHERE pa.verse_share_id = $1::uuid
+		WHERE pa.` + column + ` = $1::uuid
 		ORDER BY pa.created_at DESC
-	`, shareID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	`
+}
 
+var (
+	prayerRequestActionsSQL = prayerActionRecordsSQL("prayer_request_id")
+	verseShareActionsSQL    = prayerActionRecordsSQL("verse_share_id")
+)
+
+func scanPrayerActionRecords(rows pgx.Rows) ([]models.PrayerActionRecord, error) {
 	items := make([]models.PrayerActionRecord, 0)
 	for rows.Next() {
 		var rec models.PrayerActionRecord
@@ -3521,7 +3563,33 @@ func (r *PostgresRepository) ListVerseShareActions(ctx context.Context, shareID 
 		}
 		items = append(items, rec)
 	}
-	return items, rows.Err()
+	return items, nil
+}
+
+// ListVerseShareActions lista quem rezou num compartilhamento visível ao
+// viewer. A checagem de visibilidade e a lista viajam no mesmo batch; a lista é
+// descartada quando o compartilhamento não é visível.
+func (r *PostgresRepository) ListVerseShareActions(ctx context.Context, viewerUserID, shareID string) ([]models.PrayerActionRecord, error) {
+	batch := &pgx.Batch{}
+	batch.Queue(verseShareVisibleSQL, shareID, viewerUserID)
+	batch.Queue(verseShareActionsSQL, shareID)
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	var one int
+	if err := br.QueryRow().Scan(&one); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrVerseShareNotFound
+		}
+		return nil, err
+	}
+	var items []models.PrayerActionRecord
+	err := nextBatchRows(br, func(rows pgx.Rows) (err error) {
+		items, err = scanPrayerActionRecords(rows)
+		return
+	})
+	return items, err
 }
 
 func (r *PostgresRepository) enrichVerseShares(ctx context.Context, viewerUserID string, items []models.VerseShare) error {
