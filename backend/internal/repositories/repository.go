@@ -101,7 +101,7 @@ type Repository interface {
 	BlockDirection(ctx context.Context, viewerID, otherID string) (string, error)
 	ListModerationQueue(ctx context.Context, moderatorUserID string, limit, offset int) ([]models.ModerationQueueItem, error)
 	ApplyModerationAction(ctx context.Context, moderatorUserID, requestID string, action models.ModerationActionType, reason string) error
-	ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error)
+	ListModerationHistory(ctx context.Context, viewerUserID, requestID string) ([]models.ModerationActionRecord, error)
 	CreateNotification(ctx context.Context, in models.CreateNotificationInput) error
 	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error)
 	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
@@ -2574,28 +2574,63 @@ func (r *PostgresRepository) ApplyModerationAction(ctx context.Context, moderato
 	return tx.Commit(ctx)
 }
 
-func (r *PostgresRepository) ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error) {
-	rows, err := r.db.Query(ctx, `
+// ListModerationHistory devolve o histórico de moderação de um pedido. Só o
+// autor e os moderadores/admins de um grupo do pedido podem ler: o motivo de
+// uma rejeição é informação interna do grupo.
+//
+// A checagem de acesso e a leitura do histórico viajam no mesmo batch. O
+// histórico é descartado quando o acesso é negado.
+func (r *PostgresRepository) ListModerationHistory(ctx context.Context, viewerUserID, requestID string) ([]models.ModerationActionRecord, error) {
+	batch := &pgx.Batch{}
+	batch.Queue(`
+		SELECT pr.author_id = $2::uuid OR EXISTS (
+			SELECT 1
+			FROM prayer_request_groups prg
+			INNER JOIN group_memberships gm
+				ON gm.group_id = prg.group_id
+				AND gm.user_id = $2::uuid
+				AND gm.deleted_at IS NULL
+				AND gm.role IN ('ADMIN', 'MODERATOR')
+			WHERE prg.prayer_request_id = pr.id
+		)
+		FROM prayer_requests pr
+		WHERE pr.id = $1::uuid AND pr.deleted_at IS NULL
+	`, requestID, viewerUserID)
+	batch.Queue(`
 		SELECT id::text, prayer_request_id::text, group_id::text, actor_user_id::text, action, reason, created_at
 		FROM moderation_actions
 		WHERE prayer_request_id = $1
 		ORDER BY created_at DESC
 	`, requestID)
-	if err != nil {
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
+
+	var allowed bool
+	if err := br.QueryRow().Scan(&allowed); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrPrayerRequestNotFound
+		}
 		return nil, err
 	}
-	defer rows.Close()
-	items := make([]models.ModerationActionRecord, 0)
-	for rows.Next() {
-		var it models.ModerationActionRecord
-		var groupID *string
-		if err := rows.Scan(&it.ID, &it.PrayerRequestID, &groupID, &it.ActorUserID, &it.Action, &it.Reason, &it.CreatedAt); err != nil {
-			return nil, err
-		}
-		it.GroupID = groupID
-		items = append(items, it)
+	if !allowed {
+		return nil, ErrPrayerRequestForbidden
 	}
-	return items, rows.Err()
+
+	items := make([]models.ModerationActionRecord, 0)
+	if err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var it models.ModerationActionRecord
+			if err := rows.Scan(&it.ID, &it.PrayerRequestID, &it.GroupID, &it.ActorUserID, &it.Action, &it.Reason, &it.CreatedAt); err != nil {
+				return err
+			}
+			items = append(items, it)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // announcementSelectClause returns the columns + joins shared by every

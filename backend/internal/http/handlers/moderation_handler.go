@@ -56,14 +56,22 @@ func (h *ModerationHandler) RequestChanges(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ModerationHandler) History(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")
-	items, err := h.service.ListModerationHistory(r.Context(), requestID)
+	items, err := h.service.ListModerationHistory(r.Context(), userID, requestID)
 	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		switch {
+		case errors.Is(err, repositories.ErrPrayerRequestNotFound):
+			shared.WriteError(w, http.StatusNotFound, "PRAYER_REQUEST_NOT_FOUND", "Prayer request not found", nil)
+		case errors.Is(err, repositories.ErrPrayerRequestForbidden):
+			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You cannot view this moderation history", nil)
+		default:
+			shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
+		}
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"items": items})

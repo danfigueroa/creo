@@ -1267,8 +1267,8 @@ func (s *Service) ApplyModerationAction(ctx context.Context, moderatorUserID, re
 	return s.repo.ApplyModerationAction(ctx, moderatorUserID, requestID, action, reason)
 }
 
-func (s *Service) ListModerationHistory(ctx context.Context, requestID string) ([]models.ModerationActionRecord, error) {
-	return s.repo.ListModerationHistory(ctx, requestID)
+func (s *Service) ListModerationHistory(ctx context.Context, viewerUserID, requestID string) ([]models.ModerationActionRecord, error) {
+	return s.repo.ListModerationHistory(ctx, viewerUserID, requestID)
 }
 
 // ---------------------------------------------------------------------------
