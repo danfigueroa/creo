@@ -158,6 +158,9 @@ Quando terminar, abrir a URL e fazer smoke:
 # Health do backend (via proxy Vercel)
 curl https://<vercel-domain>/_/backend/health
 
+# Documentação da API (Swagger UI) — o "Try it out" já aponta pra /_/backend/api/v1
+open https://<vercel-domain>/_/backend/docs
+
 # Frontend
 open https://<vercel-domain>
 ```

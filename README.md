@@ -44,6 +44,9 @@ Creo combines social graph and community feeds with prayer-specific privacy and 
   - auth required/optional
   - CORS for local frontend origins
   - IP rate limiting
+- API reference: OpenAPI spec + Swagger UI served by the backend at `/docs`
+  (local: `http://localhost:8080/docs`, prod: `https://<vercel-domain>/_/backend/docs`).
+  Spec lives in `backend/internal/http/apidocs/openapi.yaml`.
 - User profile API with unique username support
 - Auth user auto-sync from Supabase token to internal `users` table
 - Feed endpoints:

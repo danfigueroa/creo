@@ -165,7 +165,7 @@ Heurísticas:
   ```json
   { "error": { "code": "FORBIDDEN", "message": "...", "details": {} } }
   ```
-- Códigos comuns: `INVALID_JSON`, `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND` (com sufixo do recurso, ex.: `GROUP_NOT_FOUND`), `LAST_ADMIN`, `INTERNAL_ERROR`, `USER_SYNC_FAILED`.
+- Códigos comuns: `INVALID_JSON`, `INVALID_ID` (param de rota que não é UUID, via `middleware.UUIDParams` — novo param de ID precisa entrar em `uuidParamNames`), `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND` (com sufixo do recurso, ex.: `GROUP_NOT_FOUND`), `LAST_ADMIN`, `INTERNAL_ERROR`, `USER_SYNC_FAILED`.
 
 ### `ensureAuthUser`
 
@@ -212,8 +212,13 @@ Duas ferramentas, cada uma no seu lugar:
 - **`pgx.Batch` quando as consultas já estão no mesmo método do repositório.**
   Colapsa N viagens em 1 usando **uma** conexão. É a primeira escolha. Helper:
   `nextBatchRows` consome os resultados na ordem em que foram enfileirados.
-  Já aplicado em `EnrichPrayerRequests`, `EnrichVerseShares`, `GetUserStats` e
-  na cauda de `RecordPrayerAction`.
+  Já aplicado em `EnrichPrayerRequests`, `EnrichVerseShares`, `GetUserStats`,
+  `ListModerationHistory`, `ListPrayerActionsByRequest`,
+  `ListPrayerRequestUpdates`, `ListVerseShareActions` (checagem de acesso + lista
+  no mesmo batch) e nos efeitos colaterais das reações.
+- **CTE de escrita quando o resultado de uma escrita depende de leituras.** A
+  reação (`reactionSQL`) resolve tradição, tipo padrão, visibilidade, dedupe,
+  insert e contador num statement só, e devolve flags para o Go escolher o erro.
 - **`errgroup` quando as chamadas cruzam métodos do repositório** (os feeds
   mesclados). Sempre via `runBounded`, **nunca** `errgroup` cru: o limite de
   `maxParallelQueries = 3` existe porque `DB_MAX_CONNS` é 8 para o processo
@@ -252,8 +257,37 @@ Números da passagem de otimização (medidos com round trip de ~200 ms):
 | `ListGroupFeed` | 1839 ms | 617 ms |
 | `GetUserStats` | 1164 ms | 207 ms |
 
-Pendente: `maybeEmitPrayedMilestone` / `maybeEmitStreakMilestone` ainda são 2 a 4
-viagens em série no fim de cada reação.
+| `RecordPrayerAction` | 5–7 viagens | 2 viagens |
+| `RecordVerseShareAction` | 7–9 viagens | 2 viagens |
+
+As reações são **duas viagens fixas**: (1) o statement que decide e grava e (2)
+um batch best-effort com notificação ao autor + marcos `MILESTONE_PRAYED` e
+`MILESTONE_STREAK`, ambos resolvidos em SQL (`prayedMilestoneSQL`,
+`streakMilestoneSQL`). Não dá para fundir as duas: o efeito colateral precisa
+da reação confirmada, e uma falha nele não pode desfazê-la.
+
+### Visibilidade por ID (predicados canônicos)
+
+`prayerRequestVisibleTo(viewer)` e `verseShareVisibleTo(viewer)` em
+`repository.go` são **a** regra de "o viewer enxerga este conteúdo". Detalhe,
+reações, "quem rezou", atualizações e checagens de autoria usam o mesmo texto —
+não reescreva a regra numa query nova, concatene o fragmento.
+
+- Autor sempre vê o próprio conteúdo (inclusive `PENDING_REVIEW`/`PRIVATE` e
+  depois de trocar de tradição).
+- Demais: `deleted_at IS NULL`, mesma tradição, sem `user_blocks` em nenhuma
+  direção, e a regra de visibilidade do tipo.
+- Invisível responde **404**, nunca 403, para não revelar existência.
+- Quem só precisa decidir permissão usa `GetPrayerRequestAccess` (uma viagem,
+  sem enrich), não `GetPrayerRequestByID` (duas).
+
+### Existência antes de permissão
+
+`GetGroupRoleOf` e `isGroupAdmin` partem de `groups` com `LEFT JOIN` na
+membership: grupo inexistente vira `ErrGroupNotFound` (404) na mesma viagem que
+descobre o papel. Handler de rota `/groups/{id}/...` precisa mapear
+`ErrGroupNotFound`. Recurso aninhado (aviso, solicitação) precisa pertencer ao
+pai da URL — `announcementInGroup` devolve 404 se o aviso é de outro grupo.
 
 ### Versículo do dia (`bible_verses` / `verse_shares`)
 
@@ -286,7 +320,7 @@ Terceiro tipo de conteúdo do feed, ao lado de pedidos e avisos.
   todo mundo muda.**
 - **Visibilidade** usa enum próprio `verse_share_visibility`
   (`PUBLIC | FRIENDS | GROUP_ONLY | PRIVATE`) — `FRIENDS` não existe em
-  `prayer_visibility`. `GetVerseShareByID` é o predicado canônico; os streams de
+  `prayer_visibility`. `verseShareVisibleTo` é o predicado canônico; os streams de
   feed repetem os mesmos invariantes (tradição, `deleted_at IS NULL`,
   `user_blocks` nas duas direções, `PRIVATE` só para o autor).
 - **Reações reusam `prayer_actions`**, que virou polimórfica na migration 000020:
@@ -300,6 +334,15 @@ Terceiro tipo de conteúdo do feed, ao lado de pedidos e avisos.
 ### Tradition (catolica/evangélica)
 
 `prayer_requests.tradition` filtra feeds para o `tradition` do viewer (ver SQL em `ListPrayerRequestsByGroup`, etc). **Se mexer em query de feed, preserve esse filtro.**
+
+### Documentação da API (`/docs`)
+
+O backend serve uma Swagger UI em `/docs`: `http://localhost:8080/docs` no local e `https://<domínio>/_/backend/docs` em produção. Ela lê `internal/http/apidocs/openapi.yaml`, escrito à mão e embutido no binário com `go:embed`. Um QA testa a API por ela.
+
+- **Mudou rota, payload, validação ou código de erro? Atualize o `openapi.yaml` no mesmo commit.** Nada gera o spec a partir do código, então ele envelhece calado.
+- Os códigos de erro documentados devem ser só os que o handler **realmente** emite (`errors.Is` → `shared.WriteError`). Quando o comportamento é estranho (ex.: um 500 onde caberia 404), documente com ⚠️ em vez de inventar o ideal.
+- `servers` usa a URL relativa `../api/v1`, resolvida contra o próprio spec. Isso funciona sem config nos dois ambientes, com e sem `/_/backend`. Não troque por URL absoluta.
+- Para conferir: `npx @redocly/cli lint backend/internal/http/apidocs/openapi.yaml`. Os avisos de `operationId` e de descrição de tag são esperados.
 
 ### Soft delete
 
@@ -450,6 +493,7 @@ Sino de notificação navega via `subject_type`:
 - **Não pule camadas** (handler → repo direto). Service é onde a validação vive.
 - **Não esqueça `tradition` filter** ao escrever queries de feed.
 - **Não esqueça `deleted_at IS NULL`** em listagens.
+- **Não esqueça o `openapi.yaml`** ao criar ou alterar endpoint.
 - **Quando reiniciar `make dev`**, sempre matar a porta 8080 antes (`go run` deixa zumbi).
 - **Não criar arquivo `.md` novo** sem o usuário pedir explicitamente. Mas `CLAUDE.md`, `README.md` e `DEPLOY.md` podem ser atualizados livremente.
 - **Não crie testes "para parecer profissional"** — o repo ainda não tem suite e adicionar testes é decisão de produto, não cleanup.
@@ -488,6 +532,7 @@ Sino de notificação navega via `subject_type`:
 | SQL | `backend/internal/repositories/repository.go` |
 | Schema | `backend/internal/db/migrations/*.sql` |
 | Modelos / enums | `backend/internal/models/models.go` |
+| Documentação da API (Swagger) | `backend/internal/http/apidocs/openapi.yaml` + `docs.go` + `index.html` |
 | Instrumentação de banco | `backend/internal/db/trace.go` + `internal/http/middleware/logging.go` |
 | Versículo do dia (backend) | `backend/internal/bible/bible.go` + `verse_handler.go` + seção de versículos em `service.go`/`repository.go` |
 | Versículo do dia (frontend) | `frontend/src/components/daily-verse.tsx`, `share-verse-modal.tsx`, `VerseCard` em `feed-card.tsx` |
