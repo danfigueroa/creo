@@ -11,7 +11,15 @@ info:
     `Authorization: Bearer <token>`. Clique em **Authorize** e cole só o token,
     sem o prefixo `Bearer`.
 
-    **Opção 1: login com senha pela API do Supabase.**
+    **Contas de teste.** Crie pelo próprio app em https://www.creo.com.br, na aba
+    **Criar**, com e-mail e senha. A confirmação de e-mail é automática, então a
+    conta funciona na hora. Não é preciso acesso ao Supabase. Vale ter várias
+    contas para os cenários (católica, evangélica, admin de grupo, bloqueada).
+
+    **Opção 1: copiar do app.** Entre em https://www.creo.com.br, abra o DevTools
+    (Application → Local Storage) e copie o valor de `accessToken`.
+
+    **Opção 2: login com senha pela API do Supabase.**
 
     ```bash
     curl -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
@@ -21,12 +29,8 @@ info:
     ```
 
     Use o campo `access_token` da resposta. O token expira em cerca de 1 hora.
-    `SUPABASE_URL` e `SUPABASE_ANON_KEY` são os mesmos de `frontend/.env`.
-    A tela inicial do app entra por magic link, então crie a conta de teste
-    **com senha** pelo dashboard do Supabase (Authentication → Users → Add user).
-
-    **Opção 2: copiar do app.** Entre no app pelo navegador, abra o DevTools
-    (Application → Local Storage) e copie o valor de `accessToken`.
+    `SUPABASE_URL` e `SUPABASE_ANON_KEY` são os valores públicos de
+    `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (os mesmos que o site usa).
 
     ## Comportamentos que valem saber antes de testar
 
