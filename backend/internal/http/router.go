@@ -5,6 +5,7 @@ import (
 
 	"parish-viva/backend/internal/auth"
 	"parish-viva/backend/internal/config"
+	"parish-viva/backend/internal/http/apidocs"
 	"parish-viva/backend/internal/http/handlers"
 	"parish-viva/backend/internal/http/middleware"
 	"parish-viva/backend/internal/services"
@@ -40,6 +41,9 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 	r.Use(httprate.LimitByIP(cfg.RateLimitRequests, cfg.RateLimitWindow))
 
 	r.Get("/health", healthHandler.GetHealth)
+	r.Get("/docs", apidocs.UI)
+	r.Get("/docs/", apidocs.UI)
+	r.Get("/docs/openapi.yaml", apidocs.Spec)
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.With(middleware.OptionalAuth(validator)).Get("/feed", prayerHandler.ListPublic)
