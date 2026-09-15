@@ -659,34 +659,57 @@ func (r *PostgresRepository) ClearPrayerRequestAnswered(ctx context.Context, use
 	return r.GetPrayerRequestByID(ctx, userID, requestID)
 }
 
-func (r *PostgresRepository) GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
-	var pr models.PrayerRequest
-	err := r.db.QueryRow(ctx, `
-		SELECT id::text, author_id::text, title, body, category, visibility, tradition, allow_anonymous, status, prayed_count, created_at, updated_at
-		FROM prayer_requests
-		WHERE id = $1
-		  AND deleted_at IS NULL
-		  AND tradition = COALESCE(
-			(SELECT tradition FROM users WHERE id = $2 AND deleted_at IS NULL),
-			prayer_requests.tradition
-		  )
-		  AND (
-			author_id = $2
-			OR (visibility = 'PUBLIC' AND status = 'ACTIVE')
+// prayerRequestVisibleTo é o predicado canônico de visibilidade de um pedido
+// (alias pr) para um viewer. Toda leitura ou escrita que dependa de "o viewer
+// enxerga este pedido" usa este mesmo texto, para as regras não divergirem
+// entre o detalhe, as reações e as listas penduradas no pedido.
+//
+//   - o autor sempre vê o que é seu, mesmo depois de trocar de tradição e mesmo
+//     com o pedido em PENDING_REVIEW;
+//   - os demais só veem pedidos ACTIVE da própria tradição, PUBLIC ou de um
+//     grupo do qual são membros, e nunca com bloqueio em qualquer direção.
+//
+// viewer é a expressão SQL do id do viewer (ex.: "$2::uuid").
+func prayerRequestVisibleTo(viewer string) string {
+	return strings.ReplaceAll(`
+		pr.deleted_at IS NULL
+		AND (
+			pr.author_id = :viewer
 			OR (
-				visibility = 'GROUP_ONLY'
-				AND status = 'ACTIVE'
-				AND EXISTS (
-					SELECT 1
-					FROM prayer_request_groups prg
-					INNER JOIN group_memberships gm ON gm.group_id = prg.group_id
-					WHERE prg.prayer_request_id = prayer_requests.id
-					  AND gm.user_id = $2
-					  AND gm.deleted_at IS NULL
+				pr.status = 'ACTIVE'
+				AND pr.tradition = COALESCE(
+					(SELECT tradition FROM users WHERE id = :viewer AND deleted_at IS NULL),
+					pr.tradition
+				)
+				AND (
+					pr.visibility = 'PUBLIC'
+					OR (pr.visibility = 'GROUP_ONLY' AND EXISTS (
+						SELECT 1
+						FROM prayer_request_groups prg
+						INNER JOIN group_memberships gm ON gm.group_id = prg.group_id
+						WHERE prg.prayer_request_id = pr.id
+						  AND gm.user_id = :viewer
+						  AND gm.deleted_at IS NULL
+					))
+				)
+				AND NOT EXISTS (
+					SELECT 1 FROM user_blocks ub
+					WHERE (ub.blocker_user_id = :viewer AND ub.blocked_user_id = pr.author_id)
+					   OR (ub.blocked_user_id = :viewer AND ub.blocker_user_id = pr.author_id)
 				)
 			)
-		  )
-	`, requestID, userID).Scan(&pr.ID, &pr.AuthorID, &pr.Title, &pr.Body, &pr.Category, &pr.Visibility, &pr.Tradition, &pr.AllowAnonymous, &pr.Status, &pr.PrayedCount, &pr.CreatedAt, &pr.UpdatedAt)
+		)`, ":viewer", viewer)
+}
+
+var getPrayerRequestByIDSQL = `
+	SELECT pr.id::text, pr.author_id::text, pr.title, pr.body, pr.category, pr.visibility, pr.tradition,
+	       pr.allow_anonymous, pr.status, pr.prayed_count, pr.created_at, pr.updated_at
+	FROM prayer_requests pr
+	WHERE pr.id = $1::uuid AND ` + prayerRequestVisibleTo("$2::uuid")
+
+func (r *PostgresRepository) GetPrayerRequestByID(ctx context.Context, userID, requestID string) (models.PrayerRequest, error) {
+	var pr models.PrayerRequest
+	err := r.db.QueryRow(ctx, getPrayerRequestByIDSQL, requestID, userID).Scan(&pr.ID, &pr.AuthorID, &pr.Title, &pr.Body, &pr.Category, &pr.Visibility, &pr.Tradition, &pr.AllowAnonymous, &pr.Status, &pr.PrayedCount, &pr.CreatedAt, &pr.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return models.PrayerRequest{}, ErrPrayerRequestNotFound
@@ -3311,37 +3334,58 @@ func (r *PostgresRepository) CreateVerseShare(ctx context.Context, in models.Cre
 	return r.GetVerseShareByID(ctx, in.AuthorID, shareID)
 }
 
-// GetVerseShareByID aplica o controle de acesso de um único compartilhamento.
-// É o predicado canônico de visibilidade: o autor vê o que é seu (inclusive
-// PRIVATE), PUBLIC é aberto, FRIENDS exige amizade aceita e GROUP_ONLY exige
-// membresia num dos grupos alvo. viewerUserID vazio representa visitante anônimo.
+// verseShareVisibleTo é o predicado canônico de visibilidade de um
+// compartilhamento (alias vs), no mesmo espírito de prayerRequestVisibleTo:
+//
+//   - o autor vê o que é seu, inclusive PRIVATE e depois de trocar de tradição;
+//   - os demais precisam ser da mesma tradição, não ter bloqueio com o autor em
+//     nenhuma direção e cair numa das regras: PUBLIC é aberto, FRIENDS exige
+//     amizade aceita e GROUP_ONLY exige membresia num dos grupos alvo.
+//
+// viewer é a expressão SQL do id do viewer; NULL representa visitante anônimo,
+// que só enxerga PUBLIC.
+func verseShareVisibleTo(viewer string) string {
+	return strings.ReplaceAll(`
+		vs.deleted_at IS NULL
+		AND (
+			vs.author_id = :viewer
+			OR (
+				vs.tradition = COALESCE(
+					(SELECT tradition FROM users WHERE id = :viewer AND deleted_at IS NULL),
+					vs.tradition
+				)
+				AND (
+					vs.visibility = 'PUBLIC'
+					OR (vs.visibility = 'FRIENDS' AND EXISTS (
+						SELECT 1 FROM friendships f
+						WHERE f.status = 'ACCEPTED'
+						  AND ((f.user_id = vs.author_id AND f.friend_user_id = :viewer)
+						    OR (f.friend_user_id = vs.author_id AND f.user_id = :viewer))
+					))
+					OR (vs.visibility = 'GROUP_ONLY' AND EXISTS (
+						SELECT 1 FROM verse_share_groups vsg
+						INNER JOIN group_memberships gm ON gm.group_id = vsg.group_id
+						WHERE vsg.verse_share_id = vs.id
+						  AND gm.user_id = :viewer
+						  AND gm.deleted_at IS NULL
+					))
+				)
+				AND NOT EXISTS (
+					SELECT 1 FROM user_blocks ub
+					WHERE (ub.blocker_user_id = :viewer AND ub.blocked_user_id = vs.author_id)
+					   OR (ub.blocked_user_id = :viewer AND ub.blocker_user_id = vs.author_id)
+				)
+			)
+		)`, ":viewer", viewer)
+}
+
+var getVerseShareByIDSQL = `SELECT ` + verseShareColumns + verseShareFrom + `
+	WHERE vs.id = $1::uuid AND ` + verseShareVisibleTo("NULLIF($2, '')::uuid")
+
+// GetVerseShareByID devolve um compartilhamento visível ao viewer.
+// viewerUserID vazio representa visitante anônimo.
 func (r *PostgresRepository) GetVerseShareByID(ctx context.Context, viewerUserID, shareID string) (models.VerseShare, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT `+verseShareColumns+verseShareFrom+`
-		WHERE vs.id = $1::uuid
-		  AND vs.deleted_at IS NULL
-		  AND vs.tradition = COALESCE(
-		      (SELECT tradition FROM users WHERE id = NULLIF($2, '')::uuid AND deleted_at IS NULL),
-		      vs.tradition
-		  )
-		  AND (
-		      vs.author_id = NULLIF($2, '')::uuid
-		      OR vs.visibility = 'PUBLIC'
-		      OR (vs.visibility = 'FRIENDS' AND EXISTS (
-		          SELECT 1 FROM friendships f
-		          WHERE f.status = 'ACCEPTED'
-		            AND ((f.user_id = vs.author_id AND f.friend_user_id = NULLIF($2, '')::uuid)
-		              OR (f.friend_user_id = vs.author_id AND f.user_id = NULLIF($2, '')::uuid))
-		      ))
-		      OR (vs.visibility = 'GROUP_ONLY' AND EXISTS (
-		          SELECT 1 FROM verse_share_groups vsg
-		          INNER JOIN group_memberships gm ON gm.group_id = vsg.group_id
-		          WHERE vsg.verse_share_id = vs.id
-		            AND gm.user_id = NULLIF($2, '')::uuid
-		            AND gm.deleted_at IS NULL
-		      ))
-		  )
-	`, shareID, viewerUserID)
+	rows, err := r.db.Query(ctx, getVerseShareByIDSQL, shareID, viewerUserID)
 	if err != nil {
 		return models.VerseShare{}, err
 	}
