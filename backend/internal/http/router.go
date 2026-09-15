@@ -45,10 +45,11 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed", prayerHandler.ListPublic)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed/public", prayerHandler.ListPublic)
 		api.Get("/username-availability", profileHandler.UsernameAvailability)
-		api.With(middleware.OptionalAuth(validator)).Get("/verses/shares/{id}", verseHandler.GetShare)
+		api.With(middleware.OptionalAuth(validator), middleware.UUIDParams).Get("/verses/shares/{id}", verseHandler.GetShare)
 
 		api.Group(func(protected chi.Router) {
 			protected.Use(middleware.RequireAuth(validator))
+			protected.Use(middleware.UUIDParams)
 			protected.Get("/profile", profileHandler.GetProfile)
 			protected.Get("/profile/stats", profileHandler.GetProfileStats)
 			protected.Get("/me/prayers", profileHandler.ListMyPrayers)
