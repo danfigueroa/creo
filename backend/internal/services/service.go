@@ -893,8 +893,22 @@ func (s *Service) canManageAnnouncement(ctx context.Context, actorUserID string,
 	return nil
 }
 
-func (s *Service) UpdateAnnouncement(ctx context.Context, actorUserID, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error) {
+// announcementInGroup carrega o aviso e confirma que ele pertence ao grupo da
+// URL. Sem isso, /groups/A/announcements/{aviso de B} editava o aviso de B.
+// A permissão continua sendo checada contra o grupo do próprio aviso.
+func (s *Service) announcementInGroup(ctx context.Context, groupID, announcementID string) (models.GroupAnnouncement, error) {
 	existing, err := s.repo.GetAnnouncementByID(ctx, announcementID)
+	if err != nil {
+		return models.GroupAnnouncement{}, err
+	}
+	if existing.GroupID != groupID {
+		return models.GroupAnnouncement{}, repositories.ErrAnnouncementNotFound
+	}
+	return existing, nil
+}
+
+func (s *Service) UpdateAnnouncement(ctx context.Context, actorUserID, groupID, announcementID string, in models.UpdateAnnouncementInput) (models.GroupAnnouncement, error) {
+	existing, err := s.announcementInGroup(ctx, groupID, announcementID)
 	if err != nil {
 		return models.GroupAnnouncement{}, err
 	}
@@ -931,8 +945,8 @@ func (s *Service) UpdateAnnouncement(ctx context.Context, actorUserID, announcem
 	return s.repo.UpdateAnnouncement(ctx, announcementID, in)
 }
 
-func (s *Service) DeleteAnnouncement(ctx context.Context, actorUserID, announcementID string) error {
-	existing, err := s.repo.GetAnnouncementByID(ctx, announcementID)
+func (s *Service) DeleteAnnouncement(ctx context.Context, actorUserID, groupID, announcementID string) error {
+	existing, err := s.announcementInGroup(ctx, groupID, announcementID)
 	if err != nil {
 		return err
 	}

@@ -128,7 +128,7 @@ func (h *AnnouncementHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		in.EventAt = &t
 	}
-	announcement, err := h.service.UpdateAnnouncement(r.Context(), userID, announcementID, in)
+	announcement, err := h.service.UpdateAnnouncement(r.Context(), userID, chi.URLParam(r, "id"), announcementID, in)
 	if err != nil {
 		writeAnnouncementError(w, err)
 		return
@@ -143,7 +143,7 @@ func (h *AnnouncementHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	announcementID := chi.URLParam(r, "aid")
-	if err := h.service.DeleteAnnouncement(r.Context(), userID, announcementID); err != nil {
+	if err := h.service.DeleteAnnouncement(r.Context(), userID, chi.URLParam(r, "id"), announcementID); err != nil {
 		writeAnnouncementError(w, err)
 		return
 	}
