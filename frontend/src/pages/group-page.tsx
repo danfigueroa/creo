@@ -2,12 +2,14 @@ import { ChangeEvent, FormEvent, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence } from 'motion/react'
 import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
 import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
+import { MotionItem, useSettledKey } from '@/components/motion-list'
 import { Avatar } from '@/components/avatar'
 import { NewRequestModal } from '@/components/new-request-modal'
 import { api } from '@/lib/api'
@@ -373,9 +375,10 @@ function GroupMural({
   const totalPages = Math.max(feedQuery.data?.pagination.totalPages ?? 1, 1)
   const showSkeleton = feedQuery.isLoading && !feedQuery.data
   const groupNameById = useMemo(() => new Map<string, string>(), [])
+  const listKey = useSettledKey(String(page), !!feedQuery.data && !feedQuery.isPlaceholderData)
 
   return (
-    <div className="divide-y divide-primary/20">
+    <div className="relative divide-y divide-primary/20">
       {canPostAnnouncement && (
         <div className="flex flex-wrap items-center gap-2 px-5 py-3">
           <button
@@ -416,19 +419,25 @@ function GroupMural({
         defaultGroupId={groupId}
         onCreated={() => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] })}
       />
-      {items.map((item) => (
-        <FeedCard
-          key={item.id}
-          item={item}
-          viewerId={viewerId}
-          prayerActions={prayerActions}
-          onPray={(subjectId, actionType, kind) => prayMutation.mutate({ subjectId, actionType, kind })}
-          isPrayPending={prayMutation.isPending}
-          lastPrayerHit={lastHit}
-          groupNameById={groupNameById}
-          formatDate={formatDate}
-        />
-      ))}
+      {/* A chave remonta a presença na troca de página: a página nova entra
+          escalonada e a antiga some de uma vez, sem os cards das duas páginas
+          se cruzando. Dentro da mesma página, criar/remover anima o layout. */}
+      <AnimatePresence key={listKey} mode="popLayout">
+        {items.map((item, index) => (
+          <MotionItem key={item.id} index={index}>
+            <FeedCard
+              item={item}
+              viewerId={viewerId}
+              prayerActions={prayerActions}
+              onPray={(subjectId, actionType, kind) => prayMutation.mutate({ subjectId, actionType, kind })}
+              isPrayPending={prayMutation.isPending}
+              lastPrayerHit={lastHit}
+              groupNameById={groupNameById}
+              formatDate={formatDate}
+            />
+          </MotionItem>
+        ))}
+      </AnimatePresence>
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-primary/20 px-5 py-3 text-xs">
           <span className="text-primary">{t('group.pageOf', { page, total: totalPages })}</span>

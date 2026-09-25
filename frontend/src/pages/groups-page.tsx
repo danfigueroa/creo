@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
 import { Button } from '@/components/button'
 import { api } from '@/lib/api'
+import { MotionItem } from '@/components/motion-list'
 
 type JoinPolicy = 'OPEN' | 'REQUEST' | 'INVITE_ONLY'
 
@@ -80,41 +81,42 @@ export function GroupsPage() {
 
         {!isLoading && items.length > 0 && (
           <div className="grid gap-3 sm:grid-cols-2">
-            {items.map((group) => {
+            {items.map((group, index) => {
               const initials = group.name.slice(0, 2).toUpperCase()
               return (
-                <Link
-                  key={group.id}
-                  to={`/groups/${group.id}`}
-                  className="pv-panel group flex h-full flex-col gap-3 rounded-2xl p-5 transition hover:border-primary"
-                >
-                  <div className="flex items-start gap-3">
-                    {group.imageUrl ? (
-                      <img
-                        src={group.imageUrl}
-                        alt=""
-                        className="h-11 w-11 shrink-0 rounded-2xl border-2 border-primary object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-sm font-bold text-primary">
-                        {initials}
-                      </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-base font-semibold text-secondary">{group.name}</h3>
-                      <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-                        {t(`group.policy.${group.joinPolicy}`)}
-                      </p>
+                <MotionItem key={group.id} index={index}>
+                  <Link
+                    to={`/groups/${group.id}`}
+                    className="pv-panel group flex h-full flex-col gap-3 rounded-2xl p-5 transition hover:border-primary"
+                  >
+                    <div className="flex items-start gap-3">
+                      {group.imageUrl ? (
+                        <img
+                          src={group.imageUrl}
+                          alt=""
+                          className="h-11 w-11 shrink-0 rounded-2xl border-2 border-primary object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-sm font-bold text-primary">
+                          {initials}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-base font-semibold text-secondary">{group.name}</h3>
+                        <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+                          {t(`group.policy.${group.joinPolicy}`)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  {group.description && (
-                    <p className="pv-muted text-sm leading-relaxed line-clamp-3">{group.description}</p>
-                  )}
-                  <p className="mt-auto text-[11px] font-semibold uppercase tracking-[0.16em] text-primary opacity-0 transition group-hover:opacity-100">
-                    {t('groups.openGroup')} →
-                  </p>
-                </Link>
+                    {group.description && (
+                      <p className="pv-muted text-sm leading-relaxed line-clamp-3">{group.description}</p>
+                    )}
+                    <p className="mt-auto text-[11px] font-semibold uppercase tracking-[0.16em] text-primary opacity-0 transition group-hover:opacity-100">
+                      {t('groups.openGroup')} →
+                    </p>
+                  </Link>
+                </MotionItem>
               )
             })}
           </div>
