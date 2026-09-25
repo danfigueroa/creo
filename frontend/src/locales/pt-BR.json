@@ -522,6 +522,7 @@
     "latestIntention": "Última intenção",
     "prayedCount_one": "{{count}} oração",
     "prayedCount_other": "{{count}} orações",
+    "suggestTitle": "Pessoas que você talvez conheça",
     "removeFriendDesc": "Tem certeza que quer desfazer amizade com @{{username}}? Vocês deixarão de ver pedidos restritos um do outro."
   },
   "groups": {

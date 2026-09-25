@@ -39,6 +39,15 @@ type FriendRequest = {
   requestedAt: string
 }
 
+type Suggestion = {
+  userId: string
+  username: string
+  displayName: string
+  avatarUrl?: string | null
+  mutualFriends: number
+  sharedGroups: number
+}
+
 // Abaixo disso a grade inteira cabe na tela e o filtro só ocupa espaço.
 const FILTER_MIN_FRIENDS = 6
 
@@ -79,9 +88,17 @@ export function FriendsPage() {
     queryFn: async () => (await api.get<{ items: FriendRequest[] }>('/friends/requests')).data.items ?? []
   })
 
+  const suggestionsQuery = useQuery({
+    queryKey: ['friend-suggestions'],
+    queryFn: async () => (await api.get<{ items: Suggestion[] }>('/users/suggested')).data.items ?? []
+  })
+
   // A sidebar ("Em oração agora") lê a mesma lista com outra chave.
   async function refreshFriends() {
-    await queryClient.invalidateQueries({ queryKey: ['friends'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['friends'] }),
+      queryClient.invalidateQueries({ queryKey: ['friend-suggestions'] })
+    ])
   }
 
   const acceptRequest = useMutation({
@@ -121,6 +138,17 @@ export function FriendsPage() {
     onError: (err) => toast.error(errorMessage(err))
   })
 
+  const sendRequest = useMutation({
+    mutationFn: async (targetUsername: string) => {
+      await api.post('/friends/requests', { targetUsername })
+    },
+    onSuccess: async () => {
+      toast.success(t('pubProfile.requestSent'))
+      await queryClient.invalidateQueries({ queryKey: ['friend-suggestions'] })
+    },
+    onError: (err) => toast.error(errorMessage(err))
+  })
+
   async function handleReject(request: FriendRequest) {
     const ok = await confirm({
       title: t('pubProfile.rejectTitle'),
@@ -143,6 +171,7 @@ export function FriendsPage() {
 
   const friends = friendsQuery.data ?? []
   const requests = requestsQuery.data ?? []
+  const suggestions = suggestionsQuery.data ?? []
   const visibleFriends = useMemo(() => friends.filter((f) => matches(f, filter)), [friends, filter])
 
   return (
@@ -274,9 +303,39 @@ export function FriendsPage() {
           )}
         </section>
 
+        {suggestions.length > 0 && (
+          <section className="people__suggest" aria-labelledby="friends-suggest-h">
+            <h2 id="friends-suggest-h" className="canvas__h">{t('friends.suggestTitle')}</h2>
+            <ul className="suggest-row">
+              {suggestions.map((s) => (
+                <li key={s.userId} className="suggest">
+                  <Avatar user={s} size="lg" linkToProfile />
+                  <Link to={`/u/${s.username}`} className="suggest__name">
+                    {s.displayName}
+                  </Link>
+                  <span className="suggest__reason">{suggestionReason(s)}</span>
+                  <button
+                    type="button"
+                    className="btn btn--ghost-out btn--sm"
+                    disabled={sendRequest.isPending}
+                    onClick={() => sendRequest.mutate(s.username)}
+                  >
+                    {t('friends.addFriend')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
     </PageShell>
   )
+}
+
+function suggestionReason(s: Suggestion): string {
+  if (s.mutualFriends > 0) return i18n.t('friends.mutualFriends', { count: s.mutualFriends })
+  if (s.sharedGroups > 0) return i18n.t('friends.sharedGroups', { count: s.sharedGroups })
+  return `@${s.username}`
 }
 
 function FriendCard({ friend, busy, onRemove }: { friend: Friend; busy: boolean; onRemove: () => void }) {

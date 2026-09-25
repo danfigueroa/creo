@@ -522,6 +522,7 @@
     "latestIntention": "Latest intention",
     "prayedCount_one": "{{count}} prayer",
     "prayedCount_other": "{{count}} prayers",
+    "suggestTitle": "People you may know",
     "removeFriendDesc": "Are you sure you want to remove your friendship with @{{username}}? You'll stop seeing each other's restricted requests."
   },
   "groups": {
