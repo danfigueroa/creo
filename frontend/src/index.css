@@ -4086,6 +4086,25 @@ a.group-card:hover .group-card__go { color: var(--ink); transform: translateX(3p
   .prow__actions { width: 100%; padding-left: 52px; }
 }
 
+/* Telas de auth fora da landing (callbacks, reset): o card da landing sozinho. */
+.auth-solo {
+  width: 100%;
+  max-width: 460px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 40px 20px calc(40px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+}
+.auth-solo__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.auth-solo .welcome__auth-card { padding: 32px 28px 28px; }
+@media (max-width: 480px) {
+  .auth-solo .welcome__auth-card { padding: 26px 20px 22px; }
+}
+
 /* ---------- Formulários de página (grupo, aviso, configurações) ---------- */
 
 .form { display: flex; flex-direction: column; gap: 28px; }

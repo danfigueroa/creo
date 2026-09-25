@@ -1,8 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Input } from '@/components/input'
-import { Button } from '@/components/button'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -195,149 +193,97 @@ export function AuthPage() {
     }
   }
 
-  const heroFeatures = [
-    { title: t('authPage.hero1Title'), body: t('authPage.hero1Body') },
-    { title: t('authPage.hero2Title'), body: t('authPage.hero2Body') },
-    { title: t('authPage.hero3Title'), body: t('authPage.hero3Body') }
-  ]
-
   return (
-    <div className="mx-auto grid min-h-screen w-full max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-stretch">
-      <section className="pv-panel relative flex h-full flex-col overflow-hidden rounded-3xl p-8 sm:p-10">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/15 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-primary/10 blur-3xl"
-        />
+    <div className="auth-solo">
+      <div className="auth-solo__top">
+        <Link to="/" className="welcome__brand" aria-label={t('shell.brandAria')}>
+          <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
+          <span className="brand-word">Creo</span>
+        </Link>
+        <LanguageSwitcher />
+      </div>
 
-        <div className="relative">
-          <div className="flex items-center justify-between gap-3">
-            <Link to="/" className="inline-flex items-center gap-2.5" aria-label={t('shell.brandAria')}>
-              <img src="/creo-icon.png" alt="" className="h-12 w-12 rounded-xl shadow-sm" />
-              <span className="text-2xl font-bold tracking-tight text-secondary">Creo</span>
-            </Link>
-            <LanguageSwitcher />
-          </div>
-          <h1 className="pv-title mt-7 text-3xl font-bold leading-[1.05] text-secondary sm:text-4xl lg:text-[46px]">
-            {t('authPage.heroTitle')}
-          </h1>
-          <p className="pv-muted mt-5 max-w-md text-base leading-relaxed">
-            {t('authPage.heroLede')}
-          </p>
-        </div>
-
-        <ul className="relative mt-10 space-y-3">
-          {heroFeatures.map((feature, index) => (
-            <li key={feature.title} className="flex items-start gap-3 rounded-2xl border border-primary bg-panel/70 px-4 py-3 backdrop-blur">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-secondary">{feature.title}</p>
-                <p className="pv-muted text-xs leading-relaxed">{feature.body}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        <blockquote className="relative mt-auto rounded-2xl border border-primary/40 bg-panel/60 px-5 py-4 backdrop-blur">
-          <p className="pv-title text-sm leading-relaxed text-secondary sm:text-base">
-            {t('landing.quote')}
-          </p>
-          <p className="pv-muted mt-2 text-[11px] font-semibold uppercase tracking-[0.18em]">{t('landing.quoteRef')}</p>
-        </blockquote>
-      </section>
-
-      <section className="pv-panel flex h-full flex-col rounded-3xl p-7 sm:p-9">
-        <h2 className="pv-title text-2xl font-semibold text-secondary sm:text-3xl">
+      <section className="welcome__auth-card">
+        <h1 className="welcome__auth-title">
           {showReset ? t('authPage.resetTitle') : t('authPage.welcomeBack')}
-        </h2>
-        <p className="pv-muted mt-2 text-sm">
+        </h1>
+        <p className="welcome__auth-sub">
           {showReset ? t('authPage.resetSub') : t('authPage.signinSub')}
         </p>
 
         {showReset ? (
-          <>
-            <div className="mt-6 space-y-4">
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
-                <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
-              </label>
-              <Button className="w-full" disabled={isLoading} onClick={onResetPassword} type="button">
-                {isLoading ? t('common.loading') : t('authPage.resetCta')}
-              </Button>
-              <button
-                type="button"
-                onClick={() => { setShowReset(false); setError(''); setInfo('') }}
-                className="w-full text-xs font-semibold text-primary hover:text-secondary"
-              >
-                {t('authPage.backToSignIn')}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <form onSubmit={onSubmit} className="mt-6 space-y-4">
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('landing.email')}</span>
-                <Input className="mt-1.5" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
-              </label>
-              <label className="block">
-                <span className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                  <span>{t('landing.password')}</span>
-                  <button className="text-[11px] font-semibold normal-case tracking-normal text-primary hover:text-secondary" onClick={() => setShowReset(true)} type="button">
-                    {t('landing.forgotPassword')}
-                  </button>
-                </span>
-                <Input className="mt-1.5" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete="current-password" />
-              </label>
-
-              <Button className="w-full" disabled={isLoading} type="submit">
-                {isLoading ? t('common.loading') : t('landing.signIn')}
-              </Button>
-            </form>
-
-            <div className="my-6 flex items-center gap-3" aria-hidden>
-              <span className="h-px flex-1 bg-primary/30" />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('landing.or')}</span>
-              <span className="h-px flex-1 bg-primary/30" />
-            </div>
-
-            <Button className="w-full" disabled={isLoading} onClick={onPasswordlessEmail} type="button" variant="secondary">
-              {t('landing.magicCta')}
-            </Button>
-          </>
-        )}
-
-        {(error || info) && (
-          <div className="mt-4 space-y-2">
-            {error && <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
-            {info && <p role="status" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{info}</p>}
+          <div className="welcome__form">
+            <label className="welcome__field">
+              <span className="welcome__label">{t('landing.email')}</span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
+            </label>
+            <button type="button" className="btn btn--primary welcome__cta" disabled={isLoading} onClick={onResetPassword}>
+              {isLoading ? t('common.loading') : t('authPage.resetCta')}
+            </button>
+            <button
+              type="button"
+              className="welcome__link-quiet"
+              style={{ alignSelf: 'center' }}
+              onClick={() => { setShowReset(false); setError(''); setInfo('') }}
+            >
+              {t('authPage.backToSignIn')}
+            </button>
           </div>
+        ) : (
+          <form onSubmit={onSubmit} className="welcome__form">
+            <label className="welcome__field">
+              <span className="welcome__label">{t('landing.email')}</span>
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
+            </label>
+            <label className="welcome__field">
+              <div className="welcome__label-row">
+                <span className="welcome__label">{t('landing.password')}</span>
+                <button className="welcome__link-quiet" onClick={() => setShowReset(true)} type="button">
+                  {t('landing.forgotPassword')}
+                </button>
+              </div>
+              <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete="current-password" />
+            </label>
+
+            <button type="submit" className="btn btn--primary welcome__cta" disabled={isLoading}>
+              {isLoading ? t('common.loading') : t('landing.signIn')}
+            </button>
+
+            <div className="welcome__or">
+              <span>{t('landing.or')}</span>
+            </div>
+
+            <button type="button" className="welcome__magic" disabled={isLoading} onClick={onPasswordlessEmail}>
+              {t('landing.magicCta')}
+            </button>
+          </form>
         )}
+
+        {error && <p role="alert" className="canvas__alert" style={{ marginTop: 16 }}>{error}</p>}
+        {info && <p role="status" className="canvas__status" style={{ marginTop: 16 }}>{info}</p>}
 
         {(pendingConfirmEmail || linkExpired) && (
           <button
             type="button"
+            className="welcome__link-quiet"
+            style={{ marginTop: 12 }}
             onClick={onResendConfirmation}
             disabled={isLoading}
-            className="mt-3 text-xs font-semibold text-primary hover:text-secondary disabled:opacity-60"
           >
             {t('authPage.resendConfirmation')}
           </button>
         )}
 
-        <p className="pv-muted mt-auto pt-8 text-center text-xs">
+        <p className="welcome__foot">
           {t('landing.noAccount')}{' '}
-          <Link className="font-semibold text-primary hover:text-secondary" to="/">
-            {t('authPage.createYours')}
-          </Link>
-          .
+          <Link to="/">{t('authPage.createYours')}</Link>
         </p>
       </section>
+
+      <figure className="welcome__quote">
+        <blockquote>{t('landing.quote')}</blockquote>
+        <figcaption>{t('landing.quoteRef')}</figcaption>
+      </figure>
     </div>
   )
 }

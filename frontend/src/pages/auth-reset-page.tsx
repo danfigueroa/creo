@@ -1,8 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Input } from '@/components/input'
-import { Button } from '@/components/button'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 
@@ -87,46 +85,40 @@ export function AuthResetPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4 py-8 sm:px-6">
-      <section className="pv-panel rounded-3xl p-7 sm:p-9">
-        <Link to="/" className="inline-flex items-center gap-2.5" aria-label={t('shell.brandAria')}>
-          <img src="/creo-icon.png" alt="" className="h-10 w-10 rounded-xl shadow-sm" />
-          <span className="text-xl font-bold tracking-tight text-secondary">Creo</span>
+    <div className="auth-solo">
+      <div className="auth-solo__top">
+        <Link to="/" className="welcome__brand" aria-label={t('shell.brandAria')}>
+          <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
+          <span className="brand-word">Creo</span>
         </Link>
+      </div>
 
-        <h1 className="pv-title mt-6 text-2xl font-semibold text-secondary sm:text-3xl">
-          {t('reset.title')}
-        </h1>
-        <p className="pv-muted mt-2 text-sm">
-          {t('reset.sub')}
-        </p>
+      <section className="welcome__auth-card">
+        <h1 className="welcome__auth-title">{t('reset.title')}</h1>
+        <p className="welcome__auth-sub">{t('reset.sub')}</p>
 
         {status === 'checking' && (
-          <p role="status" className="mt-6 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">
+          <p role="status" className="canvas__status">
             {t('reset.checking')}
           </p>
         )}
 
         {status === 'no-session' && (
-          <div className="mt-6 space-y-3">
-            <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">
+          <div className="welcome__form">
+            <p role="alert" className="canvas__alert">
               {t('reset.linkInvalid')}
             </p>
-            <Link
-              to="/auth"
-              className="inline-flex w-full items-center justify-center rounded-xl border border-primary bg-panel px-4 py-2.5 text-sm font-semibold text-primary hover:bg-primary/5"
-            >
+            <Link to="/auth?reset=1" className="btn btn--ghost-out welcome__cta" style={{ textAlign: 'center', textDecoration: 'none' }}>
               {t('reset.requestNew')}
             </Link>
           </div>
         )}
 
         {(status === 'ready' || status === 'saving' || status === 'done') && (
-          <form onSubmit={onSubmit} className="mt-6 space-y-4">
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('reset.newPassword')}</span>
-              <Input
-                className="mt-1.5"
+          <form onSubmit={onSubmit} className="welcome__form">
+            <label className="welcome__field">
+              <span className="welcome__label">{t('reset.newPassword')}</span>
+              <input
                 type="password"
                 autoComplete="new-password"
                 value={password}
@@ -135,10 +127,9 @@ export function AuthResetPage() {
                 disabled={status !== 'ready'}
               />
             </label>
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('reset.confirmPassword')}</span>
-              <Input
-                className="mt-1.5"
+            <label className="welcome__field">
+              <span className="welcome__label">{t('reset.confirmPassword')}</span>
+              <input
                 type="password"
                 autoComplete="new-password"
                 value={confirm}
@@ -148,20 +139,12 @@ export function AuthResetPage() {
               />
             </label>
 
-            <Button className="w-full" type="submit" disabled={status !== 'ready'}>
+            <button type="submit" className="btn btn--primary welcome__cta" disabled={status !== 'ready'}>
               {status === 'saving' ? t('common.saving') : status === 'done' ? t('reset.done') : t('reset.savePassword')}
-            </Button>
+            </button>
 
-            {error && (
-              <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">
-                {error}
-              </p>
-            )}
-            {status === 'done' && (
-              <p role="status" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">
-                {t('reset.successRedirect')}
-              </p>
-            )}
+            {error && <p role="alert" className="canvas__alert">{error}</p>}
+            {status === 'done' && <p role="status" className="canvas__status">{t('reset.successRedirect')}</p>}
           </form>
         )}
       </section>
