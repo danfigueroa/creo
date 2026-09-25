@@ -186,6 +186,10 @@ Sistema in-app, **best-effort**: `_ = insertNotificationOn(ctx, exec, in)` — f
 - Eventos suportados (lista completa em `models.go`, `NotificationType*`): `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`, `REQUEST_APPROVED`, `REQUEST_REJECTED`, `REQUEST_CHANGES_ASKED`, `REQUEST_UPDATED`, `REQUEST_ANSWERED`, `GROUP_ANNOUNCEMENT_POSTED`, `MILESTONE_PRAYED`, `MILESTONE_CREATED`, `MILESTONE_STREAK`, `VERSE_SHARE_PRAYED`.
 - `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP, MILESTONE, VERSE_SHARE}` — `subject_id` permite o front navegar.
 
+### Amigos (`GET /friends`)
+
+Cada amigo vem com `bio`, `mutualFriends`, `sharedGroups` e `latestRequest` (id, título, data, orações) — tudo no mesmo statement (`listFriendsSQL`), sem viagem extra. `latestRequest` passa por `prayerRequestVisibleTo(viewer)` **e** exclui `allow_anonymous = true`: mostrar um pedido anônimo no card revelaria a autoria. A sidebar (`['friends','shell']`) lê o mesmo endpoint. Sugestões vêm de `GET /users/suggested`.
+
 ### Performance de feed (convenções)
 
 - **Feeds mesclados** (home, groups, friends, público, mural do grupo) buscam `limit+offset` linhas **cruas** de cada stream, mesclam/fatiam no service e só então enriquecem a página final via `enrichFeedPage`. Não voltar a enriquecer dentro de `ListHomePrayerRequests`/`ListGroupsPrayerRequests`/`ListPrayerRequestsByGroup`/`List*VerseShares`.
@@ -448,6 +452,11 @@ O breakpoint do shell é **900px** (`max-width: 900px`), não os `sm:`/`lg:` do 
   - `.pager`, `.pager__btn`, `.pager__num`
 - **Reações** (`lib/traditions.ts`): cada `PrayerAction` tem `glyph` (rose/sun/diamond/beads/ring) + 4 valores oklch. Católico mapeia 1:1 com o design; evangélico reusa os mesmos glyphs com labels próprios. Componente `<Glyph kind="..." />` em `components/glyph.tsx`.
 - **Avatar** (`components/avatar.tsx`): monogram com hue oklch derivado por hash determinístico do `username`. Quando há `avatarUrl`, mostra a foto.
+- **Páginas que não são feed** (Amigos, Grupos, Criar grupo, Aviso, Moderação) usam `<main className="canvas">` (720px; `canvas--wide` = 1040px para form + prévia). Blocos prontos: `.canvas__h`/`.canvas__count` (título de seção), `.canvas__empty*`, `.canvas__alert`/`.canvas__status` (substituem o `<p role="alert">` com `border-primary`), `.menu-pop` (menu de card, z 45), `.btn--sm`.
+- **Formulários de página**: `.form` › `.field` (`.field__label` + `.field__hint`, `.field__count[--over]`, `.field__control` em `input`/`textarea`, `.field__help`) e `.choice-grid` › `.choice[aria-pressed]` (`.choice__mark/__title/__desc`) no lugar dos cards-radio em Tailwind; `.form-foot` com ações à direita. O modal de nova intenção ainda usa o padrão antigo.
+- **Listas de pessoas**: `.plist` › `.prow` (membros, solicitações de grupo), `.req` (pedidos de amizade), `.friend-card` (grade de amigos; o link do nome cobre o card via `::after`, intenção e menu ficam por cima com `z-index: 1`), `.role-pill--{admin|moderator|member}`, `.policy-pill`.
+- **Grupo**: `<GroupMark>` (`components/group-mark.tsx`) é a marca quadrada com tom oklch por hash do nome; `groupTone()` também pinta a capa sem imagem. Header em `.ghead*`, abas em `.tabs.tabs--group` (`--tab-w` 128px; rola no mobile).
+- **Auth fora da landing** (`/auth`, `/auth/reset`): `.auth-solo` reusa o `.welcome__auth-card` da landing, sem hero.
 - **Classes legacy ainda existem** (`pv-panel`, `pv-title`, `pv-muted`, `pv-chip`, `pv-shimmer`, `pv-tab-underline*`) e foram remapeadas pros novos valores — `pv-title` agora aplica serif. Não criar novas — preferir as do design (`.post`, `.cat-pill`, `.btn`, etc.) em código novo.
 - **Tailwind**: complementa via tokens semânticos. Quando precisa de cor explícita do novo token (ink/card/line), usa `style={{ color: 'var(--ink)' }}` ou class Tailwind arbitrary `text-[var(--ink)]`.
 - **Sem emojis em texto narrativo**. Emojis OK como **ícones de UI**.
