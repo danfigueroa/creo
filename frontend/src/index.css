@@ -3845,6 +3845,101 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
   .req__actions { width: 100%; padding-left: 52px; }
 }
 
+/* ---------- Grupos ------------------------------------------------------- */
+
+/* Cabeçalho de página com ação à direita (ex.: "+ Novo grupo"). */
+.canvas__headrow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+.canvas__alert {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid oklch(0.8 0.06 28);
+  background: oklch(0.96 0.02 28);
+  color: oklch(0.42 0.12 28);
+  border-radius: var(--r-2);
+  font-size: 14px;
+}
+
+.group-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--r-2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.group-mark img { width: 100%; height: 100%; object-fit: cover; }
+
+.group-list { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.group-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+a.group-card:hover { border-color: var(--line-2); background: var(--card-2); }
+.group-card__body { flex: 1; min-width: 0; }
+.group-card__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.group-card__name {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.group-card__desc {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.group-card__go {
+  color: var(--muted-2);
+  font-size: 18px;
+  transition: transform 160ms ease, color 160ms ease;
+}
+a.group-card:hover .group-card__go { color: var(--ink); transform: translateX(3px); }
+
+.policy-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line-2);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .canvas__headrow { flex-direction: column; align-items: stretch; }
+  .canvas__headrow > .btn { text-align: center; }
+  .group-card { padding: 14px; gap: 12px; }
+  .group-card__go { display: none; }
+}
+
 /* Menos movimento: quem pediu isso no sistema recebe as mesmas mudanças de
    estado, só que instantâneas. As animações em JS (motion) obedecem ao
    <MotionConfig reducedMotion="user"> em app/providers.tsx; isto aqui cobre os
