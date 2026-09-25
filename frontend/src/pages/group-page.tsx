@@ -11,6 +11,7 @@ import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } fr
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { MotionItem, useSettledKey } from '@/components/motion-list'
 import { Avatar } from '@/components/avatar'
+import { useConfirm } from '@/components/confirm-dialog'
 import { useComposerStore } from '@/state/composer-store'
 import { api } from '@/lib/api'
 import i18n from '@/lib/i18n'
@@ -462,6 +463,7 @@ function GroupMural({
 function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Role | null; viewerId?: string }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const membersQuery = useQuery({
     queryKey: ['group', groupId, 'members'],
     enabled: !!groupId,
@@ -507,6 +509,16 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
   const items = membersQuery.data?.items ?? []
   const isAdmin = myRole === 'ADMIN'
 
+  async function handleRemove(member: Member) {
+    const ok = await confirm({
+      title: t('group.remove'),
+      description: t('group.removeConfirm', { name: member.displayName || member.username }),
+      confirmLabel: t('group.remove'),
+      destructive: true
+    })
+    if (ok) removeMember.mutate(member.userId)
+  }
+
   return (
     <ul className="divide-y divide-primary/20">
       {items.map((m) => {
@@ -542,11 +554,7 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
             {canRemove && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm(t('group.removeConfirm', { name: m.displayName || m.username }))) {
-                    removeMember.mutate(m.userId)
-                  }
-                }}
+                onClick={() => handleRemove(m)}
                 disabled={removeMember.isPending}
                 className="rounded-full border border-primary/40 px-3 py-1 text-xs text-primary hover:bg-primary/10"
               >
