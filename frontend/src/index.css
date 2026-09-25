@@ -3811,6 +3811,20 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
 .req__meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 .req__actions { display: flex; gap: 6px; flex-shrink: 0; }
 
+/* Faixa de pedidos de amizade no topo do mural. */
+.frbanner {
+  margin: 4px 0 20px;
+  padding: 12px 12px 12px;
+  background: var(--card-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  overflow: hidden;
+}
+.frbanner__faces { display: flex; flex-shrink: 0; }
+.frbanner__faces > * + * { margin-left: -8px; }
+.frbanner__faces > * { box-shadow: 0 0 0 2px var(--card); border-radius: 50%; }
+.frbanner__many .req__name { white-space: normal; font-weight: 500; }
+
 .friend-grid {
   position: relative; /* AnimatePresence popLayout posiciona quem sai em absoluto */
   display: grid;

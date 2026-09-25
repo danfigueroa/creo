@@ -579,6 +579,9 @@
     "updateError": "No se pudo actualizar tu contraseña."
   },
   "feed": {
+    "friendRequestsMany_one": "{{name}} y {{count}} persona más quieren ser tus amigos",
+    "friendRequestsMany_other": "{{name}} y {{count}} personas más quieren ser tus amigos",
+    "friendRequestsSee": "Ver solicitudes",
     "eyebrow": "Muro social",
     "title": "Intenciones y peticiones de oración",
     "sub": "Un espacio sereno para acompañar a quienes oran contigo — y por ti.",

@@ -12,6 +12,7 @@ import { duration, fade } from '@/lib/motion'
 import { Avatar } from '@/components/avatar'
 import { useComposerStore } from '@/state/composer-store'
 import { DailyVerse } from '@/components/daily-verse'
+import { FriendRequestBanner } from '@/components/friend-request-banner'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
 import i18n from '@/lib/i18n'
 
@@ -260,6 +261,8 @@ export function FeedPage() {
             {t('feed.sub')}
           </p>
         </div>
+
+        <FriendRequestBanner />
 
         <div className="tabs" role="tablist" aria-label={t('feed.scopeAria')}>
           {tabs.map((tab) => (
