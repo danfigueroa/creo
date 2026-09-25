@@ -1,5 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { cn } from '@/lib/utils'
+import { ease, springSoft } from '@/lib/motion'
 
 export type ToastVariant = 'success' | 'error' | 'info'
 
@@ -72,14 +74,20 @@ export function ToasterProvider({ children }: { children: ReactNode }) {
         // at the previous 16px offset there.
         style={{ bottom: 'calc(var(--tabbar-h) + var(--safe-b) + 16px)' }}
       >
+        {/* popLayout tira o toast que sai do fluxo na hora, e `layout` faz os
+            que ficam deslizarem para o lugar em vez de pularem. */}
+        <AnimatePresence mode="popLayout" initial={false}>
         {toasts.map((t) => (
-          <button
+          <m.button
             key={t.id}
             type="button"
+            layout
             onClick={() => dismiss(t.id)}
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1, transition: springSoft }}
+            exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.16, ease } }}
             className={cn(
-              'pointer-events-auto max-w-md rounded-2xl border px-4 py-3 text-sm shadow-lg transition',
-              'animate-[fadeIn_0.18s_ease-out]',
+              'pointer-events-auto max-w-md rounded-2xl border px-4 py-3 text-sm shadow-lg',
               t.variant === 'success' && 'border-primary bg-panel text-secondary',
               t.variant === 'error' && 'border-accent bg-panel text-secondary',
               t.variant === 'info' && 'border-primary/40 bg-panel text-secondary'
@@ -95,8 +103,9 @@ export function ToasterProvider({ children }: { children: ReactNode }) {
               aria-hidden
             />
             {t.message}
-          </button>
+          </m.button>
         ))}
+        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   )
