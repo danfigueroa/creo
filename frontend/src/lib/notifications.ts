@@ -38,10 +38,20 @@ export type Notification = {
   payload: Record<string, unknown>
   readAt?: string | null
   createdAt: string
+  // Só em FRIEND_REQUEST_RECEIVED. GONE = recusado ou cancelado.
+  friendRequestStatus?: 'PENDING' | 'ACCEPTED' | 'GONE'
 }
 
 export type ListResponse = {
   items: Notification[]
+  unreadCount: number
+  friendRequests: number
+}
+
+// Pedido ainda aberto: quem mostra as ações é a seção fixa de pedidos, não a
+// linha da notificação.
+export function isPendingFriendRequest(n: Notification): boolean {
+  return n.type === 'FRIEND_REQUEST_RECEIVED' && n.friendRequestStatus === 'PENDING'
 }
 
 export type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'milestone' | 'other'
@@ -95,7 +105,9 @@ export function targetPath(n: Notification): string {
     case 'VERSE_SHARE':
       return `/verses/${n.subjectId}`
     case 'FRIENDSHIP':
-      return '/friends'
+      // Pedido aberto vai para onde se decide; o resto, para a pessoa.
+      if (isPendingFriendRequest(n) || !n.actor?.username) return '/friends'
+      return `/u/${n.actor.username}`
     case 'GROUP':
       return `/groups/${n.subjectId}`
     case 'MILESTONE':
@@ -129,6 +141,8 @@ export function copyFor(n: Notification): string {
       return days ? i18n.t('notif.milestoneStreak', { count: days }) : i18n.t('notif.milestoneStreakGeneric')
     }
     case 'FRIEND_REQUEST_RECEIVED':
+      if (n.friendRequestStatus === 'ACCEPTED') return i18n.t('notif.friendRequestNowFriends', { name })
+      if (n.friendRequestStatus === 'GONE') return i18n.t('notif.friendRequestClosed', { name })
       return i18n.t('notif.friendRequestReceived', { name })
     case 'FRIEND_REQUEST_ACCEPTED':
       return i18n.t('notif.friendRequestAccepted', { name })

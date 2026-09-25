@@ -730,6 +730,94 @@ textarea::placeholder {
   box-sizing: content-box;
 }
 
+/* ---------- Painel do sino ---------------------------------------------- */
+
+/* Âncora do painel. O sino era um link para /notifications, sem retorno
+   visível quando nada mudava; agora abre este painel (≥900px). */
+.nbell { position: relative; }
+.iconbtn.is-on { border-color: var(--ink-3); background: var(--card-2); color: var(--ink); }
+
+.npanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.npanel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.npanel__title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--ink);
+}
+.npanel__action {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.npanel__action:hover { color: var(--ink); }
+.npanel__action:disabled { opacity: 0.5; cursor: default; }
+.npanel__scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.npanel__section { padding: 12px 12px 14px; }
+.npanel__section--requests {
+  background: var(--card-2);
+  border-bottom: 1px solid var(--line);
+}
+.npanel__h {
+  margin: 0 0 8px 4px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.npanel__section--requests .req { padding: 8px 10px; gap: 10px; }
+.npanel__more {
+  display: inline-block;
+  margin: 8px 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.npanel__more:hover { color: var(--ink); }
+.npanel__list { display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+.npanel__empty { padding: 32px 20px; text-align: center; }
+.npanel__empty-title { margin: 0; font-family: var(--serif); font-size: 18px; color: var(--ink); }
+.npanel__empty-sub { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.npanel__foot {
+  display: block;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  transition: background 160ms ease;
+}
+.npanel__foot:hover { background: var(--card-2); color: var(--ink); }
+
 /* ---------- Stage main: shared canvas for non-feed pages ----------------- */
 
 .stage > main {
@@ -2129,6 +2217,27 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
   color: inherit;
 }
 .notif:hover { background: var(--card-2); border-color: var(--line-2); }
+.notif--unread { background: var(--card-2); border-color: var(--line-2); }
+.notif--unread .notif__line { color: var(--ink); }
+/* Ponto de não lida, mesma cor do pip do sino. */
+.notif__dot {
+  flex-shrink: 0;
+  align-self: center;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: oklch(0.65 0.18 30);
+}
+/* Versão do painel: sem moldura, a lista já está dentro de um card. */
+.notif--compact {
+  gap: 12px;
+  padding: 10px 10px;
+  border-color: transparent;
+  background: transparent;
+  border-radius: var(--r-2);
+}
+.notif--compact .notif__line { font-size: 13.5px; line-height: 1.45; }
+.notif--compact.notif--unread { background: color-mix(in oklab, var(--ink) 5%, var(--card)); border-color: transparent; }
+.notif--compact:hover { background: var(--card-2); border-color: transparent; }
 .notif__body { flex: 1; min-width: 0; }
 .notif__line { font-size: 14.5px; line-height: 1.5; color: var(--ink-2); }
 .notif__line strong { color: var(--ink); font-weight: 600; }

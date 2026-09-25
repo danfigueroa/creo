@@ -14,6 +14,8 @@ import { NewRequestModal } from '@/components/new-request-modal'
 import { ShareVerseModal } from '@/components/share-verse-modal'
 import { DailyVerse } from '@/components/daily-verse'
 import { Avatar } from '@/components/avatar'
+import { BellSwing, NotificationBell, UnreadPip } from '@/components/notification-bell'
+import { useNotificationSummary } from '@/lib/use-notifications'
 import { fadeUp, popIn, ease } from '@/lib/motion'
 
 type ProfileMini = {
@@ -63,40 +65,6 @@ const NAV: Array<{ id: NavKind; labelKey: string; to: string; pip?: boolean }> =
   { id: 'grupos', labelKey: 'nav.groups', to: '/groups' },
   { id: 'criar', labelKey: 'nav.createGroup', to: '/groups/new' }
 ]
-
-// Balanço curto do sino. `ring` é um contador: cada incremento remonta o span e
-// toca os keyframes uma vez; 0 (estado inicial) não anima.
-function BellSwing({ ring, children }: PropsWithChildren<{ ring: number }>) {
-  return (
-    <m.span
-      key={ring}
-      aria-hidden
-      style={{ display: 'grid', placeItems: 'center', originY: 0.15 }}
-      animate={ring ? { rotate: [0, -14, 11, -7, 3, 0] } : undefined}
-      transition={{ duration: 0.6, ease: 'easeInOut' }}
-    >
-      {children}
-    </m.span>
-  )
-}
-
-// Pip de não lidas. `initial={false}` no AnimatePresence: numa troca de rota o
-// pip já existente aparece parado; só entra com escala quando surge de verdade.
-function UnreadPip({ show, className }: { show: boolean; className: string }) {
-  return (
-    <AnimatePresence initial={false}>
-      {show && (
-        <m.span
-          className={className}
-          aria-hidden
-          initial={{ scale: 0 }}
-          animate={{ scale: 1, transition: { type: 'spring', stiffness: 500, damping: 18 } }}
-          exit={{ scale: 0, transition: { duration: 0.12 } }}
-        />
-      )}
-    </AnimatePresence>
-  )
-}
 
 function NavIcon({ kind }: { kind: NavKind }) {
   switch (kind) {
@@ -319,12 +287,9 @@ export function PageShell({ children }: PropsWithChildren) {
     queryFn: async () => (await api.get<{ items: Friend[] }>('/friends')).data.items ?? []
   })
 
-  const unreadQuery = useQuery({
-    queryKey: ['notifications', 'unread-count'],
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-    queryFn: async () => (await api.get<{ count: number }>('/notifications/unread-count')).data.count
-  })
+  const summaryQuery = useNotificationSummary()
+  const unreadCount = summaryQuery.data?.count ?? 0
+  const friendRequestCount = summaryQuery.data?.friendRequests ?? 0
 
   const composerOpen = useComposerStore((s) => s.open)
   const composerDefaultGroupId = useComposerStore((s) => s.defaultGroupId)
@@ -513,7 +478,7 @@ export function PageShell({ children }: PropsWithChildren) {
   }, [searchNotice])
 
   const friendsTop = (friendsQuery.data ?? []).slice(0, 4)
-  const hasUnread = !!unreadQuery.data && unreadQuery.data > 0
+  const hasUnread = unreadCount > 0
 
   // O sino balança quando o contador de não lidas SOBE enquanto a tela está
   // aberta. Cada página monta o próprio PageShell, então o primeiro valor visto
@@ -521,13 +486,13 @@ export function PageShell({ children }: PropsWithChildren) {
   const lastUnread = useRef<number | undefined>(undefined)
   const [bellRing, setBellRing] = useState(0)
   useEffect(() => {
-    const count = unreadQuery.data
+    const count = summaryQuery.data?.count
     if (count === undefined) return
     if (lastUnread.current !== undefined && count > lastUnread.current) {
       setBellRing((n) => n + 1)
     }
     lastUnread.current = count
-  }, [unreadQuery.data])
+  }, [summaryQuery.data?.count])
 
   return (
     <div className="app">
@@ -549,7 +514,7 @@ export function PageShell({ children }: PropsWithChildren) {
                 <NavIcon kind={n.id} />
               </span>
               <span>{t(n.labelKey)}</span>
-              {n.pip && unreadQuery.data && unreadQuery.data > 0 ? <span className="navitem__pip" /> : null}
+              {n.pip && hasUnread ? <span className="navitem__pip" /> : null}
             </NavLink>
           ))}
         </nav>
@@ -671,15 +636,7 @@ export function PageShell({ children }: PropsWithChildren) {
             <button type="button" className="btn btn--primary top__new" onClick={() => openComposer()}>
               {t('shell.newIntention')}
             </button>
-            <Link to="/notifications" className="iconbtn" aria-label={unreadQuery.data ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}>
-              <BellSwing ring={bellRing}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-                  <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                  <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                </svg>
-              </BellSwing>
-              <UnreadPip show={hasUnread} className="iconbtn__pip" />
-            </Link>
+            <NotificationBell unread={unreadCount} friendRequests={friendRequestCount} ring={bellRing} />
           </div>
         </div>
 
@@ -701,7 +658,7 @@ export function PageShell({ children }: PropsWithChildren) {
         <NavLink
           to="/notifications"
           className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}
-          aria-label={hasUnread ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}
+          aria-label={hasUnread ? t('shell.notificationsAriaUnread', { count: unreadCount }) : t('shell.notificationsAria')}
         >
           <span className="mtab__icon">
             <BellSwing ring={bellRing}>

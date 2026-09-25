@@ -8,10 +8,12 @@ import { Avatar } from '@/components/avatar'
 import { useToast } from '@/components/toaster'
 import { useConfirm } from '@/components/confirm-dialog'
 import { MotionItem } from '@/components/motion-list'
+import { FriendRequestRow } from '@/components/friend-request-row'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/api-error'
 import i18n from '@/lib/i18n'
 import { relativeTime } from '@/lib/notifications'
+import { useFriendRequests } from '@/lib/use-notifications'
 import { popIn } from '@/lib/motion'
 
 type Friend = {
@@ -29,15 +31,6 @@ type Friend = {
     createdAt: string
     prayedCount: number
   }
-}
-
-type FriendRequest = {
-  id: string
-  fromUserId: string
-  username: string
-  displayName: string
-  avatarUrl?: string | null
-  requestedAt: string
 }
 
 type Suggestion = {
@@ -70,10 +63,7 @@ export function FriendsPage() {
     queryFn: async () => (await api.get<{ items: Friend[] }>('/friends')).data.items ?? []
   })
 
-  const requestsQuery = useQuery({
-    queryKey: ['friend-requests'],
-    queryFn: async () => (await api.get<{ items: FriendRequest[] }>('/friends/requests')).data.items ?? []
-  })
+  const requestsQuery = useFriendRequests()
 
   const suggestionsQuery = useQuery({
     queryKey: ['friend-suggestions'],
@@ -87,32 +77,6 @@ export function FriendsPage() {
       queryClient.invalidateQueries({ queryKey: ['friend-suggestions'] })
     ])
   }
-
-  const acceptRequest = useMutation({
-    mutationFn: async (requestId: string) => {
-      await api.post(`/friends/requests/${requestId}/accept`)
-    },
-    onSuccess: async () => {
-      toast.success(t('pubProfile.friendAccepted'))
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['friend-requests'] }),
-        queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-        refreshFriends()
-      ])
-    },
-    onError: (err) => toast.error(errorMessage(err))
-  })
-
-  const rejectRequest = useMutation({
-    mutationFn: async (requestId: string) => {
-      await api.post(`/friends/requests/${requestId}/reject`)
-    },
-    onSuccess: async () => {
-      toast.info(t('pubProfile.requestRejected'))
-      await queryClient.invalidateQueries({ queryKey: ['friend-requests'] })
-    },
-    onError: (err) => toast.error(errorMessage(err))
-  })
 
   const removeFriend = useMutation({
     mutationFn: async (userId: string) => {
@@ -135,16 +99,6 @@ export function FriendsPage() {
     },
     onError: (err) => toast.error(errorMessage(err))
   })
-
-  async function handleReject(request: FriendRequest) {
-    const ok = await confirm({
-      title: t('pubProfile.rejectTitle'),
-      description: t('pubProfile.rejectDesc', { username: request.username }),
-      confirmLabel: t('group.reject'),
-      destructive: true
-    })
-    if (ok) rejectRequest.mutate(request.id)
-  }
 
   async function handleRemoveFriend(friend: Friend) {
     const ok = await confirm({
@@ -186,34 +140,8 @@ export function FriendsPage() {
               <div className="req-list">
                 <AnimatePresence mode="popLayout">
                   {requests.map((request, index) => (
-                    <MotionItem key={request.id} index={index} className="req">
-                      <Avatar user={request} size="md" linkToProfile />
-                      <div className="req__body">
-                        <Link to={`/u/${request.username}`} className="req__name">
-                          {request.displayName}
-                        </Link>
-                        <div className="req__meta">
-                          @{request.username} · {relativeTime(request.requestedAt)}
-                        </div>
-                      </div>
-                      <div className="req__actions">
-                        <button
-                          type="button"
-                          className="btn btn--primary btn--sm"
-                          disabled={acceptRequest.isPending}
-                          onClick={() => acceptRequest.mutate(request.id)}
-                        >
-                          {t('pubProfile.accept')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost-out btn--sm"
-                          disabled={rejectRequest.isPending}
-                          onClick={() => handleReject(request)}
-                        >
-                          {t('group.reject')}
-                        </button>
-                      </div>
+                    <MotionItem key={request.id} index={index}>
+                      <FriendRequestRow request={request} />
                     </MotionItem>
                   ))}
                 </AnimatePresence>
