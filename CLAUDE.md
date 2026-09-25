@@ -466,6 +466,18 @@ O breakpoint do shell é **900px** (`max-width: 900px`), não os `sm:`/`lg:` do 
 - Erro: `<p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">`.
 - Info: igual mas `role="status"`.
 
+### Animação (`motion`)
+
+- Lib **`motion`** (import de `motion/react`), carregada via `<LazyMotion features={domMax} strict>` em `app/providers.tsx`. **Use sempre `m.*`, nunca `motion.*`** — o `strict` quebra em dev se alguém usar. `domMax` (e não `domAnimation`) porque toasts e listas usam animação de `layout`. Vai num chunk próprio `motion` (`vite.config.ts`), ~43 KB gzip.
+- Presets em `lib/motion.ts`: `ease` (a mesma curva `.2,.7,.2,1` do CSS), `duration`, `fadeUp`, `popIn`, `fade`, `springSoft`, `stagger(i)`. Movimento sóbrio: 120–400 ms, sem bounce forte e sem loop decorativo.
+- **Reduced motion**: `<MotionConfig reducedMotion="user">` cobre o JS; o bloco `@media (prefers-reduced-motion: reduce)` no fim do `index.css` cobre os keyframes CSS. Animação nova em CSS já herda; em JS, via `m.*`, também.
+- Padrões prontos:
+  - **Lista**: `MotionItem` + `useSettledKey` (`components/motion-list.tsx`) dentro de `<AnimatePresence mode="popLayout">` — entra escalonado, desliza no layout e encolhe ao sair. O container precisa de `position: relative` (o `popLayout` posiciona quem sai em absoluto). `useSettledKey` impede que `keepPreviousData` anime a entrada dos itens velhos.
+  - **Número**: `<CountUp value>` (`components/count-up.tsx`) conta só na mudança, nunca no mount.
+  - **Overlay com saída** (modal, menu, sheet): `<AnimatePresence>{open && <m.div variants={popIn} initial="hidden" animate="show" exit="exit">}</AnimatePresence>`. Não voltar a usar `if (!open) return null` — isso mata a saída. `.modal`/`.modal-veil` não têm mais `animation` CSS.
+  - **Rota**: o `<main>` do `PageShell` é `m.main key={pathname}` (só entrada; cada página monta o próprio shell).
+- Reações (`rxPop`/burst) e `.tabs__ink` continuam em CSS de propósito.
+
 ### Skeletons
 
 Usar `<span className="pv-shimmer h-X w-Y rounded">` em loops `[0,1,2,3].map()` antes de `data` chegar. Ver `pages/groups-page.tsx`.
