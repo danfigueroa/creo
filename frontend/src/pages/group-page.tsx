@@ -11,7 +11,7 @@ import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } fr
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { MotionItem, useSettledKey } from '@/components/motion-list'
 import { Avatar } from '@/components/avatar'
-import { NewRequestModal } from '@/components/new-request-modal'
+import { useComposerStore } from '@/state/composer-store'
 import { api } from '@/lib/api'
 import i18n from '@/lib/i18n'
 import { prayerActionsFor, type Tradition } from '@/lib/traditions'
@@ -307,7 +307,7 @@ function GroupMural({
   const canPostAnnouncement = !!myRole && ROLE_RANK[myRole] >= ROLE_RANK.MODERATOR
   const [page, setPage] = useState(1)
   const [lastHit, setLastHit] = useState<{ subjectId: string; actionType: string; fxID: number } | null>(null)
-  const [composerOpen, setComposerOpen] = useState(false)
+  const openComposer = useComposerStore((state) => state.openComposer)
   const pageSize = 10
 
   const feedQuery = useQuery({
@@ -391,7 +391,7 @@ function GroupMural({
           </button>
           <button
             type="button"
-            onClick={() => setComposerOpen(true)}
+            onClick={() => openComposer(groupId, () => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] }))}
             className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary"
           >
             <span aria-hidden>🙏</span>
@@ -406,19 +406,13 @@ function GroupMural({
           <p className="mt-2 text-sm font-semibold text-secondary">{t('group.noPosts')}</p>
           <button
             type="button"
-            onClick={() => setComposerOpen(true)}
+            onClick={() => openComposer(groupId, () => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] }))}
             className="mt-3 inline-block text-xs font-semibold text-primary hover:underline"
           >
             {t('feed.createRequest')}
           </button>
         </div>
       )}
-      <NewRequestModal
-        open={composerOpen}
-        onClose={() => setComposerOpen(false)}
-        defaultGroupId={groupId}
-        onCreated={() => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] })}
-      />
       {/* A chave remonta a presença na troca de página: a página nova entra
           escalonada e a antiga some de uma vez, sem os cards das duas páginas
           se cruzando. Dentro da mesma página, criar/remover anima o layout. */}
