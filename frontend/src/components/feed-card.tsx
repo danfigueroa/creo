@@ -24,7 +24,7 @@ const CATEGORY_PALETTE: Record<string, { bg: string; fg: string }> = {
   OTHER: { bg: 'oklch(0.93 0.03 220)', fg: 'oklch(0.38 0.08 220)' }
 }
 
-function categoryStyle(category: string) {
+export function categoryStyle(category: string) {
   const palette = CATEGORY_PALETTE[category] || CATEGORY_PALETTE.OTHER
   return { background: palette.bg, color: palette.fg }
 }
