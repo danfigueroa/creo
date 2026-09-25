@@ -362,6 +362,7 @@ type FriendRequest struct {
 	FromUserID  string    `json:"fromUserId"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"displayName"`
+	AvatarURL   *string   `json:"avatarUrl,omitempty"`
 	RequestedAt time.Time `json:"requestedAt"`
 }
 

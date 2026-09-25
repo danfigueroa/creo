@@ -1806,7 +1806,7 @@ func (r *PostgresRepository) ListFriends(ctx context.Context, userID string) ([]
 
 func (r *PostgresRepository) ListPendingFriendRequests(ctx context.Context, userID string) ([]models.FriendRequest, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT f.id::text, u.id::text, u.username, u.display_name, f.created_at
+		SELECT f.id::text, u.id::text, u.username, u.display_name, u.avatar_url, f.created_at
 		FROM friendships f
 		INNER JOIN users u ON u.id = f.user_id
 		WHERE f.friend_user_id = $1
@@ -1822,7 +1822,7 @@ func (r *PostgresRepository) ListPendingFriendRequests(ctx context.Context, user
 	items := make([]models.FriendRequest, 0)
 	for rows.Next() {
 		var item models.FriendRequest
-		err = rows.Scan(&item.ID, &item.FromUserID, &item.Username, &item.DisplayName, &item.RequestedAt)
+		err = rows.Scan(&item.ID, &item.FromUserID, &item.Username, &item.DisplayName, &item.AvatarURL, &item.RequestedAt)
 		if err != nil {
 			return nil, err
 		}

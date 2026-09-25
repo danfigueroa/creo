@@ -2060,6 +2060,7 @@ components:
         fromUserId: { type: string, format: uuid }
         username: { type: string }
         displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
         requestedAt: { type: string, format: date-time }
     BlockedUser:
       type: object
