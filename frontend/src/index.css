@@ -3542,3 +3542,19 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
 .daily--feed .daily__cta {
   width: auto;
 }
+
+/* Menos movimento: quem pediu isso no sistema recebe as mesmas mudanças de
+   estado, só que instantâneas. As animações em JS (motion) obedecem ao
+   <MotionConfig reducedMotion="user"> em app/providers.tsx; isto aqui cobre os
+   keyframes e transitions CSS (rxPop, burst, shimmer, pulse, tabs__ink...).
+   0.01ms em vez de 0 para que eventos animationend continuem disparando. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
