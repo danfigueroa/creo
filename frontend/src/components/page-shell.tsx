@@ -1,6 +1,7 @@
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useSessionStore } from '@/state/session-store'
 import { useComposerStore } from '@/state/composer-store'
@@ -13,6 +14,7 @@ import { NewRequestModal } from '@/components/new-request-modal'
 import { ShareVerseModal } from '@/components/share-verse-modal'
 import { DailyVerse } from '@/components/daily-verse'
 import { Avatar } from '@/components/avatar'
+import { fadeUp } from '@/lib/motion'
 
 type ProfileMini = {
   email: string
@@ -248,6 +250,7 @@ function SearchResults({
 
 export function PageShell({ children }: PropsWithChildren) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t, i18n } = useTranslation()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -614,7 +617,12 @@ export function PageShell({ children }: PropsWithChildren) {
           </div>
         </div>
 
-        <main>{children}</main>
+        {/* Transição de rota só de entrada: cada página monta o próprio shell, e
+            segurar a rota anterior para animar a saída exigiria reestruturar o
+            router. O fade curto já tira o "estalo" da troca de tela. */}
+        <m.main key={location.pathname} variants={fadeUp} initial="hidden" animate="show">
+          {children}
+        </m.main>
       </div>
 
       {/* "Criar grupo" is intentionally absent: /groups already carries two CTAs
