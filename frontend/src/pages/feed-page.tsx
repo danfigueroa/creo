@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, m } from 'motion/react'
 import { PageShell } from '@/components/page-shell'
 import { api } from '@/lib/api'
 import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
+import { MotionItem, useSettledKey } from '@/components/motion-list'
+import { duration, fade } from '@/lib/motion'
 import { Avatar } from '@/components/avatar'
 import { useComposerStore } from '@/state/composer-store'
 import { DailyVerse } from '@/components/daily-verse'
@@ -156,6 +159,9 @@ export function FeedPage() {
   const totalPages = Math.max(feedData?.pagination?.totalPages ?? 1, 1)
   const isUnauthorized = (query.error as any)?.response?.status === 401
   const showSkeleton = query.isLoading && !feedData
+  // Troca de aba/página faz crossfade da lista inteira; refetch da mesma página
+  // não (a chave não muda) — só os itens novos ou removidos se animam.
+  const listKey = useSettledKey(`${scope}-${page}`, !!feedData && !query.isPlaceholderData)
 
   useEffect(() => {
     if (!lastPrayerHit) {
@@ -314,48 +320,68 @@ export function FeedPage() {
           </button>
         )}
 
-        <div className="posts">
-          {showSkeleton && <FeedSkeleton count={4} />}
+        <AnimatePresence mode="wait" initial={false}>
+          {showSkeleton ? (
+            <m.div key="skeleton" className="posts" variants={fade} initial="hidden" animate="show" exit="exit">
+              <FeedSkeleton count={4} />
+            </m.div>
+          ) : (
+            <m.div
+              key={listKey}
+              className="posts"
+              // popLayout tira o card que sai do fluxo com position:absolute,
+              // medido contra este container.
+              style={{ position: 'relative' }}
+              initial={{ opacity: 0 }}
+              // Enquanto a próxima aba carrega, a lista atual esmaece — feedback de
+              // que o clique pegou, sem trocar o conteúdo por skeleton.
+              animate={{ opacity: query.isPlaceholderData ? 0.55 : 1, transition: { duration: duration.base } }}
+              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            >
+              {isUnauthorized && activeTab.requiresAuth && (
+                <div className="py-6 text-sm" style={{ color: 'var(--muted)' }}>
+                  {t('feed.needLogin', { scope: t(activeTab.labelKey).toLowerCase() })}
+                </div>
+              )}
 
-          {isUnauthorized && activeTab.requiresAuth && (
-            <div className="py-6 text-sm" style={{ color: 'var(--muted)' }}>
-              {t('feed.needLogin', { scope: t(activeTab.labelKey).toLowerCase() })}
-            </div>
+              {!query.isLoading && !isUnauthorized && items.length === 0 && (
+                <div className="py-10 text-center">
+                  <p className="feed__title" style={{ fontSize: 24 }}>
+                    {t('feed.emptyTitle')}
+                  </p>
+                  <p className="feed__sub mt-2" style={{ margin: '8px auto 0' }}>
+                    {t('feed.emptySub')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openFeedComposer}
+                    className="btn btn--primary"
+                    style={{ marginTop: 16 }}
+                  >
+                    {t('feed.createRequest')}
+                  </button>
+                </div>
+              )}
+
+              <AnimatePresence mode="popLayout">
+                {items.map((item, index) => (
+                  <MotionItem key={item.id} index={index}>
+                    <FeedCard
+                      item={item}
+                      viewerId={profileQuery.data?.id}
+                      prayerActions={prayerActions}
+                      onPray={handlePray}
+                      isPrayPending={prayMutation.isPending}
+                      lastPrayerHit={lastPrayerHit}
+                      groupNameById={groupNameById}
+                      formatDate={formatPostDate}
+                    />
+                  </MotionItem>
+                ))}
+              </AnimatePresence>
+            </m.div>
           )}
-
-          {!query.isLoading && !isUnauthorized && items.length === 0 && (
-            <div className="py-10 text-center">
-              <p className="feed__title" style={{ fontSize: 24 }}>
-                {t('feed.emptyTitle')}
-              </p>
-              <p className="feed__sub mt-2" style={{ margin: '8px auto 0' }}>
-                {t('feed.emptySub')}
-              </p>
-              <button
-                type="button"
-                onClick={openFeedComposer}
-                className="btn btn--primary"
-                style={{ marginTop: 16 }}
-              >
-                {t('feed.createRequest')}
-              </button>
-            </div>
-          )}
-
-          {items.map((item) => (
-            <FeedCard
-              key={item.id}
-              item={item}
-              viewerId={profileQuery.data?.id}
-              prayerActions={prayerActions}
-              onPray={handlePray}
-              isPrayPending={prayMutation.isPending}
-              lastPrayerHit={lastPrayerHit}
-              groupNameById={groupNameById}
-              formatDate={formatPostDate}
-            />
-          ))}
-        </div>
+        </AnimatePresence>
 
         {!isUnauthorized && !query.isLoading && items.length > 0 && totalPages > 1 && (
           <div className="pager">
