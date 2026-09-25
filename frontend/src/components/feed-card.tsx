@@ -2,12 +2,14 @@ import { ReactNode, memo, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, m } from 'motion/react'
 import type { PrayerAction } from '@/lib/traditions'
 import { Avatar } from '@/components/avatar'
 import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
 import { categoryLabel } from '@/lib/categories'
 import i18n from '@/lib/i18n'
+import { popIn } from '@/lib/motion'
 
 const intlLocale = () => i18n.language || 'pt-BR'
 
@@ -586,9 +588,15 @@ function ManageMenu({
           <circle cx="12" cy="19" r="1.6" />
         </svg>
       </button>
+      <AnimatePresence>
       {open && (
-        <div
+        <m.div
           role="menu"
+          variants={popIn}
+          initial="hidden"
+          animate="show"
+          exit="exit"
+          style={{ originX: 1, originY: 1 }}
           className="absolute bottom-full right-0 z-[45] mb-1 w-36 overflow-hidden rounded-xl border border-primary/20 bg-panel shadow-[0_18px_44px_-22px_rgba(var(--shadow-rgb),0.6)]"
         >
           <button
@@ -613,8 +621,9 @@ function ManageMenu({
           >
             {t('card.delete')}
           </button>
-        </div>
+        </m.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

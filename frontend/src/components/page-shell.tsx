@@ -1,7 +1,7 @@
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { m } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useSessionStore } from '@/state/session-store'
 import { useComposerStore } from '@/state/composer-store'
@@ -14,7 +14,7 @@ import { NewRequestModal } from '@/components/new-request-modal'
 import { ShareVerseModal } from '@/components/share-verse-modal'
 import { DailyVerse } from '@/components/daily-verse'
 import { Avatar } from '@/components/avatar'
-import { fadeUp } from '@/lib/motion'
+import { fadeUp, popIn, ease } from '@/lib/motion'
 
 type ProfileMini = {
   email: string
@@ -534,9 +534,15 @@ export function PageShell({ children }: PropsWithChildren) {
               <span className="side__me-handle">{handle || profileQuery.data?.email || ''}</span>
             </span>
           </button>
+          <AnimatePresence>
           {menuOpen && (
-            <div
+            <m.div
               role="menu"
+              variants={popIn}
+              initial="hidden"
+              animate="show"
+              exit="exit"
+              style={{ originY: 1 }}
               className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-[var(--line-2)] bg-[var(--card)] shadow-[var(--shadow-2)]"
             >
               <Link
@@ -560,8 +566,9 @@ export function PageShell({ children }: PropsWithChildren) {
               >
                 {t('shell.logout')}
               </button>
-            </div>
+            </m.div>
           )}
+          </AnimatePresence>
         </div>
       </aside>
 
@@ -585,11 +592,20 @@ export function PageShell({ children }: PropsWithChildren) {
             />
             <span className="top__kbd">⌘K</span>
 
-            {searchOpen && (
-              <div className="absolute left-0 right-0 top-full z-[45] mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]">
-                <SearchResults {...searchResultProps} onPick={() => setSearchOpen(false)} />
-              </div>
-            )}
+            <AnimatePresence>
+              {searchOpen && (
+                <m.div
+                  variants={popIn}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  style={{ originY: 0 }}
+                  className="absolute left-0 right-0 top-full z-[45] mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-[var(--line-2)] bg-[var(--card)] p-3 shadow-[var(--shadow-2)]"
+                >
+                  <SearchResults {...searchResultProps} onPick={() => setSearchOpen(false)} />
+                </m.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="top__actions">
@@ -668,8 +684,17 @@ export function PageShell({ children }: PropsWithChildren) {
         </svg>
       </button>
 
+      <AnimatePresence>
       {sheetOpen && (
-        <div className="searchsheet" role="dialog" aria-modal="true" aria-label={t('shell.searchPlaceholder')}>
+        <m.div
+          className="searchsheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('shell.searchPlaceholder')}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0, transition: { duration: 0.24, ease } }}
+          exit={{ opacity: 0, y: 16, transition: { duration: 0.16, ease } }}
+        >
           <div className="searchsheet__head">
             <button
               type="button"
@@ -697,8 +722,9 @@ export function PageShell({ children }: PropsWithChildren) {
           <div className="searchsheet__body">
             <SearchResults {...searchResultProps} onPick={() => setSheetOpen(false)} />
           </div>
-        </div>
+        </m.div>
       )}
+      </AnimatePresence>
 
       <NewRequestModal
         open={composerOpen}
