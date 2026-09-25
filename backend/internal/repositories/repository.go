@@ -1887,15 +1887,33 @@ func (r *PostgresRepository) ListPendingFriendRequests(ctx context.Context, user
 	return items, rows.Err()
 }
 
+// markFriendRequestNotificationReadSQL é concatenado nas CTEs de aceitar e
+// recusar: resolver o pedido em qualquer tela (painel, /friends, mural) apaga o
+// aviso correspondente do sino, na mesma viagem. Espera a CTE `fr(id)`.
+const markFriendRequestNotificationReadSQL = `
+	seen AS (
+		UPDATE notifications
+		SET read_at = NOW()
+		WHERE user_id = $2
+		  AND type = 'FRIEND_REQUEST_RECEIVED'
+		  AND subject_id IN (SELECT id FROM fr)
+		  AND read_at IS NULL
+	)
+`
+
 func (r *PostgresRepository) AcceptFriendRequest(ctx context.Context, userID, requestID string) error {
 	var senderID string
 	err := r.db.QueryRow(ctx, `
-		UPDATE friendships
-		SET status = 'ACCEPTED', updated_at = NOW()
-		WHERE id = $1
-		  AND friend_user_id = $2
-		  AND status = 'PENDING'
-		RETURNING user_id::text
+		WITH fr AS (
+			UPDATE friendships
+			SET status = 'ACCEPTED', updated_at = NOW()
+			WHERE id = $1
+			  AND friend_user_id = $2
+			  AND status = 'PENDING'
+			RETURNING id, user_id
+		),
+		`+markFriendRequestNotificationReadSQL+`
+		SELECT user_id::text FROM fr
 	`, requestID, userID).Scan(&senderID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1917,16 +1935,22 @@ func (r *PostgresRepository) AcceptFriendRequest(ctx context.Context, userID, re
 }
 
 func (r *PostgresRepository) RejectFriendRequest(ctx context.Context, userID, requestID string) error {
-	tag, err := r.db.Exec(ctx, `
-		DELETE FROM friendships
-		WHERE id = $1
-		  AND friend_user_id = $2
-		  AND status = 'PENDING'
-	`, requestID, userID)
+	var deleted int
+	err := r.db.QueryRow(ctx, `
+		WITH fr AS (
+			DELETE FROM friendships
+			WHERE id = $1
+			  AND friend_user_id = $2
+			  AND status = 'PENDING'
+			RETURNING id
+		),
+		`+markFriendRequestNotificationReadSQL+`
+		SELECT COUNT(*)::int FROM fr
+	`, requestID, userID).Scan(&deleted)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
+	if deleted == 0 {
 		return ErrFriendRequestNotFound
 	}
 	return nil
