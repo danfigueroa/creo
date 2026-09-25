@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, m } from 'motion/react'
 import { Input } from '@/components/input'
 import { TextArea } from '@/components/text-area'
 import { Button } from '@/components/button'
 import { api } from '@/lib/api'
 import { prayerCategoryOptions, type PrayerCategory } from '@/lib/categories'
+import { fade, popIn } from '@/lib/motion'
 
 type Visibility = 'GROUP_ONLY' | 'PRIVATE' | 'PUBLIC'
 
@@ -126,10 +128,6 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
     }
   }, [open, createMutation.isPending, onClose])
 
-  if (!open) {
-    return null
-  }
-
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -155,9 +153,22 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
     onClose()
   }
 
+  // O componente fica montado fechado (o rascunho sobrevive entre aberturas);
+  // AnimatePresence só decide se o véu está na tela, e segura a saída.
   return (
-    <div className="modal-veil" onClick={handleBackdropClick} role="presentation">
-      <div
+    <AnimatePresence>
+    {open && (
+    <m.div
+      className="modal-veil"
+      onClick={handleBackdropClick}
+      role="presentation"
+      variants={fade}
+      initial="hidden"
+      animate="show"
+      exit="exit"
+    >
+      <m.div
+        variants={popIn}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pv-new-request-heading"
@@ -358,7 +369,9 @@ export function NewRequestModal({ open, onClose, onCreated, defaultGroupId }: Pr
           {error && <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
           </div>
         </form>
-      </div>
-    </div>
+      </m.div>
+    </m.div>
+    )}
+    </AnimatePresence>
   )
 }

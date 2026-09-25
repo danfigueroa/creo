@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, m } from 'motion/react'
 import { TextArea } from '@/components/text-area'
 import { Button } from '@/components/button'
 import { api } from '@/lib/api'
+import { fade, popIn } from '@/lib/motion'
 import type { BibleVerse, VerseShareVisibility } from '@/components/feed-card'
 
 type Props = {
@@ -25,7 +27,12 @@ const VISIBILITY_MARKS: Record<VerseShareVisibility, string> = {
   PRIVATE: 'PR'
 }
 
-export function ShareVerseModal({ open, verse, onClose, onShared }: Props) {
+export function ShareVerseModal({ open, verse: verseProp, onClose, onShared }: Props) {
+  // closeVerseComposer zera o versículo junto com `open`. Guardar o último
+  // mantém o conteúdo na tela durante a animação de saída.
+  const lastVerse = useRef(verseProp)
+  if (verseProp) lastVerse.current = verseProp
+  const verse = verseProp ?? lastVerse.current
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [comment, setComment] = useState('')
@@ -116,10 +123,6 @@ export function ShareVerseModal({ open, verse, onClose, onShared }: Props) {
     }
   }, [open, shareMutation.isPending, onClose])
 
-  if (!open || !verse) {
-    return null
-  }
-
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -142,8 +145,19 @@ export function ShareVerseModal({ open, verse, onClose, onShared }: Props) {
   }
 
   return (
-    <div className="modal-veil" onClick={handleBackdropClick} role="presentation">
-      <div
+    <AnimatePresence>
+    {open && verse && (
+    <m.div
+      className="modal-veil"
+      onClick={handleBackdropClick}
+      role="presentation"
+      variants={fade}
+      initial="hidden"
+      animate="show"
+      exit="exit"
+    >
+      <m.div
+        variants={popIn}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pv-share-verse-heading"
@@ -291,7 +305,9 @@ export function ShareVerseModal({ open, verse, onClose, onShared }: Props) {
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+      </m.div>
+    </m.div>
+    )}
+    </AnimatePresence>
   )
 }
