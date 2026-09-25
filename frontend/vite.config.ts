@@ -27,6 +27,11 @@ export default defineConfig({
           if (id.includes('@tanstack')) {
             return 'query'
           }
+          // Chunk próprio: cacheia separado do vendor e não invalida quando
+          // outra dependência muda.
+          if (/[\\/]node_modules[\\/](motion|framer-motion|motion-dom|motion-utils)[\\/]/.test(id)) {
+            return 'motion'
+          }
           return 'vendor'
         }
       }
