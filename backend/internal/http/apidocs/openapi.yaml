@@ -1566,7 +1566,7 @@ paths:
     get:
       tags: [Notificações]
       summary: Listar notificações
-      description: "`limit` tem padrão 20 e máximo 50."
+      description: "`limit` tem padrão 20 e máximo 50 (acima disso, responde 50)."
       parameters:
         - name: limit
           in: query

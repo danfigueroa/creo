@@ -1252,8 +1252,12 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 }
 
 func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
-	if limit <= 0 || limit > 50 {
+	// Acima do teto devolve o teto, não o padrão: a página pede 50 e antes
+	// recebia 20 sem aviso.
+	if limit <= 0 {
 		limit = 20
+	} else if limit > 50 {
+		limit = 50
 	}
 	if offset < 0 {
 		offset = 0

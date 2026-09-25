@@ -2313,8 +2313,10 @@ func (r *PostgresRepository) CreateNotification(ctx context.Context, in models.C
 }
 
 func (r *PostgresRepository) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
-	if limit <= 0 || limit > 50 {
+	if limit <= 0 {
 		limit = 20
+	} else if limit > 50 {
+		limit = 50
 	}
 	if offset < 0 {
 		offset = 0
