@@ -1591,17 +1591,23 @@ paths:
   /notifications/unread-count:
     get:
       tags: [Notificações]
-      summary: Total de não lidas
+      summary: Contadores do shell
+      description: |
+        Um statement só, porque o front faz polling a cada 30 s.
+        `count` = notificações não lidas (sino); `friendRequests` = pedidos de
+        amizade recebidos ainda pendentes (badge em "Amigos"), independente de a
+        notificação ter sido lida.
       responses:
         "200":
-          description: Total
+          description: Contadores
           content:
             application/json:
               schema:
                 type: object
-                required: [count]
+                required: [count, friendRequests]
                 properties:
                   count: { type: integer, format: int64 }
+                  friendRequests: { type: integer, format: int64 }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
 

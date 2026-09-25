@@ -1265,8 +1265,8 @@ func (s *Service) ListNotifications(ctx context.Context, userID string, limit, o
 	return s.repo.ListNotifications(ctx, userID, limit, offset)
 }
 
-func (s *Service) CountUnreadNotifications(ctx context.Context, userID string) (int64, error) {
-	return s.repo.CountUnreadNotifications(ctx, userID)
+func (s *Service) GetNotificationSummary(ctx context.Context, userID string) (models.NotificationSummary, error) {
+	return s.repo.GetNotificationSummary(ctx, userID)
 }
 
 func (s *Service) MarkNotificationRead(ctx context.Context, userID, id string) error {

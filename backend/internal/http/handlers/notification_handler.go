@@ -33,14 +33,14 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
-	unreadCount, err := h.service.CountUnreadNotifications(r.Context(), userID)
+	summary, err := h.service.GetNotificationSummary(r.Context(), userID)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
 		"items":       items,
-		"unreadCount": unreadCount,
+		"unreadCount": summary.Count,
 	})
 }
 
@@ -50,12 +50,12 @@ func (h *NotificationHandler) UnreadCount(w http.ResponseWriter, r *http.Request
 		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 		return
 	}
-	count, err := h.service.CountUnreadNotifications(r.Context(), userID)
+	summary, err := h.service.GetNotificationSummary(r.Context(), userID)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
-	shared.WriteJSON(w, http.StatusOK, map[string]any{"count": count})
+	shared.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {

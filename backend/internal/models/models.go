@@ -444,6 +444,13 @@ type NotificationActor struct {
 	AvatarURL   *string `json:"avatarUrl,omitempty"`
 }
 
+// NotificationSummary são os contadores do shell: não lidas (sino) e pedidos de
+// amizade pendentes recebidos (badge em "Amigos").
+type NotificationSummary struct {
+	Count          int64 `json:"count"`
+	FriendRequests int64 `json:"friendRequests"`
+}
+
 type NotificationView struct {
 	ID          string                  `json:"id"`
 	Type        NotificationType        `json:"type"`

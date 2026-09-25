@@ -106,7 +106,7 @@ type Repository interface {
 	ListModerationHistory(ctx context.Context, viewerUserID, requestID string) ([]models.ModerationActionRecord, error)
 	CreateNotification(ctx context.Context, in models.CreateNotificationInput) error
 	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error)
-	CountUnreadNotifications(ctx context.Context, userID string) (int64, error)
+	GetNotificationSummary(ctx context.Context, userID string) (models.NotificationSummary, error)
 	MarkNotificationRead(ctx context.Context, userID, id string) error
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
 	CreateAnnouncement(ctx context.Context, in models.CreateAnnouncementInput) (models.GroupAnnouncement, error)
@@ -2377,14 +2377,24 @@ func derefStr(p *string) string {
 	return *p
 }
 
-func (r *PostgresRepository) CountUnreadNotifications(ctx context.Context, userID string) (int64, error) {
-	var n int64
-	err := r.db.QueryRow(ctx, `
-		SELECT COUNT(*)::bigint
-		FROM notifications
-		WHERE user_id = $1 AND read_at IS NULL
-	`, userID).Scan(&n)
-	return n, err
+// notificationSummarySQL alimenta os contadores do shell (sino e "Amigos").
+// Os dois totais saem no mesmo statement porque o shell faz polling a cada 30 s:
+// uma viagem a mais aqui é paga em toda tela aberta.
+const notificationSummarySQL = `
+	SELECT
+		(SELECT COUNT(*)::bigint
+		   FROM notifications
+		  WHERE user_id = $1 AND read_at IS NULL),
+		(SELECT COUNT(*)::bigint
+		   FROM friendships f
+		   INNER JOIN users u ON u.id = f.user_id AND u.deleted_at IS NULL
+		  WHERE f.friend_user_id = $1 AND f.status = 'PENDING')
+`
+
+func (r *PostgresRepository) GetNotificationSummary(ctx context.Context, userID string) (models.NotificationSummary, error) {
+	var s models.NotificationSummary
+	err := r.db.QueryRow(ctx, notificationSummarySQL, userID).Scan(&s.Count, &s.FriendRequests)
+	return s, err
 }
 
 func (r *PostgresRepository) MarkNotificationRead(ctx context.Context, userID, id string) error {
