@@ -3940,6 +3940,118 @@ a.group-card:hover .group-card__go { color: var(--ink); transform: translateX(3p
   .group-card__go { display: none; }
 }
 
+/* ---------- Formulários de página (grupo, aviso, configurações) ---------- */
+
+.form { display: flex; flex-direction: column; gap: 28px; }
+.form-section { display: flex; flex-direction: column; gap: 18px; }
+.form-section__h {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field__row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.field__label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.field__hint {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.field__count { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.field__count--over { color: oklch(0.52 0.14 28); }
+.field__help { margin: 0; font-size: 12.5px; color: var(--muted); }
+.field__control {
+  width: 100%;
+  padding: 11px 14px;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.field__control::placeholder { font-family: var(--serif); font-style: italic; color: var(--muted-2); }
+.field__control:focus {
+  outline: none;
+  border-color: var(--ink-3);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ink) 8%, transparent);
+}
+textarea.field__control { min-height: 140px; resize: vertical; }
+.field__pair { display: grid; grid-template-columns: 1fr 8rem; gap: 8px; }
+
+.choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+.choice:hover { border-color: var(--line-2); background: var(--card-2); }
+.choice[aria-pressed='true'] {
+  background: var(--card-2);
+  border-color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--ink-3);
+}
+.choice__mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  transition: background 160ms ease, color 160ms ease;
+}
+.choice[aria-pressed='true'] .choice__mark { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.choice__title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.choice__desc { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+
+.form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.form-foot__note { margin: 0; font-size: 12.5px; color: var(--muted); }
+.form-foot__actions { display: flex; gap: 8px; margin-left: auto; }
+
+@media (max-width: 900px) {
+  .field__control { font-size: 16px; }
+}
+@media (max-width: 640px) {
+  .choice-grid { grid-template-columns: 1fr; }
+  .form-foot { flex-direction: column; align-items: stretch; }
+  .form-foot__actions { margin-left: 0; }
+  .form-foot__actions > .btn { flex: 1; }
+}
+
 /* Menos movimento: quem pediu isso no sistema recebe as mesmas mudanças de
    estado, só que instantâneas. As animações em JS (motion) obedecem ao
    <MotionConfig reducedMotion="user"> em app/providers.tsx; isto aqui cobre os
