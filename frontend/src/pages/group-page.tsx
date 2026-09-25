@@ -11,6 +11,7 @@ import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } fr
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { MotionItem, useSettledKey } from '@/components/motion-list'
 import { Avatar } from '@/components/avatar'
+import { GroupMark, groupTone } from '@/components/group-mark'
 import { useConfirm } from '@/components/confirm-dialog'
 import { useComposerStore } from '@/state/composer-store'
 import { api } from '@/lib/api'
@@ -127,22 +128,27 @@ export function GroupPage() {
 
   return (
     <PageShell>
-      <GroupHeader details={details} loading={detailsQuery.isLoading} />
+      <main className="canvas">
+        <GroupHeader details={details} loading={detailsQuery.isLoading} />
 
-      <div className="pv-panel mt-5 overflow-hidden rounded-3xl">
-        <nav className="flex overflow-x-auto border-b border-primary/20 px-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="tabs tabs--group" role="tablist" aria-label={t('group.tabsAria')}>
           {visibleTabs.map((tabItem) => (
             <button
               key={tabItem.key}
               type="button"
-              className={`pv-tab-underline ${tab === tabItem.key ? 'pv-tab-underline-active' : ''}`}
+              role="tab"
+              aria-selected={tab === tabItem.key}
+              className={`tab ${tab === tabItem.key ? 'is-on' : ''}`}
               onClick={() => setTab(tabItem.key)}
-              aria-current={tab === tabItem.key ? 'page' : undefined}
             >
               {t(tabItem.labelKey)}
             </button>
           ))}
-        </nav>
+          <div
+            className="tabs__ink"
+            style={{ ['--idx' as any]: visibleTabs.findIndex((tabItem) => tabItem.key === tab) } as Record<string, string | number>}
+          />
+        </div>
 
         {tab === 'mural' && (
           <GroupMural
@@ -162,7 +168,7 @@ export function GroupPage() {
         {tab === 'settings' && canSee(myRole, 'ADMIN') && details && (
           <SettingsTab details={details} />
         )}
-      </div>
+      </main>
     </PageShell>
   )
 }
@@ -196,97 +202,67 @@ function GroupHeader({ details, loading }: { details?: GroupDetails; loading: bo
 
   if (loading || !details) {
     return (
-      <section className="pv-panel overflow-hidden rounded-3xl">
-        <div className="pv-shimmer aspect-[16/5] w-full" />
-        <div className="px-5 pb-5 sm:px-7 sm:pb-7">
-          <span className="pv-shimmer -mt-10 block h-20 w-20 rounded-2xl border-4 border-[var(--panel-surface)]" />
-          <span className="pv-shimmer mt-3 block h-6 w-1/2 rounded" />
-          <span className="pv-shimmer mt-2 block h-4 w-3/4 rounded" />
+      <header className="ghead" aria-busy>
+        <div className="ghead__cover pv-shimmer" />
+        <div className="ghead__row">
+          <span className="pv-shimmer ghead__mark-skel" />
+          <div className="ghead__id">
+            <span className="pv-shimmer block h-7 w-1/2 rounded" />
+            <span className="pv-shimmer mt-2 block h-4 w-1/3 rounded" />
+          </div>
         </div>
-      </section>
+      </header>
     )
   }
 
-  const initials = details.name.slice(0, 2).toUpperCase()
+  const tone = groupTone(details.name)
   const actionLabel = leave.error
     ? (leave.error as any)?.response?.data?.error?.message || t('group.leaveError')
     : null
 
   return (
-    <section className="pv-panel overflow-hidden rounded-3xl">
-      {details.imageUrl ? (
-        <img
-          src={details.imageUrl}
-          alt=""
-          className="aspect-[16/5] w-full object-cover"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div
-          aria-hidden
-          className="aspect-[16/5] w-full bg-gradient-to-br from-primary/35 via-primary/15 to-primary/5"
-        />
-      )}
-      <div className="px-5 pb-5 sm:px-7 sm:pb-7">
-        <div className="-mt-10 flex items-end gap-4">
-          {details.imageUrl ? (
-            <img
-              src={details.imageUrl}
-              alt=""
-              className="h-20 w-20 shrink-0 rounded-2xl border-4 border-[var(--panel-surface)] bg-bg object-cover shadow-[0_8px_24px_-12px_rgba(var(--shadow-rgb),0.5)]"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border-4 border-[var(--panel-surface)] bg-bg text-lg font-bold text-primary shadow-[0_8px_24px_-12px_rgba(var(--shadow-rgb),0.5)]">
-              {initials}
-            </span>
-          )}
-          <div className="min-w-0 flex-1 pb-1.5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t('group.eyebrow')}</p>
-            <h1 className="pv-title mt-0.5 text-2xl font-bold leading-tight text-secondary sm:text-3xl">
-              {details.name}
-            </h1>
+    <header className="ghead">
+      <div
+        className="ghead__cover"
+        style={
+          details.imageUrl
+            ? undefined
+            : { background: `linear-gradient(135deg, oklch(0.88 0.05 ${tone}) 0%, oklch(0.93 0.03 ${(tone + 50) % 360}) 100%)` }
+        }
+      >
+        {details.imageUrl && <img src={details.imageUrl} alt="" referrerPolicy="no-referrer" />}
+      </div>
+      <div className="ghead__row">
+        <GroupMark name={details.name} imageUrl={details.imageUrl} size={84} className="ghead__mark" />
+        <div className="ghead__id">
+          <div className="feed__eyebrow" style={{ marginBottom: 4 }}>{t('group.eyebrow')}</div>
+          <h1 className="ghead__name">{details.name}</h1>
+          <div className="ghead__meta">
+            <span>{t('group.memberCount', { count: details.memberCount })}</span>
+            <span aria-hidden>·</span>
+            <span>{policyLabel(details.joinPolicy)}</span>
+            {details.myRole && <span className="policy-pill">{t('group.youAre', { role: roleLabel(details.myRole) })}</span>}
           </div>
         </div>
-
-        <div className="pv-muted mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span>{t('group.memberCount', { count: details.memberCount })}</span>
-          <span aria-hidden>·</span>
-          <span>{policyLabel(details.joinPolicy)}</span>
-          {details.myRole && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] text-primary">
-              {t('group.youAre', { role: roleLabel(details.myRole) })}
-            </span>
-          )}
-        </div>
-
-        {details.description && (
-          <p className="pv-muted mt-3 max-w-2xl text-sm leading-relaxed">{details.description}</p>
-        )}
-
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="ghead__actions">
           {!details.isMember && !details.hasPendingJoin && details.joinPolicy !== 'INVITE_ONLY' && (
-            <Button onClick={() => requestJoin.mutate()} disabled={requestJoin.isPending}>
+            <button type="button" className="btn btn--primary" onClick={() => requestJoin.mutate()} disabled={requestJoin.isPending}>
               {details.joinPolicy === 'OPEN' ? t('group.join') : t('group.requestJoin')}
-            </Button>
+            </button>
           )}
-          {details.hasPendingJoin && (
-            <span className="inline-flex items-center rounded-full border border-primary px-3 py-1.5 text-xs font-semibold text-primary">
-              {t('group.pendingRequest')}
-            </span>
-          )}
+          {details.hasPendingJoin && <span className="policy-pill">{t('group.pendingRequest')}</span>}
           {details.isMember && (
-            <Button variant="secondary" onClick={() => leave.mutate()} disabled={leave.isPending}>
+            <button type="button" className="btn btn--ghost-out" onClick={() => leave.mutate()} disabled={leave.isPending}>
               {leave.isPending ? t('group.leaving') : t('group.leave')}
-            </Button>
+            </button>
           )}
         </div>
-
-        {actionLabel && (
-          <p className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{actionLabel}</p>
-        )}
       </div>
-    </section>
+
+      {details.description && <p className="ghead__bio">{details.description}</p>}
+
+      {actionLabel && <p role="alert" className="canvas__alert" style={{ marginTop: 14 }}>{actionLabel}</p>}
+    </header>
   )
 }
 
@@ -379,36 +355,34 @@ function GroupMural({
   const listKey = useSettledKey(String(page), !!feedQuery.data && !feedQuery.isPlaceholderData)
 
   return (
-    <div className="relative divide-y divide-primary/20">
+    <div>
       {canPostAnnouncement && (
-        <div className="flex flex-wrap items-center gap-2 px-5 py-3">
+        <div className="gmural__actions">
           <button
             type="button"
             onClick={() => navigate(`/groups/${groupId}/announcements/new`)}
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-onPrimary"
+            className="btn btn--primary btn--sm"
           >
-            <span aria-hidden>📣</span>
-            <span>{t('group.createAnnouncement')}</span>
+            {t('group.createAnnouncement')}
           </button>
           <button
             type="button"
             onClick={() => openComposer(groupId, () => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] }))}
-            className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-panel px-3 py-1.5 text-xs font-semibold text-primary"
+            className="btn btn--ghost-out btn--sm"
           >
-            <span aria-hidden>🙏</span>
-            <span>{t('feed.createRequest')}</span>
+            {t('feed.createRequest')}
           </button>
         </div>
       )}
       {showSkeleton && <FeedSkeleton count={3} />}
       {!feedQuery.isLoading && items.length === 0 && (
-        <div className="px-5 py-10 text-center">
-          <p className="text-3xl" aria-hidden>🕊️</p>
-          <p className="mt-2 text-sm font-semibold text-secondary">{t('group.noPosts')}</p>
+        <div className="canvas__empty">
+          <p className="canvas__empty-title">{t('group.noPosts')}</p>
           <button
             type="button"
             onClick={() => openComposer(groupId, () => queryClient.invalidateQueries({ queryKey: ['group', groupId, 'feed'] }))}
-            className="mt-3 inline-block text-xs font-semibold text-primary hover:underline"
+            className="btn btn--ghost-out"
+            style={{ marginTop: 16 }}
           >
             {t('feed.createRequest')}
           </button>
@@ -417,43 +391,43 @@ function GroupMural({
       {/* A chave remonta a presença na troca de página: a página nova entra
           escalonada e a antiga some de uma vez, sem os cards das duas páginas
           se cruzando. Dentro da mesma página, criar/remover anima o layout. */}
-      <AnimatePresence key={listKey} mode="popLayout">
-        {items.map((item, index) => (
-          <MotionItem key={item.id} index={index}>
-            <FeedCard
-              item={item}
-              viewerId={viewerId}
-              prayerActions={prayerActions}
-              onPray={(subjectId, actionType, kind) => prayMutation.mutate({ subjectId, actionType, kind })}
-              isPrayPending={prayMutation.isPending}
-              lastPrayerHit={lastHit}
-              groupNameById={groupNameById}
-              formatDate={formatDate}
-            />
-          </MotionItem>
-        ))}
-      </AnimatePresence>
+      <div className="posts" style={{ position: 'relative' }}>
+        <AnimatePresence key={listKey} mode="popLayout">
+          {items.map((item, index) => (
+            <MotionItem key={item.id} index={index}>
+              <FeedCard
+                item={item}
+                viewerId={viewerId}
+                prayerActions={prayerActions}
+                onPray={(subjectId, actionType, kind) => prayMutation.mutate({ subjectId, actionType, kind })}
+                isPrayPending={prayMutation.isPending}
+                lastPrayerHit={lastHit}
+                groupNameById={groupNameById}
+                formatDate={formatDate}
+              />
+            </MotionItem>
+          ))}
+        </AnimatePresence>
+      </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-primary/20 px-5 py-3 text-xs">
-          <span className="text-primary">{t('group.pageOf', { page, total: totalPages })}</span>
-          <div className="flex gap-2">
-            <button
-              className="rounded-full border border-primary/40 px-3 py-1 text-primary disabled:opacity-40"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              type="button"
-            >
-              ← {t('common.previous')}
-            </button>
-            <button
-              className="rounded-full border border-primary/40 px-3 py-1 text-primary disabled:opacity-40"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              type="button"
-            >
-              {t('common.next')} →
-            </button>
-          </div>
+        <div className="pager">
+          <button
+            type="button"
+            className="pager__btn"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <span aria-hidden>←</span> {t('common.previous')}
+          </button>
+          <span>{t('group.pageOf', { page, total: totalPages })}</span>
+          <button
+            type="button"
+            className="pager__btn"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            {t('common.next')} <span aria-hidden>→</span>
+          </button>
         </div>
       )}
     </div>

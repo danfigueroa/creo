@@ -335,6 +335,7 @@
     "role": { "ADMIN": "Admin", "MODERATOR": "Moderator", "MEMBER": "Member" },
     "policy": { "OPEN": "Open", "REQUEST": "By request", "INVITE_ONLY": "Invite only" },
     "policyRequestAdmin": "By request (admin approves)",
+    "tabsAria": "Group sections",
     "tabMembers": "Members",
     "tabRequests": "Requests",
     "tabSettings": "Settings",

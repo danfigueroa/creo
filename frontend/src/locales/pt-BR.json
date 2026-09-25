@@ -335,6 +335,7 @@
     "role": { "ADMIN": "Admin", "MODERATOR": "Moderador", "MEMBER": "Membro" },
     "policy": { "OPEN": "Entrada livre", "REQUEST": "Por solicitação", "INVITE_ONLY": "Somente convite" },
     "policyRequestAdmin": "Por solicitação (admin aprova)",
+    "tabsAria": "Seções do grupo",
     "tabMembers": "Membros",
     "tabRequests": "Solicitações",
     "tabSettings": "Configurações",
