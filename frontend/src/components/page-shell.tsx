@@ -64,6 +64,40 @@ const NAV: Array<{ id: NavKind; labelKey: string; to: string; pip?: boolean }> =
   { id: 'criar', labelKey: 'nav.createGroup', to: '/groups/new' }
 ]
 
+// Balanço curto do sino. `ring` é um contador: cada incremento remonta o span e
+// toca os keyframes uma vez; 0 (estado inicial) não anima.
+function BellSwing({ ring, children }: PropsWithChildren<{ ring: number }>) {
+  return (
+    <m.span
+      key={ring}
+      aria-hidden
+      style={{ display: 'grid', placeItems: 'center', originY: 0.15 }}
+      animate={ring ? { rotate: [0, -14, 11, -7, 3, 0] } : undefined}
+      transition={{ duration: 0.6, ease: 'easeInOut' }}
+    >
+      {children}
+    </m.span>
+  )
+}
+
+// Pip de não lidas. `initial={false}` no AnimatePresence: numa troca de rota o
+// pip já existente aparece parado; só entra com escala quando surge de verdade.
+function UnreadPip({ show, className }: { show: boolean; className: string }) {
+  return (
+    <AnimatePresence initial={false}>
+      {show && (
+        <m.span
+          className={className}
+          aria-hidden
+          initial={{ scale: 0 }}
+          animate={{ scale: 1, transition: { type: 'spring', stiffness: 500, damping: 18 } }}
+          exit={{ scale: 0, transition: { duration: 0.12 } }}
+        />
+      )}
+    </AnimatePresence>
+  )
+}
+
 function NavIcon({ kind }: { kind: NavKind }) {
   switch (kind) {
     case 'mural':
@@ -481,6 +515,20 @@ export function PageShell({ children }: PropsWithChildren) {
   const friendsTop = (friendsQuery.data ?? []).slice(0, 4)
   const hasUnread = !!unreadQuery.data && unreadQuery.data > 0
 
+  // O sino balança quando o contador de não lidas SOBE enquanto a tela está
+  // aberta. Cada página monta o próprio PageShell, então o primeiro valor visto
+  // num mount só é memorizado — voltar para uma rota com pendências não chacoalha.
+  const lastUnread = useRef<number | undefined>(undefined)
+  const [bellRing, setBellRing] = useState(0)
+  useEffect(() => {
+    const count = unreadQuery.data
+    if (count === undefined) return
+    if (lastUnread.current !== undefined && count > lastUnread.current) {
+      setBellRing((n) => n + 1)
+    }
+    lastUnread.current = count
+  }, [unreadQuery.data])
+
   return (
     <div className="app">
       <aside className="side">
@@ -624,11 +672,13 @@ export function PageShell({ children }: PropsWithChildren) {
               {t('shell.newIntention')}
             </button>
             <Link to="/notifications" className="iconbtn" aria-label={unreadQuery.data ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}>
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
-                <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-              </svg>
-              {unreadQuery.data && unreadQuery.data > 0 ? <span className="iconbtn__pip" aria-hidden /> : null}
+              <BellSwing ring={bellRing}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+                  <path d="M4.5 13V8.5a4.5 4.5 0 0 1 9 0V13l1 1.5h-11L4.5 13Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                  <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                </svg>
+              </BellSwing>
+              <UnreadPip show={hasUnread} className="iconbtn__pip" />
             </Link>
           </div>
         </div>
@@ -654,8 +704,10 @@ export function PageShell({ children }: PropsWithChildren) {
           aria-label={hasUnread ? t('shell.notificationsAriaUnread', { count: unreadQuery.data }) : t('shell.notificationsAria')}
         >
           <span className="mtab__icon">
-            <NavIcon kind="notifs" />
-            {hasUnread ? <span className="mtab__pip" aria-hidden /> : null}
+            <BellSwing ring={bellRing}>
+              <NavIcon kind="notifs" />
+            </BellSwing>
+            <UnreadPip show={hasUnread} className="mtab__pip" />
           </span>
           <span>{t('shell.tabNotifs')}</span>
         </NavLink>
