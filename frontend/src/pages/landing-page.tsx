@@ -1,13 +1,36 @@
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { m, type Variants } from 'motion/react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { translateAuthError } from '@/lib/auth-errors'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { Glyph } from '@/components/glyph'
 import { api } from '@/lib/api'
+import { baseTransition, ease, fadeUp } from '@/lib/motion'
 import { prayerActionsFor, traditionOptions, type Tradition } from '@/lib/traditions'
+
+// Hero: os blocos entram em cascata no mount. Filhos usam `fadeUp`, e o
+// staggerChildren daqui define o ritmo.
+const heroStagger: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } }
+}
+
+// Seções abaixo da dobra: revelam uma vez ao entrar na tela, e os cards de
+// dentro (m.article com `fadeUp`) seguem em cascata.
+const sectionReveal: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease, staggerChildren: 0.06, delayChildren: 0.12 } }
+}
+
+const revealProps = {
+  variants: sectionReveal,
+  initial: 'hidden',
+  whileInView: 'show',
+  viewport: { once: true, margin: '0px 0px -80px 0px' }
+} as const
 
 type AuthTab = 'entrar' | 'criar'
 type UsernameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
@@ -229,52 +252,63 @@ export function LandingPage() {
   return (
     <div className="app app--welcome" data-screen-label="Welcome">
       <div className="welcome">
-        <section className="welcome__hero" aria-label={t('landing.heroAria')}>
-          <div className="welcome__brand">
+        <m.section
+          className="welcome__hero"
+          aria-label={t('landing.heroAria')}
+          variants={heroStagger}
+          initial="hidden"
+          animate="show"
+        >
+          <m.div className="welcome__brand" variants={fadeUp}>
             <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
             <span className="brand-word">Creo</span>
             <LanguageSwitcher className="welcome__lang" />
-          </div>
+          </m.div>
 
-          <h1 className="welcome__title">
+          <m.h1 className="welcome__title" variants={fadeUp}>
             <span dangerouslySetInnerHTML={{ __html: t('landing.title') }} />
-          </h1>
+          </m.h1>
 
-          <p className="welcome__lede">
+          <m.p className="welcome__lede" variants={fadeUp}>
             {t('landing.lede')}
-          </p>
+          </m.p>
 
-          <ul className="welcome__features">
+          <m.ul className="welcome__features" variants={heroStagger}>
             {FEATURES.map((f) => (
-              <li key={f.n} className="welcome__feature">
+              <m.li key={f.n} className="welcome__feature" variants={fadeUp}>
                 <span className="welcome__feature-n">{f.n}</span>
                 <div className="welcome__feature-text">
                   <h3>{f.title}</h3>
                   <p>{f.desc}</p>
                 </div>
-              </li>
+              </m.li>
             ))}
-          </ul>
+          </m.ul>
 
-          <button
+          <m.button
             type="button"
+            variants={fadeUp}
             className="welcome__more"
             onClick={() => howRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           >
             {t('landing.seeHow')}
             <span aria-hidden>↓</span>
-          </button>
+          </m.button>
 
-          <figure className="welcome__quote">
+          <m.figure className="welcome__quote" variants={fadeUp}>
             <blockquote>
               {t('landing.quote')}
             </blockquote>
             <figcaption>{t('landing.quoteRef')}</figcaption>
-          </figure>
-        </section>
+          </m.figure>
+        </m.section>
 
         <section className="welcome__auth" aria-label={t('landing.authAria')} ref={authRef}>
-          <div className="welcome__auth-card">
+          <m.div
+            className="welcome__auth-card"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0, transition: { ...baseTransition, duration: 0.4, delay: 0.18 } }}
+          >
             <div className="welcome__tabs" ref={tabsRef} role="tablist">
               <button
                 type="button"
@@ -551,7 +585,7 @@ export function LandingPage() {
                 </p>
               </>
             )}
-          </div>
+          </m.div>
 
           <div className="welcome__assure">
             <span className="welcome__assure-dot" aria-hidden />
@@ -593,46 +627,46 @@ function LandingSections({
 
   return (
     <div className="lp">
-      <section className="lp-section" ref={howRef}>
+      <m.section className="lp-section" ref={howRef} {...revealProps}>
         <p className="lp-section__eyebrow">{t('landing.howEyebrow')}</p>
         <h2 className="lp-section__title">{t('landing.howTitle')}</h2>
         <p className="lp-section__sub">{t('landing.howSub')}</p>
 
         <div className="lp-section__body lp-steps">
           {steps.map((step) => (
-            <article key={step.n} className="lp-step">
+            <m.article key={step.n} className="lp-step" variants={fadeUp}>
               <span className="lp-step__n">{step.n}</span>
               <h3 className="lp-step__title">{step.title}</h3>
               <p className="lp-step__text">{step.text}</p>
-            </article>
+            </m.article>
           ))}
         </div>
-      </section>
+      </m.section>
 
-      <section className="lp-section">
+      <m.section className="lp-section" {...revealProps}>
         <p className="lp-section__eyebrow">{t('landing.doEyebrow')}</p>
         <h2 className="lp-section__title">{t('landing.doTitle')}</h2>
         <p className="lp-section__sub">{t('landing.doSub')}</p>
 
         <div className="lp-section__body lp-grid">
           {cards.map((card) => (
-            <article key={card.title} className="lp-card">
+            <m.article key={card.title} className="lp-card" variants={fadeUp}>
               <span className="lp-card__mark" aria-hidden>{card.mark}</span>
               <h3 className="lp-card__title">{card.title}</h3>
               <p className="lp-card__text">{card.text}</p>
-            </article>
+            </m.article>
           ))}
         </div>
-      </section>
+      </m.section>
 
-      <section className="lp-section">
+      <m.section className="lp-section" {...revealProps}>
         <p className="lp-section__eyebrow">{t('landing.tradsEyebrow')}</p>
         <h2 className="lp-section__title">{t('landing.tradsTitle')}</h2>
         <p className="lp-section__sub">{t('landing.tradsSub')}</p>
 
         <div className="lp-section__body lp-trads">
           {traditionOptions().map((option) => (
-            <article key={option.value} className="lp-trad">
+            <m.article key={option.value} className="lp-trad" variants={fadeUp}>
               <div className="lp-trad__head">
                 <span className="lp-trad__mark" aria-hidden>{option.emoji}</span>
                 <h3 className="lp-trad__title">{option.label}</h3>
@@ -656,27 +690,27 @@ function LandingSections({
                   </span>
                 ))}
               </div>
-            </article>
+            </m.article>
           ))}
         </div>
-      </section>
+      </m.section>
 
-      <section className="lp-section">
+      <m.section className="lp-section" {...revealProps}>
         <p className="lp-section__eyebrow">{t('landing.privacyEyebrow')}</p>
         <h2 className="lp-section__title">{t('landing.privacyTitle')}</h2>
         <p className="lp-section__sub">{t('landing.privacySub')}</p>
 
         <div className="lp-section__body lp-privacy">
           {visibilities.map((level) => (
-            <article key={level} className="lp-card">
+            <m.article key={level} className="lp-card" variants={fadeUp}>
               <h3 className="lp-card__title">{t(`visibility.${level}.label`)}</h3>
               <p className="lp-card__text">{t(`visibility.${level}.description`)}</p>
-            </article>
+            </m.article>
           ))}
         </div>
-      </section>
+      </m.section>
 
-      <section className="lp-section">
+      <m.section className="lp-section" {...revealProps}>
         <p className="lp-section__eyebrow">{t('landing.langsEyebrow')}</p>
         <h2 className="lp-section__title">{t('landing.langsTitle')}</h2>
         <p className="lp-section__sub">{t('landing.langsSub')}</p>
@@ -687,7 +721,7 @@ function LandingSections({
             {t('landing.signUp')}
           </button>
         </div>
-      </section>
+      </m.section>
 
       <footer className="lp-foot">
         <span className="lp-foot__brand">
