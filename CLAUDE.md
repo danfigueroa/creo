@@ -496,6 +496,10 @@ O breakpoint do shell é **900px** (`max-width: 900px`), não os `sm:`/`lg:` do 
 
 Usar `<span className="pv-shimmer h-X w-Y rounded">` em loops `[0,1,2,3].map()` antes de `data` chegar. Ver `pages/groups-page.tsx`.
 
+### Analytics
+
+Vercel Web Analytics (`@vercel/analytics/react`, **não** `/next` — o app é Vite), montado em `main.tsx` ao lado do `RouterProvider`. Não usa cookie. Pageviews passam por `anonymizeAnalyticsEvent` (`lib/analytics.ts`), que troca segmentos dinâmicos pelo nome do parâmetro (`/u/:username`, `/requests/:id`, …) e descarta a query string. **Rota dinâmica nova em `router.tsx` precisa entrar em `DYNAMIC_ROUTES`**, senão IDs e @usernames vazam para o painel.
+
 ### Validação client espelha backend
 
 Sempre que houver validação no service Go, replicar como microcopy no frontend (ex.: pedido `title` 3-120, `body` 10-4000; grupo `name` 3-80, `description` ≤500). NÃO precisa replicar a checagem completa — só o helper text que ensina o usuário.
