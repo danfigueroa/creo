@@ -460,7 +460,12 @@ type NotificationView struct {
 	Payload     map[string]any          `json:"payload"`
 	ReadAt      *time.Time              `json:"readAt,omitempty"`
 	CreatedAt   time.Time               `json:"createdAt"`
+	// Só em FRIEND_REQUEST_RECEIVED: PENDING, ACCEPTED ou GONE (recusado ou
+	// cancelado — a linha de friendships deixa de existir).
+	FriendRequestStatus string `json:"friendRequestStatus,omitempty"`
 }
+
+const FriendRequestStatusGone = "GONE"
 
 type ModerationQueueItem struct {
 	ID                string         `json:"id"`

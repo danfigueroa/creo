@@ -2362,3 +2362,10 @@ components:
           description: Dados extras que variam com o tipo (ex. `actionType` em PRAYED)
         readAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+        friendRequestStatus:
+          type: string
+          enum: [PENDING, ACCEPTED, GONE]
+          description: |
+            Só em `FRIEND_REQUEST_RECEIVED`: estado atual do pedido. `PENDING`
+            permite aceitar/recusar (`subjectId` é o `requestId`); `GONE` significa
+            recusado ou cancelado pelo remetente.

@@ -2323,9 +2323,16 @@ func (r *PostgresRepository) ListNotifications(ctx context.Context, userID strin
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT n.id::text, n.type, n.subject_type, n.subject_id::text, n.payload, n.read_at, n.created_at,
-		       a.id::text, a.username, a.display_name, a.avatar_url
+		       a.id::text, a.username, a.display_name, a.avatar_url,
+		       f.status
 		FROM notifications n
 		LEFT JOIN users a ON a.id = n.actor_user_id AND a.deleted_at IS NULL
+		-- Estado atual do pedido de amizade, para o front decidir entre mostrar
+		-- Aceitar/Recusar ou o desfecho. Recusado/cancelado apaga a linha: NULL.
+		LEFT JOIN friendships f
+		       ON n.type = 'FRIEND_REQUEST_RECEIVED'
+		      AND f.id = n.subject_id
+		      AND f.friend_user_id = n.user_id
 		WHERE n.user_id = $1
 		ORDER BY n.created_at DESC
 		LIMIT $2 OFFSET $3
@@ -2344,10 +2351,17 @@ func (r *PostgresRepository) ListNotifications(ctx context.Context, userID strin
 			actorUsername  *string
 			actorDisplay   *string
 			actorAvatarURL *string
+			friendStatus   *string
 		)
 		if err = rows.Scan(&n.ID, &n.Type, &n.SubjectType, &n.SubjectID, &payloadBytes, &n.ReadAt, &n.CreatedAt,
-			&actorID, &actorUsername, &actorDisplay, &actorAvatarURL); err != nil {
+			&actorID, &actorUsername, &actorDisplay, &actorAvatarURL, &friendStatus); err != nil {
 			return nil, err
+		}
+		if n.Type == models.NotificationTypeFriendRequestReceived {
+			n.FriendRequestStatus = models.FriendRequestStatusGone
+			if friendStatus != nil {
+				n.FriendRequestStatus = *friendStatus
+			}
 		}
 		if len(payloadBytes) > 0 {
 			if err = json.Unmarshal(payloadBytes, &n.Payload); err != nil {
