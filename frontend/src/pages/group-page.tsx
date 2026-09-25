@@ -4,9 +4,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence } from 'motion/react'
 import { PageShell } from '@/components/page-shell'
-import { Button } from '@/components/button'
-import { Input } from '@/components/input'
-import { TextArea } from '@/components/text-area'
 import { FeedCard, flattenFeedItem, type FeedCardItem, type FeedSubjectKind } from '@/components/feed-card'
 import { FeedSkeleton } from '@/components/feed-skeleton'
 import { MotionItem, useSettledKey } from '@/components/motion-list'
@@ -78,6 +75,10 @@ const roleLabel = (role: Role): string => i18n.t(`group.role.${role}`)
 const policyLabel = (policy: JoinPolicy): string => i18n.t(`group.policy.${policy}`)
 
 const ROLE_RANK: Record<Role, number> = { ADMIN: 3, MODERATOR: 2, MEMBER: 1 }
+
+// Mesmas marcas e ordem do formulário de criação (new-group-page).
+const POLICY_MARKS: Record<JoinPolicy, string> = { OPEN: 'AB', REQUEST: 'SO', INVITE_ONLY: 'CV' }
+const POLICY_ORDER: JoinPolicy[] = ['OPEN', 'REQUEST', 'INVITE_ONLY']
 
 type Tab = 'mural' | 'members' | 'requests' | 'settings'
 
@@ -477,7 +478,7 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
     return <FeedSkeleton count={4} />
   }
   if (membersQuery.error) {
-    return <p className="px-5 py-6 text-sm text-secondary">{t('group.membersLoadError')}</p>
+    return <p role="alert" className="canvas__alert">{t('group.membersLoadError')}</p>
   }
 
   const items = membersQuery.data?.items ?? []
@@ -493,54 +494,58 @@ function MembersTab({ groupId, myRole, viewerId }: { groupId: string; myRole: Ro
     if (ok) removeMember.mutate(member.userId)
   }
 
+  if (items.length === 0) {
+    return <p className="canvas__note">{t('group.noMembers')}</p>
+  }
+
   return (
-    <ul className="divide-y divide-primary/20">
+    <ul className="plist">
       {items.map((m) => {
         const isSelf = m.userId === viewerId
         const canRemove = !isSelf && !!myRole && ROLE_RANK[myRole] > ROLE_RANK[m.role]
         const canChangeRole = isAdmin && !isSelf
         return (
-          <li key={m.userId} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+          <li key={m.userId} className="prow">
             <Avatar user={m} size="md" linkToProfile />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <Link to={`/u/${m.username}`} className="truncate text-sm font-semibold text-secondary hover:text-primary">{m.displayName || t('card.member')}</Link>
-                <span className="truncate text-xs text-primary/80">@{m.username}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em] ${m.role === 'ADMIN' ? 'bg-primary text-onPrimary' : m.role === 'MODERATOR' ? 'bg-primary/15 text-primary' : 'bg-primary/5 text-primary/80'}`}>
-                  {roleLabel(m.role)}
-                </span>
+            <div className="prow__body">
+              <div className="prow__line">
+                <Link to={`/u/${m.username}`} className="prow__name">{m.displayName || t('card.member')}</Link>
+                {!canChangeRole && <span className={`role-pill role-pill--${m.role.toLowerCase()}`}>{roleLabel(m.role)}</span>}
               </div>
-              <p className="pv-muted text-[11px]">{t('group.joinedOn', { date: formatDate(m.joinedAt) })}</p>
+              <div className="prow__meta">
+                @{m.username} · {t('group.joinedOn', { date: formatDate(m.joinedAt) })}
+              </div>
             </div>
-            {canChangeRole && (
-              <select
-                className="rounded-full border border-primary/40 bg-panel px-2 py-1 text-xs text-primary"
-                value={m.role}
-                onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as Role })}
-                disabled={changeRole.isPending}
-                aria-label={t('group.changeRole')}
-              >
-                <option value="MEMBER">{t('group.role.MEMBER')}</option>
-                <option value="MODERATOR">{t('group.role.MODERATOR')}</option>
-                <option value="ADMIN">{t('group.role.ADMIN')}</option>
-              </select>
-            )}
-            {canRemove && (
-              <button
-                type="button"
-                onClick={() => handleRemove(m)}
-                disabled={removeMember.isPending}
-                className="rounded-full border border-primary/40 px-3 py-1 text-xs text-primary hover:bg-primary/10"
-              >
-                {t('group.remove')}
-              </button>
+            {(canChangeRole || canRemove) && (
+              <div className="prow__actions">
+                {canChangeRole && (
+                  <select
+                    className="prow__select"
+                    value={m.role}
+                    onChange={(e) => changeRole.mutate({ userId: m.userId, role: e.target.value as Role })}
+                    disabled={changeRole.isPending}
+                    aria-label={t('group.changeRole')}
+                  >
+                    <option value="MEMBER">{t('group.role.MEMBER')}</option>
+                    <option value="MODERATOR">{t('group.role.MODERATOR')}</option>
+                    <option value="ADMIN">{t('group.role.ADMIN')}</option>
+                  </select>
+                )}
+                {canRemove && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(m)}
+                    disabled={removeMember.isPending}
+                    className="btn btn--ghost btn--sm"
+                  >
+                    {t('group.remove')}
+                  </button>
+                )}
+              </div>
             )}
           </li>
         )
       })}
-      {items.length === 0 && (
-        <li className="px-5 py-8 text-center text-sm text-secondary">{t('group.noMembers')}</li>
-      )}
     </ul>
   )
 }
@@ -581,32 +586,29 @@ function RequestsTab({ groupId }: { groupId: string }) {
   if (requests.isLoading) return <FeedSkeleton count={2} />
   const items = requests.data ?? []
   if (items.length === 0) {
-    return <p className="px-5 py-8 text-center text-sm text-secondary">{t('group.noRequests')}</p>
+    return <p className="canvas__note">{t('group.noRequests')}</p>
   }
   return (
-    <ul className="divide-y divide-primary/20">
-      {items.map((req) => {
-        return (
-          <li key={req.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <div className="flex min-w-0 items-center gap-3">
-              <Avatar user={req} size="md" linkToProfile />
-              <div className="min-w-0">
-                <Link to={`/u/${req.username}`} className="block truncate text-sm font-semibold text-secondary hover:text-primary">{req.displayName || req.username}</Link>
-                <p className="truncate text-xs text-primary/80">@{req.username}</p>
-                <p className="pv-muted text-[11px]">{t('group.requestedOn', { date: formatDate(req.requestedAt) })}</p>
-              </div>
+    <ul className="plist">
+      {items.map((req) => (
+        <li key={req.id} className="prow">
+          <Avatar user={req} size="md" linkToProfile />
+          <div className="prow__body">
+            <Link to={`/u/${req.username}`} className="prow__name">{req.displayName || req.username}</Link>
+            <div className="prow__meta">
+              @{req.username} · {t('group.requestedOn', { date: formatDate(req.requestedAt) })}
             </div>
-            <div className="flex shrink-0 gap-2">
-              <Button variant="secondary" onClick={() => reject.mutate(req.id)} disabled={pending}>
-                {t('group.reject')}
-              </Button>
-              <Button onClick={() => approve.mutate(req.id)} disabled={pending}>
-                {t('group.approve')}
-              </Button>
-            </div>
-          </li>
-        )
-      })}
+          </div>
+          <div className="prow__actions">
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => approve.mutate(req.id)} disabled={pending}>
+              {t('group.approve')}
+            </button>
+            <button type="button" className="btn btn--ghost-out btn--sm" onClick={() => reject.mutate(req.id)} disabled={pending}>
+              {t('group.reject')}
+            </button>
+          </div>
+        </li>
+      ))}
     </ul>
   )
 }
@@ -706,23 +708,12 @@ function SettingsTab({ details }: { details: GroupDetails }) {
   const maxMb = Math.round(IMAGE_MAX_BYTES / (1024 * 1024))
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5 px-5 py-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">{t('group.photoLabel')}</p>
-        <p className="pv-muted mt-1 text-[11px]">{t('group.photoHelp', { max: maxMb })}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-16 w-16 rounded-2xl border-2 border-primary object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="inline-flex h-16 w-16 items-center justify-center rounded-2xl border-2 border-primary bg-bg text-lg font-bold text-primary">
-              {details.name.slice(0, 2).toUpperCase()}
-            </span>
-          )}
+    <form onSubmit={onSubmit} className="form">
+      <div className="field">
+        <span className="field__label">{t('group.photoLabel')}</span>
+        <p className="field__help">{t('group.photoHelp', { max: maxMb })}</p>
+        <div className="flex flex-wrap items-center gap-3" style={{ marginTop: 6 }}>
+          <GroupMark name={details.name} imageUrl={imageUrl} size={64} />
           <input
             ref={fileInputRef}
             type="file"
@@ -731,53 +722,70 @@ function SettingsTab({ details }: { details: GroupDetails }) {
             onChange={onFileChange}
             aria-label={t('group.selectPhoto')}
           />
-          <Button
-            type="button"
-            disabled={photoBusy}
-            onClick={() => fileInputRef.current?.click()}
-          >
+          <button type="button" className="btn btn--ghost-out btn--sm" disabled={photoBusy} onClick={() => fileInputRef.current?.click()}>
             {uploadPhoto.isPending ? t('profile.uploading') : imageUrl ? t('profile.changePhoto') : t('profile.uploadPhoto')}
-          </Button>
+          </button>
           {imageUrl && (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={photoBusy}
-              onClick={() => removePhoto.mutate()}
-            >
+            <button type="button" className="btn btn--ghost btn--sm" disabled={photoBusy} onClick={() => removePhoto.mutate()}>
               {t('group.removePhoto')}
-            </Button>
+            </button>
           )}
         </div>
-        {photoStatus && <p role="status" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{photoStatus}</p>}
-        {photoError && <p role="alert" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{photoError}</p>}
+        {photoStatus && <p role="status" className="canvas__status">{photoStatus}</p>}
+        {photoError && <p role="alert" className="canvas__alert">{photoError}</p>}
       </div>
 
-      <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        {t('group.nameLabel')}
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('group.namePlaceholder')} />
-      </label>
-      <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        {t('group.descriptionLabel')}
-        <TextArea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('group.descriptionPlaceholder')} />
-      </label>
-      <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-        {t('group.joinPolicyLabel')}
-        <select
-          className="mt-1 block w-full rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
-          value={joinPolicy}
-          onChange={(e) => setJoinPolicy(e.target.value as JoinPolicy)}
-        >
-          <option value="OPEN">{t('group.policy.OPEN')}</option>
-          <option value="REQUEST">{t('group.policyRequestAdmin')}</option>
-          <option value="INVITE_ONLY">{t('group.policy.INVITE_ONLY')}</option>
-        </select>
-      </label>
-      {status && <p className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{status}</p>}
-      {error && <p className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
-      <Button type="submit" disabled={update.isPending}>
-        {update.isPending ? t('common.saving') : t('profile.saveChanges')}
-      </Button>
+      <div className="field">
+        <label htmlFor="pv-group-edit-name" className="field__label">{t('group.nameLabel')}</label>
+        <input
+          id="pv-group-edit-name"
+          className="field__control"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t('group.namePlaceholder')}
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="pv-group-edit-description" className="field__label">{t('group.descriptionLabel')}</label>
+        <textarea
+          id="pv-group-edit-description"
+          className="field__control"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t('group.descriptionPlaceholder')}
+        />
+      </div>
+
+      <div className="field">
+        <span className="field__label">{t('group.joinPolicyLabel')}</span>
+        <div className="choice-grid" style={{ marginTop: 6 }}>
+          {POLICY_ORDER.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setJoinPolicy(value)}
+              aria-pressed={joinPolicy === value}
+              className="choice"
+            >
+              <span className="choice__mark">{POLICY_MARKS[value]}</span>
+              <span className="choice__title">{t(`newGroup.policy.${value}.label`)}</span>
+              <span className="choice__desc">{t(`newGroup.policy.${value}.description`)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {status && <p role="status" className="canvas__status">{status}</p>}
+      {error && <p role="alert" className="canvas__alert">{error}</p>}
+
+      <div className="form-foot">
+        <div className="form-foot__actions">
+          <button type="submit" className="btn btn--primary" disabled={update.isPending}>
+            {update.isPending ? t('common.saving') : t('profile.saveChanges')}
+          </button>
+        </div>
+      </div>
     </form>
   )
 }
