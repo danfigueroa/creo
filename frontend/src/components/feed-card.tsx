@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/confirm-dialog'
 import { api } from '@/lib/api'
 import { categoryLabel } from '@/lib/categories'
 import i18n from '@/lib/i18n'
+import { CountUp } from '@/components/count-up'
 import { popIn } from '@/lib/motion'
 
 const intlLocale = () => i18n.language || 'pt-BR'
@@ -345,7 +346,7 @@ function PrayerCard({
         </div>
         {total > 0 && (
           <div className="post__total" aria-label={t('card.prayingTotalAria', { count: total })}>
-            <span className="post__total-num">{total}</span>
+            <CountUp value={total} className="post__total-num" />
             <span className="post__total-label">{t('card.praying')}</span>
           </div>
         )}
@@ -757,7 +758,7 @@ function VerseCard({ item, viewerId, prayerActions, onPray, isPrayPending, lastP
         </div>
         {total > 0 && (
           <div className="post__total" aria-label={t('card.prayingTotalAria', { count: total })}>
-            <span className="post__total-num">{total}</span>
+            <CountUp value={total} className="post__total-num" />
             <span className="post__total-label">{t('card.praying')}</span>
           </div>
         )}

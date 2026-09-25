@@ -10,6 +10,7 @@ import { api } from '@/lib/api'
 import i18n from '@/lib/i18n'
 import { categoryLabel } from '@/lib/categories'
 import { prayerActionsFor, type Tradition, type PrayerAction } from '@/lib/traditions'
+import { CountUp } from '@/components/count-up'
 
 type RequestDetail = {
   id: string
@@ -350,7 +351,7 @@ export function RequestDetailPage() {
 
               {total > 0 && (
                 <div className="detail__total">
-                  <span className="detail__total-num">{total}</span>
+                  <CountUp value={total} className="detail__total-num" />
                   <span className="detail__total-label">{t('reqDetail.totalLabel')}</span>
                 </div>
               )}
