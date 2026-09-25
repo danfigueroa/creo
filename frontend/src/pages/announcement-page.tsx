@@ -3,9 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { PageShell } from '@/components/page-shell'
-import { Input } from '@/components/input'
-import { TextArea } from '@/components/text-area'
-import { Button } from '@/components/button'
 import { AnnouncementCardLayout, type AnnouncementFeedItem } from '@/components/feed-card'
 import { api } from '@/lib/api'
 import {
@@ -238,98 +235,84 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
 
   return (
     <PageShell>
-      <section className="pv-panel rounded-3xl p-5 sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          {mode === 'edit' ? t('announce.editEyebrow') : t('announce.newEyebrow')}
-        </p>
-        <h1 className="pv-title mt-2 text-2xl font-bold text-secondary sm:text-3xl">
-          {mode === 'edit' ? t('announce.editTitle') : t('announce.newTitle')}
-        </h1>
-        <p className="pv-muted mt-2 max-w-2xl text-sm">
-          {t('announce.sub')}
-          {details?.name ? <> {t('announce.groupLabel')} <span className="font-semibold text-primary">{details.name}</span>.</> : null}
-        </p>
+      <main className="canvas canvas--wide">
+        <div className="feed__head">
+          <div className="feed__eyebrow">{mode === 'edit' ? t('announce.editEyebrow') : t('announce.newEyebrow')}</div>
+          <h1 className="feed__title">{mode === 'edit' ? t('announce.editTitle') : t('announce.newTitle')}</h1>
+          <p className="feed__sub">
+            {t('announce.sub')}
+            {details?.name ? <> {t('announce.groupLabel')} <strong style={{ color: 'var(--ink)', fontWeight: 600 }}>{details.name}</strong>.</> : null}
+          </p>
+        </div>
 
-        <div className="mt-7 grid gap-7 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <form onSubmit={onSubmit} className="space-y-8">
-            <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.aboutEvent')}</p>
-              <div className="mt-3 space-y-5">
-                <div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <label htmlFor="pv-ann-title" className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                      {t('request.titleLabel')}
-                    </label>
-                    <span className={`text-[11px] tabular-nums ${trimmedTitle.length > TITLE_MAX ? 'text-primary' : 'pv-muted'}`}>{titleCounter}</span>
-                  </div>
-                  <Input
-                    id="pv-ann-title"
-                    className="mt-1.5"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder={t('announce.titlePlaceholder')}
-                    maxLength={TITLE_MAX + 20}
-                  />
-                  <p className="pv-muted mt-1.5 text-[11px]">{t('announce.between', { min: TITLE_MIN, max: TITLE_MAX })}</p>
+        <div className="split">
+          <form onSubmit={onSubmit} className="form">
+            <section className="form-section">
+              <h2 className="form-section__h">{t('announce.aboutEvent')}</h2>
+              <div className="field">
+                <div className="field__row">
+                  <label htmlFor="pv-ann-title" className="field__label">{t('request.titleLabel')}</label>
+                  <span className={`field__count ${trimmedTitle.length > TITLE_MAX ? 'field__count--over' : ''}`}>{titleCounter}</span>
                 </div>
+                <input
+                  id="pv-ann-title"
+                  className="field__control"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t('announce.titlePlaceholder')}
+                  maxLength={TITLE_MAX + 20}
+                />
+                <p className="field__help">{t('announce.between', { min: TITLE_MIN, max: TITLE_MAX })}</p>
+              </div>
 
-                <div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <label htmlFor="pv-ann-body" className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                      {t('group.descriptionLabel')}
-                    </label>
-                    <span className={`text-[11px] tabular-nums ${trimmedBody.length > BODY_MAX ? 'text-primary' : 'pv-muted'}`}>{bodyCounter}</span>
-                  </div>
-                  <TextArea
-                    id="pv-ann-body"
-                    className="mt-1.5 min-h-[160px]"
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder={t('announce.bodyPlaceholder')}
-                  />
-                  <p className="pv-muted mt-1.5 text-[11px]">{t('announce.between', { min: BODY_MIN, max: BODY_MAX })}</p>
+              <div className="field">
+                <div className="field__row">
+                  <label htmlFor="pv-ann-body" className="field__label">{t('group.descriptionLabel')}</label>
+                  <span className={`field__count ${trimmedBody.length > BODY_MAX ? 'field__count--over' : ''}`}>{bodyCounter}</span>
                 </div>
+                <textarea
+                  id="pv-ann-body"
+                  className="field__control"
+                  style={{ minHeight: 160 }}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder={t('announce.bodyPlaceholder')}
+                />
+                <p className="field__help">{t('announce.between', { min: BODY_MIN, max: BODY_MAX })}</p>
               </div>
             </section>
 
-            <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.whenLabel')}</p>
-              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                <input
-                  type="date"
-                  aria-label={t('announce.eventDate')}
-                  className="block w-full rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
-                  value={dateStr}
-                  onChange={(e) => setDateStr(e.target.value)}
-                />
-                <input
-                  type="time"
-                  aria-label={t('announce.eventTime')}
-                  step={300}
-                  className="block w-[7.5rem] rounded-2xl border border-primary bg-panel px-3 py-2 text-sm text-secondary"
-                  value={timeStr}
-                  onChange={(e) => setTimeStr(e.target.value)}
-                />
+            <section className="form-section">
+              <h2 className="form-section__h">{t('announce.whenLabel')}</h2>
+              <div className="field">
+                <div className="field__pair">
+                  <input
+                    type="date"
+                    aria-label={t('announce.eventDate')}
+                    className="field__control"
+                    value={dateStr}
+                    onChange={(e) => setDateStr(e.target.value)}
+                  />
+                  <input
+                    type="time"
+                    aria-label={t('announce.eventTime')}
+                    step={300}
+                    className="field__control"
+                    value={timeStr}
+                    onChange={(e) => setTimeStr(e.target.value)}
+                  />
+                </div>
+                <p className="field__help">{t('announce.editLater')}</p>
               </div>
-              <p className="pv-muted mt-1.5 text-[11px]">{t('announce.editLater')}</p>
             </section>
 
-            <section>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.imageLabel')}</p>
-              <p className="pv-muted mt-1 text-[11px]">{t('announce.imageHelp', { max: maxMb })}</p>
-              <div className="mt-3 space-y-3">
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt=""
-                    className="aspect-[16/9] w-full max-w-md rounded-xl border border-primary/30 object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="flex aspect-[16/9] w-full max-w-md items-center justify-center rounded-xl border border-dashed border-primary/40 text-xs text-primary/70">
-                    {t('announce.noImage')}
-                  </div>
-                )}
+            <section className="form-section">
+              <h2 className="form-section__h">{t('announce.imageLabel')}</h2>
+              <div className="field">
+                <p className="field__help">{t('announce.imageHelp', { max: maxMb })}</p>
+                <div className="image-drop">
+                  {imageUrl ? <img src={imageUrl} alt="" referrerPolicy="no-referrer" /> : t('announce.noImage')}
+                </div>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -338,41 +321,41 @@ export function AnnouncementPage({ mode }: { mode: 'create' | 'edit' }) {
                   onChange={onFileChange}
                   aria-label={t('announce.selectImage')}
                 />
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" disabled={upload.isPending} onClick={() => fileInputRef.current?.click()}>
+                <div className="flex flex-wrap gap-2" style={{ marginTop: 4 }}>
+                  <button type="button" className="btn btn--ghost-out btn--sm" disabled={upload.isPending} onClick={() => fileInputRef.current?.click()}>
                     {upload.isPending ? t('profile.uploading') : imageUrl ? t('announce.changeImage') : t('announce.uploadImage')}
-                  </Button>
+                  </button>
                   {imageUrl && (
-                    <Button type="button" variant="secondary" disabled={upload.isPending} onClick={() => setImageUrl(null)}>
+                    <button type="button" className="btn btn--ghost btn--sm" disabled={upload.isPending} onClick={() => setImageUrl(null)}>
                       {t('profile.remove')}
-                    </Button>
+                    </button>
                   )}
                 </div>
+                {photoError && <p role="alert" className="canvas__alert">{photoError}</p>}
               </div>
-              {photoError && <p role="alert" className="mt-3 rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{photoError}</p>}
             </section>
 
-            <div className="flex flex-col gap-3 border-t border-primary/30 pt-5 sm:flex-row sm:items-center sm:justify-end">
-              <Button type="button" variant="secondary" onClick={() => navigate(`/groups/${groupId}?tab=mural`)} disabled={persist.isPending}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="submit" disabled={!canSubmit}>
-                {persist.isPending ? t('common.saving') : mode === 'edit' ? t('profile.saveChanges') : t('announce.publish')}
-              </Button>
-            </div>
+            {error && <p role="alert" className="canvas__alert">{error}</p>}
 
-            {error && <p role="alert" className="rounded-xl border border-primary bg-panel px-3 py-2 text-sm text-primary">{error}</p>}
+            <div className="form-foot">
+              <div className="form-foot__actions">
+                <button type="button" className="btn btn--ghost-out" onClick={() => navigate(`/groups/${groupId}?tab=mural`)} disabled={persist.isPending}>
+                  {t('common.cancel')}
+                </button>
+                <button type="submit" className="btn btn--primary" disabled={!canSubmit}>
+                  {persist.isPending ? t('common.saving') : mode === 'edit' ? t('profile.saveChanges') : t('announce.publish')}
+                </button>
+              </div>
+            </div>
           </form>
 
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-primary">{t('announce.preview')}</p>
-            <p className="pv-muted mt-1 text-[11px]">{t('announce.previewHelp')}</p>
-            <div className="mt-3">
-              <AnnouncementCardLayout item={previewItem} interactive={false} />
-            </div>
+          <aside className="split__aside">
+            <h2 className="form-section__h">{t('announce.preview')}</h2>
+            <p className="field__help">{t('announce.previewHelp')}</p>
+            <AnnouncementCardLayout item={previewItem} interactive={false} />
           </aside>
         </div>
-      </section>
+      </main>
     </PageShell>
   )
 }
