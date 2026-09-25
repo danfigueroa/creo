@@ -1771,22 +1771,65 @@ func (r *PostgresRepository) SendFriendRequest(ctx context.Context, fromUserID, 
 	return tx.Commit(ctx)
 }
 
+// listFriendsSQL resolve, na mesma viagem, o que a página de amigos mostra de
+// cada um: amigos e grupos em comum e a intenção mais recente que o viewer
+// enxerga. A intenção passa pelo predicado canônico e ignora pedidos anônimos —
+// mostrá-los aqui revelaria a autoria.
+var listFriendsSQL = `
+	WITH friend_pairs AS (
+		SELECT
+			CASE WHEN user_id = $1 THEN friend_user_id ELSE user_id END AS friend_id,
+			updated_at
+		FROM friendships
+		WHERE status = 'ACCEPTED'
+		  AND (user_id = $1 OR friend_user_id = $1)
+	),
+	friend_edges AS (
+		SELECT user_id AS a, friend_user_id AS b FROM friendships WHERE status = 'ACCEPTED'
+		UNION ALL
+		SELECT friend_user_id, user_id FROM friendships WHERE status = 'ACCEPTED'
+	),
+	mutual AS (
+		SELECT fe.a AS friend_id, COUNT(*)::int AS mf
+		FROM friend_edges fe
+		INNER JOIN friend_pairs mine ON mine.friend_id = fe.b
+		WHERE fe.a IN (SELECT friend_id FROM friend_pairs)
+		GROUP BY fe.a
+	),
+	shared AS (
+		SELECT theirs.user_id AS friend_id, COUNT(DISTINCT theirs.group_id)::int AS sg
+		FROM group_memberships theirs
+		INNER JOIN group_memberships mine
+		        ON mine.group_id = theirs.group_id
+		       AND mine.user_id = $1
+		       AND mine.deleted_at IS NULL
+		INNER JOIN groups g ON g.id = theirs.group_id AND g.deleted_at IS NULL
+		WHERE theirs.deleted_at IS NULL
+		  AND theirs.user_id IN (SELECT friend_id FROM friend_pairs)
+		GROUP BY theirs.user_id
+	)
+	SELECT u.id::text, u.username, u.display_name, u.avatar_url, u.bio, fp.updated_at,
+	       COALESCE(m.mf, 0), COALESCE(s.sg, 0),
+	       lr.id, lr.title, lr.created_at, lr.prayed_count
+	FROM friend_pairs fp
+	INNER JOIN users u ON u.id = fp.friend_id
+	LEFT JOIN mutual m ON m.friend_id = u.id
+	LEFT JOIN shared s ON s.friend_id = u.id
+	LEFT JOIN LATERAL (
+		SELECT pr.id::text AS id, pr.title, pr.created_at, pr.prayed_count
+		FROM prayer_requests pr
+		WHERE pr.author_id = u.id
+		  AND pr.allow_anonymous = false
+		  AND ` + prayerRequestVisibleTo("$1::uuid") + `
+		ORDER BY pr.created_at DESC
+		LIMIT 1
+	) lr ON true
+	WHERE u.deleted_at IS NULL
+	ORDER BY fp.updated_at DESC
+`
+
 func (r *PostgresRepository) ListFriends(ctx context.Context, userID string) ([]models.Friend, error) {
-	rows, err := r.db.Query(ctx, `
-		WITH friend_pairs AS (
-			SELECT
-				CASE WHEN user_id = $1 THEN friend_user_id ELSE user_id END AS friend_id,
-				updated_at
-			FROM friendships
-			WHERE status = 'ACCEPTED'
-			  AND (user_id = $1 OR friend_user_id = $1)
-		)
-		SELECT u.id::text, u.username, u.display_name, u.avatar_url, fp.updated_at
-		FROM friend_pairs fp
-		INNER JOIN users u ON u.id = fp.friend_id
-		WHERE u.deleted_at IS NULL
-		ORDER BY fp.updated_at DESC
-	`, userID)
+	rows, err := r.db.Query(ctx, listFriendsSQL, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -1795,9 +1838,22 @@ func (r *PostgresRepository) ListFriends(ctx context.Context, userID string) ([]
 	items := make([]models.Friend, 0)
 	for rows.Next() {
 		var item models.Friend
-		err = rows.Scan(&item.UserID, &item.Username, &item.DisplayName, &item.AvatarURL, &item.ConnectedAt)
+		var latestID, latestTitle *string
+		var latestAt *time.Time
+		var latestPrayed *int
+		err = rows.Scan(
+			&item.UserID, &item.Username, &item.DisplayName, &item.AvatarURL, &item.Bio, &item.ConnectedAt,
+			&item.MutualFriends, &item.SharedGroups,
+			&latestID, &latestTitle, &latestAt, &latestPrayed,
+		)
 		if err != nil {
 			return nil, err
+		}
+		if latestID != nil && latestTitle != nil && latestAt != nil {
+			item.LatestRequest = &models.FriendLatestRequest{ID: *latestID, Title: *latestTitle, CreatedAt: *latestAt}
+			if latestPrayed != nil {
+				item.LatestRequest.PrayedCount = *latestPrayed
+			}
 		}
 		items = append(items, item)
 	}

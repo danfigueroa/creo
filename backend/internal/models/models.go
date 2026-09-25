@@ -354,7 +354,21 @@ type Friend struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"displayName"`
 	AvatarURL   *string   `json:"avatarUrl,omitempty"`
+	Bio         *string   `json:"bio,omitempty"`
 	ConnectedAt time.Time `json:"connectedAt"`
+	// Contexto que a página de amigos mostra em cada card.
+	MutualFriends int                  `json:"mutualFriends"`
+	SharedGroups  int                  `json:"sharedGroups"`
+	LatestRequest *FriendLatestRequest `json:"latestRequest,omitempty"`
+}
+
+// FriendLatestRequest é a intenção mais recente do amigo que o viewer enxerga
+// (nunca anônima).
+type FriendLatestRequest struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	CreatedAt   time.Time `json:"createdAt"`
+	PrayedCount int       `json:"prayedCount"`
 }
 
 type FriendRequest struct {

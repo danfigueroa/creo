@@ -2045,13 +2045,28 @@ components:
             reason: { type: string }
     Friend:
       type: object
-      required: [userId, username, displayName, connectedAt]
+      required: [userId, username, displayName, connectedAt, mutualFriends, sharedGroups]
       properties:
         userId: { type: string, format: uuid }
         username: { type: string }
         displayName: { type: string }
         avatarUrl: { type: [string, "null"] }
+        bio: { type: [string, "null"] }
         connectedAt: { type: string, format: date-time }
+        mutualFriends: { type: integer, description: Amigos aceitos em comum com o viewer. }
+        sharedGroups: { type: integer, description: Grupos ativos em que os dois são membros. }
+        latestRequest:
+          type: object
+          description: >-
+            Intenção mais recente do amigo que o viewer enxerga (mesma regra de
+            visibilidade do detalhe). Pedidos anônimos nunca aparecem aqui.
+            Ausente quando não há nenhuma.
+          required: [id, title, createdAt, prayedCount]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            createdAt: { type: string, format: date-time }
+            prayedCount: { type: integer }
     FriendRequest:
       type: object
       required: [id, fromUserId, username, displayName, requestedAt]
