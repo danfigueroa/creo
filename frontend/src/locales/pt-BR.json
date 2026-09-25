@@ -690,6 +690,7 @@
     "join": "Entrar",
     "newIntention": "Nova intenção",
     "notificationsAria": "Notificações",
+    "friendsAriaPending": "Amigos ({{count}} pedidos pendentes)",
     "notificationsAriaUnread": "Notificações ({{count}} não lidas)",
     "mobileNav": "Navegação mobile",
     "tabNotifs": "Avisos",

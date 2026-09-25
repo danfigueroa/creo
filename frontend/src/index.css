@@ -720,14 +720,28 @@ textarea::placeholder {
   cursor: pointer;
 }
 .iconbtn:hover { border-color: var(--line-2); background: var(--card-2); }
-.iconbtn__pip {
+/* Badge numérico de pendências: sino, itens da sidebar e abas do mobile. */
+.count-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: oklch(0.58 0.19 30);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.iconbtn__badge {
   position: absolute;
-  top: 8px; right: 9px;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: oklch(0.65 0.18 30);
-  border: 2px solid var(--card);
-  box-sizing: content-box;
+  top: -4px;
+  right: -5px;
+  box-shadow: 0 0 0 2px var(--bg);
 }
 
 /* ---------- Painel do sino ---------------------------------------------- */
@@ -1492,14 +1506,9 @@ textarea::placeholder {
   white-space: nowrap;
 }
 
-/* ---------- Sidebar nav pip --------------------------------------------- */
-.navitem__pip {
-  margin-left: auto;
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: oklch(0.65 0.18 30);
-}
-.navitem.is-on .navitem__pip { background: var(--bg); }
+/* ---------- Sidebar nav badge ------------------------------------------- */
+.navitem__badge { margin-left: auto; }
+.navitem.is-on .navitem__badge { background: var(--bg); color: var(--ink); }
 
 /* ---------- Detail screen ----------------------------------------------- */
 
@@ -3392,17 +3401,12 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
   height: 22px;
   color: var(--ink-3);
 }
-/* Unread marker, matching .iconbtn__pip so the bell and the tab agree. */
-.mtab__pip {
+/* Contador na aba, o mesmo .count-badge do sino e da sidebar. */
+.mtab__badge {
   position: absolute;
-  top: -1px;
-  right: -2px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: oklch(0.65 0.18 30);
-  border: 2px solid var(--bg);
-  box-sizing: content-box;
+  top: -6px;
+  left: 13px;
+  box-shadow: 0 0 0 2px var(--bg);
 }
 .mtab.is-on {
   color: var(--ink);

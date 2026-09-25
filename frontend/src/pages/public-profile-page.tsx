@@ -60,7 +60,9 @@ export function PublicProfilePage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: profileKey }),
       queryClient.invalidateQueries({ queryKey: ['friends'] }),
-      queryClient.invalidateQueries({ queryKey: ['friend-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['friend-requests'] }),
+      // Contadores do shell (badge de "Amigos" e do sino).
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
     ])
   }
 

@@ -26,19 +26,23 @@ export function BellSwing({ ring, children }: PropsWithChildren<{ ring: number }
   )
 }
 
-// Pip de não lidas. `initial={false}` no AnimatePresence: numa troca de rota o
-// pip já existente aparece parado; só entra com escala quando surge de verdade.
-export function UnreadPip({ show, className }: { show: boolean; className: string }) {
+// Badge numérico de pendências (sino, "Notificações", "Amigos"). O ponto de
+// antes dizia "tem algo", não "quanto" — e um pedido de amizade sumia no meio.
+// `initial={false}` no AnimatePresence: numa troca de rota o badge já existente
+// aparece parado; só entra com escala quando surge de verdade.
+export function CountBadge({ count, className }: { count: number; className: string }) {
   return (
     <AnimatePresence initial={false}>
-      {show && (
+      {count > 0 && (
         <m.span
-          className={className}
+          className={`count-badge ${className}`}
           aria-hidden
           initial={{ scale: 0 }}
           animate={{ scale: 1, transition: { type: 'spring', stiffness: 500, damping: 18 } }}
           exit={{ scale: 0, transition: { duration: 0.12 } }}
-        />
+        >
+          {count > 9 ? '9+' : count}
+        </m.span>
       )}
     </AnimatePresence>
   )
@@ -111,7 +115,7 @@ export function NotificationBell({ unread, friendRequests, ring }: Props) {
             <path d="M7.5 16a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
         </BellSwing>
-        <UnreadPip show={unread > 0 || friendRequests > 0} className="iconbtn__pip" />
+        <CountBadge count={unread} className="iconbtn__badge" />
       </button>
 
       <AnimatePresence>

@@ -14,7 +14,7 @@ import { NewRequestModal } from '@/components/new-request-modal'
 import { ShareVerseModal } from '@/components/share-verse-modal'
 import { DailyVerse } from '@/components/daily-verse'
 import { Avatar } from '@/components/avatar'
-import { BellSwing, NotificationBell, UnreadPip } from '@/components/notification-bell'
+import { BellSwing, CountBadge, NotificationBell } from '@/components/notification-bell'
 import { useNotificationSummary } from '@/lib/use-notifications'
 import { fadeUp, popIn, ease } from '@/lib/motion'
 
@@ -58,10 +58,11 @@ type Friend = {
 
 type NavKind = 'mural' | 'notifs' | 'amigos' | 'grupos' | 'criar'
 
-const NAV: Array<{ id: NavKind; labelKey: string; to: string; pip?: boolean }> = [
+// `badge` diz qual contador do resumo aparece no item.
+const NAV: Array<{ id: NavKind; labelKey: string; to: string; badge?: 'unread' | 'friendRequests' }> = [
   { id: 'mural', labelKey: 'nav.mural', to: '/feed' },
-  { id: 'notifs', labelKey: 'nav.notifications', to: '/notifications', pip: true },
-  { id: 'amigos', labelKey: 'nav.friends', to: '/friends' },
+  { id: 'notifs', labelKey: 'nav.notifications', to: '/notifications', badge: 'unread' },
+  { id: 'amigos', labelKey: 'nav.friends', to: '/friends', badge: 'friendRequests' },
   { id: 'grupos', labelKey: 'nav.groups', to: '/groups' },
   { id: 'criar', labelKey: 'nav.createGroup', to: '/groups/new' }
 ]
@@ -483,16 +484,29 @@ export function PageShell({ children }: PropsWithChildren) {
   // O sino balança quando o contador de não lidas SOBE enquanto a tela está
   // aberta. Cada página monta o próprio PageShell, então o primeiro valor visto
   // num mount só é memorizado — voltar para uma rota com pendências não chacoalha.
-  const lastUnread = useRef<number | undefined>(undefined)
+  const lastSummary = useRef<{ count: number; friendRequests: number } | undefined>(undefined)
   const [bellRing, setBellRing] = useState(0)
   useEffect(() => {
-    const count = summaryQuery.data?.count
-    if (count === undefined) return
-    if (lastUnread.current !== undefined && count > lastUnread.current) {
+    const summary = summaryQuery.data
+    if (!summary) return
+    const prev = lastSummary.current
+    if (prev && (summary.count > prev.count || summary.friendRequests > prev.friendRequests)) {
       setBellRing((n) => n + 1)
     }
-    lastUnread.current = count
-  }, [summaryQuery.data?.count])
+    lastSummary.current = summary
+  }, [summaryQuery.data])
+
+  // "(3) Creo" na aba: o jeito mais barato de avisar quem está em outra aba.
+  // Guarda o título que a página tinha e só prefixa o contador.
+  useEffect(() => {
+    const strip = (title: string) => title.replace(/^\(\d+\+?\) /, '')
+    const base = strip(document.title)
+    document.title = unreadCount > 0 ? `(${unreadCount > 99 ? '99+' : unreadCount}) ${base}` : base
+    // Sair do shell (logout para a landing) não pode levar o contador junto.
+    return () => {
+      document.title = strip(document.title)
+    }
+  }, [unreadCount])
 
   return (
     <div className="app">
@@ -514,7 +528,12 @@ export function PageShell({ children }: PropsWithChildren) {
                 <NavIcon kind={n.id} />
               </span>
               <span>{t(n.labelKey)}</span>
-              {n.pip && hasUnread ? <span className="navitem__pip" /> : null}
+              {n.badge && (
+                <CountBadge
+                  count={n.badge === 'unread' ? unreadCount : friendRequestCount}
+                  className="navitem__badge"
+                />
+              )}
             </NavLink>
           ))}
         </nav>
@@ -664,12 +683,21 @@ export function PageShell({ children }: PropsWithChildren) {
             <BellSwing ring={bellRing}>
               <NavIcon kind="notifs" />
             </BellSwing>
-            <UnreadPip show={hasUnread} className="mtab__pip" />
+            <CountBadge count={unreadCount} className="mtab__badge" />
           </span>
           <span>{t('shell.tabNotifs')}</span>
         </NavLink>
-        <NavLink to="/friends" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>
-          <span className="mtab__icon"><NavIcon kind="amigos" /></span>
+        <NavLink
+          to="/friends"
+          className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}
+          aria-label={
+            friendRequestCount > 0 ? t('shell.friendsAriaPending', { count: friendRequestCount }) : undefined
+          }
+        >
+          <span className="mtab__icon">
+            <NavIcon kind="amigos" />
+            <CountBadge count={friendRequestCount} className="mtab__badge" />
+          </span>
           <span>{t('nav.friends')}</span>
         </NavLink>
         <NavLink to="/groups" className={({ isActive }) => `mtab ${isActive ? 'is-on' : ''}`}>

@@ -690,6 +690,7 @@
     "join": "Join",
     "newIntention": "New intention",
     "notificationsAria": "Notifications",
+    "friendsAriaPending": "Friends ({{count}} pending requests)",
     "notificationsAriaUnread": "Notifications ({{count}} unread)",
     "mobileNav": "Mobile navigation",
     "tabNotifs": "Alerts",
