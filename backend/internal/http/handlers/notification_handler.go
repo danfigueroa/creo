@@ -28,19 +28,15 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
-	items, err := h.service.ListNotifications(r.Context(), userID, limit, offset)
-	if err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
-		return
-	}
-	summary, err := h.service.GetNotificationSummary(r.Context(), userID)
+	items, summary, err := h.service.ListNotifications(r.Context(), userID, limit, offset)
 	if err != nil {
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
-		"items":       items,
-		"unreadCount": summary.Count,
+		"items":          items,
+		"unreadCount":    summary.Count,
+		"friendRequests": summary.FriendRequests,
 	})
 }
 

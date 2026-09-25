@@ -105,7 +105,7 @@ type Repository interface {
 	ApplyModerationAction(ctx context.Context, moderatorUserID, requestID string, action models.ModerationActionType, reason string) error
 	ListModerationHistory(ctx context.Context, viewerUserID, requestID string) ([]models.ModerationActionRecord, error)
 	CreateNotification(ctx context.Context, in models.CreateNotificationInput) error
-	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error)
+	ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, models.NotificationSummary, error)
 	GetNotificationSummary(ctx context.Context, userID string) (models.NotificationSummary, error)
 	MarkNotificationRead(ctx context.Context, userID, id string) error
 	MarkAllNotificationsRead(ctx context.Context, userID string) error
@@ -2336,7 +2336,9 @@ func (r *PostgresRepository) CreateNotification(ctx context.Context, in models.C
 	return insertNotificationOn(ctx, r.db, in)
 }
 
-func (r *PostgresRepository) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
+// ListNotifications devolve a página e os contadores do shell num único batch:
+// a página de notificações precisa dos dois, e em série seriam duas viagens.
+func (r *PostgresRepository) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, models.NotificationSummary, error) {
 	if limit <= 0 {
 		limit = 20
 	} else if limit > 50 {
@@ -2345,7 +2347,9 @@ func (r *PostgresRepository) ListNotifications(ctx context.Context, userID strin
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := r.db.Query(ctx, `
+	var summary models.NotificationSummary
+	batch := &pgx.Batch{}
+	batch.Queue(`
 		SELECT n.id::text, n.type, n.subject_type, n.subject_id::text, n.payload, n.read_at, n.created_at,
 		       a.id::text, a.username, a.display_name, a.avatar_url,
 		       f.status
@@ -2361,51 +2365,63 @@ func (r *PostgresRepository) ListNotifications(ctx context.Context, userID strin
 		ORDER BY n.created_at DESC
 		LIMIT $2 OFFSET $3
 	`, userID, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+	batch.Queue(notificationSummarySQL, userID)
+
+	br := r.db.SendBatch(ctx, batch)
+	defer br.Close()
 
 	items := make([]models.NotificationView, 0)
-	for rows.Next() {
-		var (
-			n              models.NotificationView
-			payloadBytes   []byte
-			actorID        *string
-			actorUsername  *string
-			actorDisplay   *string
-			actorAvatarURL *string
-			friendStatus   *string
-		)
-		if err = rows.Scan(&n.ID, &n.Type, &n.SubjectType, &n.SubjectID, &payloadBytes, &n.ReadAt, &n.CreatedAt,
-			&actorID, &actorUsername, &actorDisplay, &actorAvatarURL, &friendStatus); err != nil {
-			return nil, err
-		}
-		if n.Type == models.NotificationTypeFriendRequestReceived {
-			n.FriendRequestStatus = models.FriendRequestStatusGone
-			if friendStatus != nil {
-				n.FriendRequestStatus = *friendStatus
+	err := nextBatchRows(br, func(rows pgx.Rows) error {
+		for rows.Next() {
+			var (
+				n              models.NotificationView
+				payloadBytes   []byte
+				actorID        *string
+				actorUsername  *string
+				actorDisplay   *string
+				actorAvatarURL *string
+				friendStatus   *string
+			)
+			if err := rows.Scan(&n.ID, &n.Type, &n.SubjectType, &n.SubjectID, &payloadBytes, &n.ReadAt, &n.CreatedAt,
+				&actorID, &actorUsername, &actorDisplay, &actorAvatarURL, &friendStatus); err != nil {
+				return err
 			}
-		}
-		if len(payloadBytes) > 0 {
-			if err = json.Unmarshal(payloadBytes, &n.Payload); err != nil {
-				return nil, err
+			if n.Type == models.NotificationTypeFriendRequestReceived {
+				n.FriendRequestStatus = models.FriendRequestStatusGone
+				if friendStatus != nil {
+					n.FriendRequestStatus = *friendStatus
+				}
 			}
-		}
-		if n.Payload == nil {
-			n.Payload = map[string]any{}
-		}
-		if actorID != nil {
-			n.Actor = &models.NotificationActor{
-				UserID:      *actorID,
-				Username:    derefStr(actorUsername),
-				DisplayName: derefStr(actorDisplay),
-				AvatarURL:   actorAvatarURL,
+			if len(payloadBytes) > 0 {
+				if err := json.Unmarshal(payloadBytes, &n.Payload); err != nil {
+					return err
+				}
 			}
+			if n.Payload == nil {
+				n.Payload = map[string]any{}
+			}
+			if actorID != nil {
+				n.Actor = &models.NotificationActor{
+					UserID:      *actorID,
+					Username:    derefStr(actorUsername),
+					DisplayName: derefStr(actorDisplay),
+					AvatarURL:   actorAvatarURL,
+				}
+			}
+			items = append(items, n)
 		}
-		items = append(items, n)
+		return nil
+	})
+	if err != nil {
+		return nil, summary, err
 	}
-	return items, rows.Err()
+	err = nextBatchRows(br, func(rows pgx.Rows) error {
+		if rows.Next() {
+			return rows.Scan(&summary.Count, &summary.FriendRequests)
+		}
+		return nil
+	})
+	return items, summary, err
 }
 
 func derefStr(p *string) string {

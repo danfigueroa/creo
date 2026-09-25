@@ -1251,7 +1251,7 @@ func (s *Service) ListGroupsFeed(ctx context.Context, userID string, limit, offs
 	return page, prayerCount + announcementCount + verseCount, nil
 }
 
-func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, error) {
+func (s *Service) ListNotifications(ctx context.Context, userID string, limit, offset int) ([]models.NotificationView, models.NotificationSummary, error) {
 	// Acima do teto devolve o teto, não o padrão: a página pede 50 e antes
 	// recebia 20 sem aviso.
 	if limit <= 0 {

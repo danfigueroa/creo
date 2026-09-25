@@ -1579,12 +1579,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, unreadCount]
+                required: [items, unreadCount, friendRequests]
                 properties:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/Notification" }
                   unreadCount: { type: integer, format: int64 }
+                  friendRequests:
+                    type: integer
+                    format: int64
+                    description: Pedidos de amizade recebidos pendentes (igual ao de `/notifications/unread-count`).
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
 
