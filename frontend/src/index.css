@@ -2201,6 +2201,7 @@ button.profile__chip:hover { border-color: var(--ink-3); background: var(--card-
   padding: 40px 36px 80px;
 }
 .notif-group { margin-top: 24px; }
+.notifs__markall { margin-top: 14px; }
 .notif-group__h {
   font-size: 11px;
   letter-spacing: 0.14em;

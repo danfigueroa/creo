@@ -1,25 +1,32 @@
-import { useMemo, type CSSProperties } from 'react'
+import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, m } from 'motion/react'
 import { PageShell } from '@/components/page-shell'
-import { Avatar } from '@/components/avatar'
-import { Glyph } from '@/components/glyph'
-import { prayerActionByType } from '@/lib/traditions'
+import { FriendRequestRow } from '@/components/friend-request-row'
+import { MotionItem } from '@/components/motion-list'
+import { NotificationItem } from '@/components/notification-item'
 import { api } from '@/lib/api'
+import { baseTransition, stagger } from '@/lib/motion'
 import {
-  BUCKET_ORDER,
-  bucketLabel,
-  bucketOf,
-  copyFor,
-  relativeTime,
+  isPendingFriendRequest,
   targetPath,
-  type Bucket,
   type ListResponse,
   type Notification
 } from '@/lib/notifications'
-import { m } from 'motion/react'
-import { baseTransition, stagger } from '@/lib/motion'
+import { useFriendRequests } from '@/lib/use-notifications'
+
+type Section = 'new' | 'today' | 'earlier'
+
+const SECTION_ORDER: Section[] = ['new', 'today', 'earlier']
+
+// Cronológico, em três faixas. Antes a página agrupava por tipo com as orações
+// primeiro, e um pedido de amizade novo ficava enterrado no fim.
+function sectionOf(n: Notification, startOfToday: number): Section {
+  if (!n.readAt) return 'new'
+  return new Date(n.createdAt).getTime() >= startOfToday ? 'today' : 'earlier'
+}
 
 export function NotificationsPage() {
   const { t } = useTranslation()
@@ -28,43 +35,42 @@ export function NotificationsPage() {
 
   const listQuery = useQuery({
     queryKey: ['notifications', 'list', 'page'],
-    queryFn: async () => {
-      const res = await api.get<ListResponse>('/notifications', { params: { limit: 100 } })
-      return res.data.items ?? []
-    }
+    queryFn: async () => (await api.get<ListResponse>('/notifications', { params: { limit: 50 } })).data
   })
+  const pendingCount = listQuery.data?.friendRequests ?? 0
+  const requestsQuery = useFriendRequests(pendingCount > 0)
 
   const markRead = useMutation({
     mutationFn: async (id: string) => {
       await api.post(`/notifications/${id}/read`)
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    }
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['notifications'] })
   })
 
   const markAllRead = useMutation({
     mutationFn: async () => {
       await api.post('/notifications/read-all')
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['notifications'] })
-    }
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['notifications'] })
   })
 
-  const groups = useMemo(() => {
-    const items = listQuery.data ?? []
-    const buckets: Record<Bucket, Notification[]> = { prayed: [], updates: [], follow: [], group: [], milestone: [], other: [] }
-    items.forEach((n) => buckets[bucketOf(n.type)].push(n))
-    return BUCKET_ORDER
-      .map((b) => ({ key: b, label: bucketLabel(b), items: buckets[b] }))
-      .filter((g) => g.items.length > 0)
+  const sections = useMemo(() => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    const buckets: Record<Section, Notification[]> = { new: [], today: [], earlier: [] }
+    for (const n of listQuery.data?.items ?? []) {
+      // Pedido aberto já aparece em cima, com Aceitar/Recusar.
+      if (isPendingFriendRequest(n)) continue
+      buckets[sectionOf(n, start.getTime())].push(n)
+    }
+    return SECTION_ORDER.map((key) => ({ key, items: buckets[key] })).filter((sec) => sec.items.length > 0)
   }, [listQuery.data])
 
-  const hasItems = (listQuery.data ?? []).length > 0
-  const unread = (listQuery.data ?? []).filter((n) => !n.readAt).length
+  const requests = pendingCount > 0 ? requestsQuery.data ?? [] : []
+  const unread = listQuery.data?.unreadCount ?? 0
+  const isEmpty = !listQuery.isLoading && sections.length === 0 && requests.length === 0
 
-  function onClick(n: Notification) {
+  function onSelect(n: Notification) {
     if (!n.readAt) markRead.mutate(n.id)
     navigate(targetPath(n))
   }
@@ -79,99 +85,74 @@ export function NotificationsPage() {
           {unread > 0 && (
             <button
               type="button"
+              className="npanel__action notifs__markall"
               onClick={() => markAllRead.mutate()}
               disabled={markAllRead.isPending}
-              style={{
-                marginTop: 14,
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--ink-3)',
-                background: 'none',
-                border: 0,
-                cursor: 'pointer',
-                padding: 0
-              }}
             >
               {t('notif.markAllRead')}
             </button>
           )}
         </div>
 
+        <AnimatePresence initial={false}>
+          {requests.length > 0 && (
+            <m.section
+              key="requests"
+              className="people__requests"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              aria-labelledby="notifs-requests-h"
+            >
+              <h2 id="notifs-requests-h" className="canvas__h">
+                {t('friends.received')} <span className="canvas__count">{requests.length}</span>
+              </h2>
+              <div className="req-list">
+                <AnimatePresence mode="popLayout">
+                  {requests.map((request, index) => (
+                    <MotionItem key={request.id} index={index}>
+                      <FriendRequestRow request={request} />
+                    </MotionItem>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </m.section>
+          )}
+        </AnimatePresence>
+
         {listQuery.isLoading && (
-          <p style={{ color: 'var(--muted)', fontSize: 14 }}>{t('notif.loading')}</p>
+          <div className="notif-list" aria-hidden>
+            {[0, 1, 2, 3].map((i) => (
+              <span key={i} className="pv-shimmer h-16 w-full rounded-2xl" />
+            ))}
+          </div>
         )}
 
-        {!listQuery.isLoading && !hasItems && (
+        {isEmpty && (
           <div style={{ padding: '40px 0', textAlign: 'center' }}>
             <p style={{ fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', margin: 0 }}>
               {t('notif.emptyTitle')}
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
-              {t('notif.emptySub')}
-            </p>
+            <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>{t('notif.emptySub')}</p>
           </div>
         )}
 
-        {groups.map((g, groupIdx) => (
-          <section key={g.key} className="notif-group">
-            <h2 className="notif-group__h">{g.label}</h2>
+        {sections.map((sec, secIdx) => (
+          <section key={sec.key} className="notif-group">
+            <h2 className="notif-group__h">{t(`notif.section.${sec.key}`)}</h2>
             <ul className="notif-list">
-              {g.items.map((n, itemIdx) => {
+              {sec.items.map((n, itemIdx) => {
                 // Posição corrida na página inteira, para o stagger atravessar
-                // os grupos (orações → comunidade → ...) em vez de reiniciar.
+                // as faixas em vez de reiniciar.
                 const position =
-                  groups.slice(0, groupIdx).reduce((sum, prev) => sum + prev.items.length, 0) + itemIdx
-                const unreadFlag = !n.readAt
-                const actorUser = n.actor
-                  ? {
-                      displayName: n.actor.displayName,
-                      username: n.actor.username,
-                      avatarUrl: n.actor.avatarUrl
-                    }
-                  : { displayName: '·' }
-                // O tipo de oração vem no payload da reação; mostrar qual foi
-                // diz mais do que "orou pelo seu pedido".
-                const action =
-                  n.type === 'PRAYED' || n.type === 'VERSE_SHARE_PRAYED'
-                    ? prayerActionByType(n.payload?.actionType)
-                    : undefined
+                  sections.slice(0, secIdx).reduce((sum, prev) => sum + prev.items.length, 0) + itemIdx
                 return (
                   <m.li
                     key={n.id}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0, transition: { ...baseTransition, delay: stagger(position) } }}
                   >
-                    <button
-                      type="button"
-                      onClick={() => onClick(n)}
-                      className="notif"
-                      style={unreadFlag ? { background: 'var(--card-2)', borderColor: 'var(--line-2)' } : undefined}
-                    >
-                      <Avatar user={actorUser} size="md" />
-                      <div className="notif__body">
-                        <div className="notif__line">{copyFor(n)}</div>
-                        <div className="notif__meta">
-                          {action && (
-                            <span
-                              className="notif__rx"
-                              style={
-                                {
-                                  '--rx-bg': action.bg,
-                                  '--rx-border': action.border,
-                                  '--rx-fg': action.fg
-                                } as CSSProperties
-                              }
-                            >
-                              <span className="notif__rx-glyph">
-                                <Glyph kind={action.glyph} size={11} />
-                              </span>
-                              {action.label}
-                            </span>
-                          )}
-                          <span className="notif__when">{relativeTime(n.createdAt)}</span>
-                        </div>
-                      </div>
-                    </button>
+                    <NotificationItem notification={n} onSelect={onSelect} />
                   </m.li>
                 )
               })}

@@ -475,13 +475,10 @@
     "emptySub": "Nada para acompanhar agora — volte quando uma intenção se mover.",
     "agoDay": "há {{count}} d",
     "someone": "Alguém",
-    "bucket": {
-      "prayed": "Orações pelas suas intenções",
-      "updates": "Atualizações de intenções",
-      "follow": "Comunidade",
-      "group": "Grupos",
-      "milestone": "Marcos",
-      "other": "Outros"
+    "section": {
+      "new": "Novas",
+      "today": "Hoje",
+      "earlier": "Anteriores"
     },
     "prayed": "{{name}} orou pelo seu pedido",
     "requestUpdated": "{{name}} publicou uma atualização em uma intenção que você reza",

@@ -54,36 +54,6 @@ export function isPendingFriendRequest(n: Notification): boolean {
   return n.type === 'FRIEND_REQUEST_RECEIVED' && n.friendRequestStatus === 'PENDING'
 }
 
-export type Bucket = 'prayed' | 'updates' | 'follow' | 'group' | 'milestone' | 'other'
-
-export const BUCKET_ORDER: Bucket[] = ['prayed', 'updates', 'follow', 'group', 'milestone', 'other']
-
-export const bucketLabel = (b: Bucket): string => i18n.t(`notif.bucket.${b}`)
-
-export function bucketOf(type: NotificationType): Bucket {
-  switch (type) {
-    case 'PRAYED':
-    case 'VERSE_SHARE_PRAYED':
-      return 'prayed'
-    case 'REQUEST_UPDATED':
-    case 'REQUEST_ANSWERED':
-      return 'updates'
-    case 'FRIEND_REQUEST_RECEIVED':
-    case 'FRIEND_REQUEST_ACCEPTED':
-      return 'follow'
-    case 'GROUP_JOIN_APPROVED':
-    case 'GROUP_JOIN_REQUESTED':
-    case 'GROUP_ANNOUNCEMENT_POSTED':
-      return 'group'
-    case 'MILESTONE_PRAYED':
-    case 'MILESTONE_CREATED':
-    case 'MILESTONE_STREAK':
-      return 'milestone'
-    default:
-      return 'other'
-  }
-}
-
 export function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   if (Number.isNaN(ms)) return ''

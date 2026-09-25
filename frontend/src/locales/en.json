@@ -475,13 +475,10 @@
     "emptySub": "Nothing to follow right now — come back when an intention moves.",
     "agoDay": "{{count}}d ago",
     "someone": "Someone",
-    "bucket": {
-      "prayed": "Prayers for your intentions",
-      "updates": "Intention updates",
-      "follow": "Community",
-      "group": "Groups",
-      "milestone": "Milestones",
-      "other": "Other"
+    "section": {
+      "new": "New",
+      "today": "Today",
+      "earlier": "Earlier"
     },
     "prayed": "{{name}} prayed for your request",
     "requestUpdated": "{{name}} posted an update on an intention you pray for",
