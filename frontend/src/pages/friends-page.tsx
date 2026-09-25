@@ -11,6 +11,7 @@ import { MotionItem } from '@/components/motion-list'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/api-error'
 import i18n from '@/lib/i18n'
+import { relativeTime } from '@/lib/notifications'
 import { popIn } from '@/lib/motion'
 
 type Friend = {
@@ -50,20 +51,6 @@ type Suggestion = {
 
 // Abaixo disso a grade inteira cabe na tela e o filtro só ocupa espaço.
 const FILTER_MIN_FRIENDS = 6
-
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  if (Number.isNaN(ms)) return ''
-  const sec = Math.round(ms / 1000)
-  if (sec < 60) return i18n.t('time.now')
-  const min = Math.round(sec / 60)
-  if (min < 60) return i18n.t('time.agoMin', { count: min })
-  const hr = Math.round(min / 60)
-  if (hr < 24) return i18n.t('time.agoHour', { count: hr })
-  const day = Math.round(hr / 24)
-  if (day < 30) return i18n.t('notif.agoDay', { count: day })
-  return new Date(iso).toLocaleDateString(i18n.language)
-}
 
 function matches(friend: Friend, term: string): boolean {
   const needle = term.trim().replace(/^@+/, '').toLowerCase()
