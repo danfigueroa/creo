@@ -8,6 +8,8 @@ import { Glyph } from '@/components/glyph'
 import { prayerActionByType } from '@/lib/traditions'
 import { api } from '@/lib/api'
 import i18n from '@/lib/i18n'
+import { m } from 'motion/react'
+import { baseTransition, stagger } from '@/lib/motion'
 
 type NotificationType =
   | 'PRAYED'
@@ -248,11 +250,15 @@ export function NotificationsPage() {
           </div>
         )}
 
-        {groups.map((g) => (
+        {groups.map((g, groupIdx) => (
           <section key={g.key} className="notif-group">
             <h2 className="notif-group__h">{g.label}</h2>
             <ul className="notif-list">
-              {g.items.map((n) => {
+              {g.items.map((n, itemIdx) => {
+                // Posição corrida na página inteira, para o stagger atravessar
+                // os grupos (orações → comunidade → ...) em vez de reiniciar.
+                const position =
+                  groups.slice(0, groupIdx).reduce((sum, prev) => sum + prev.items.length, 0) + itemIdx
                 const unreadFlag = !n.readAt
                 const actorUser = n.actor
                   ? {
@@ -268,7 +274,11 @@ export function NotificationsPage() {
                     ? prayerActionByType(n.payload?.actionType)
                     : undefined
                 return (
-                  <li key={n.id}>
+                  <m.li
+                    key={n.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0, transition: { ...baseTransition, delay: stagger(position) } }}
+                  >
                     <button
                       type="button"
                       onClick={() => onClick(n)}
@@ -300,7 +310,7 @@ export function NotificationsPage() {
                         </div>
                       </div>
                     </button>
-                  </li>
+                  </m.li>
                 )
               })}
             </ul>
