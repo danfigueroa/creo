@@ -185,6 +185,9 @@ Sistema in-app, **best-effort**: `_ = insertNotificationOn(ctx, exec, in)` — f
 - Self-notification é evitada (skip `if actor == recipient`).
 - Eventos suportados (lista completa em `models.go`, `NotificationType*`): `PRAYED`, `FRIEND_REQUEST_RECEIVED`, `FRIEND_REQUEST_ACCEPTED`, `GROUP_JOIN_APPROVED`, `GROUP_JOIN_REQUESTED`, `REQUEST_APPROVED`, `REQUEST_REJECTED`, `REQUEST_CHANGES_ASKED`, `REQUEST_UPDATED`, `REQUEST_ANSWERED`, `GROUP_ANNOUNCEMENT_POSTED`, `MILESTONE_PRAYED`, `MILESTONE_CREATED`, `MILESTONE_STREAK`, `VERSE_SHARE_PRAYED`.
 - `subject_type ∈ {PRAYER_REQUEST, FRIENDSHIP, GROUP, MILESTONE, VERSE_SHARE}` — `subject_id` permite o front navegar.
+- **Contadores do shell** (`GET /notifications/unread-count` → `{ count, friendRequests }`): um statement só (`notificationSummarySQL`), porque o shell faz polling a cada 30 s. `friendRequests` conta pedidos recebidos pendentes, independente de a notificação ter sido lida. `GET /notifications` devolve os mesmos dois números no mesmo batch da página.
+- **`friendRequestStatus`** (`PENDING | ACCEPTED | GONE`) vem só em `FRIEND_REQUEST_RECEIVED`, via `LEFT JOIN friendships` na listagem. Recusar/cancelar apaga a linha de `friendships`, daí `GONE`.
+- **Aceitar/recusar pedido marca a notificação dele como lida** na mesma CTE (`markFriendRequestNotificationReadSQL`). Qualquer ação nova que "resolva" o assunto de uma notificação deve fazer o mesmo, senão o badge fica aceso sem motivo.
 
 ### Amigos (`GET /friends`)
 
@@ -399,12 +402,14 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 - **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais. (O onboarding wizard foi **removido** — não existe `/onboarding`.)
 - **`/feed`** (`pages/feed-page.tsx`) — canvas `.feed` 720px, headline serif, tabs com `tabs__ink`, composer quiet (abre modal global), posts.
 - **`/requests/:id`** (`pages/request-detail-page.tsx`) — IntentionDetail editorial: header + body em serif, total de orações destacado, reactions row, "Quem rezou" agrupado, "Atualizações do autor" (**funcional**: `GET/POST /requests/:id/updates`), marcar como atendido com testemunho (`POST/DELETE /requests/:id/answer`), "Compartilhar com" (PATCH /requests/:id — visibilidade por grupo, não é share externo).
-- **`/notifications`** (`pages/notifications-page.tsx`) — página completa com agrupamento por tipo (orações, comunidade, grupos, outros). Sino na topbar **navega pra cá** (não tem mais dropdown). Sidebar tem item "Notificações" com pip vermelho idem.
+- **`/notifications`** (`pages/notifications-page.tsx`) — pedidos de amizade pendentes fixados no topo (Aceitar/Recusar inline) e o resto em ordem **cronológica**, em faixas Novas / Hoje / Anteriores (não agrupar por tipo: um pedido de amizade ficava enterrado abaixo das orações).
+- **Sino** (`components/notification-bell.tsx`): no desktop abre um **painel** (`.npanel`, z 45) com pedidos pendentes + últimas notificações + "Ver todas"; ≤900px navega para `/notifications`. Contadores são `<CountBadge>` numéricos (sino, "Notificações" e "Amigos" na sidebar e na tabbar), e o título da aba vira `(N) Creo`. Tudo lê `useNotificationSummary()` (`lib/use-notifications.ts`, chave `['notifications','unread-count']`) — não criar outra query de contador.
+- **Pedido de amizade** tem uma só implementação de ações: `useFriendRequestActions()` + `<FriendRequestRow>`, usados no painel, em `/notifications`, em `/friends` e na faixa do mural (`<FriendRequestBanner>`).
 - **`/groups`, `/groups/:id`, `/profile`, `/u/:username`, `/friends`, `/moderation`, `/groups/:id/announcements/*`** — visual existente, retokenizado pelos aliases.
 
 ### Componentes-chave
 
-- `components/page-shell.tsx` — `.app` grid (sidebar 248px + stage). Sidebar tem brand + nav (Mural, Notificações, Amigos, Grupos, Criar grupo) + "Em oração agora" (top friends do `/friends`) + `side__me` no rodapé. Topbar com search pill + **botão "+ Nova intenção"** (`btn btn--ghost-out top__compose`) + sino linkando pra `/notifications`.
+- `components/page-shell.tsx` — `.app` grid (sidebar 248px + stage). Sidebar tem brand + nav (Mural, Notificações, Amigos, Grupos, Criar grupo) + "Em oração agora" (top friends do `/friends`) + `side__me` no rodapé. Topbar com search pill + **botão "+ Nova intenção"** (`btn btn--ghost-out top__compose`) + sino com painel (`<NotificationBell>`).
 - `state/composer-store.ts` — Zustand store global pro modal de nova intenção. PageShell renderiza o **único** `<NewRequestModal>` controlado por essa store; qualquer página chama `openComposer(defaultGroupId?, onCreated?)` (não montar um segundo modal local). O feed passa `onCreated` pra navegar pra aba correspondente à visibilidade criada.
 - **Query key de perfil**: todas as telas usam `['profile', 'me']` pro `GET /profile` (dedupe entre PageShell e páginas). Não criar variações (`['profile','shell']`, `['profile','feed']`, ... foram unificadas).
 - `components/feed-card.tsx` — `PrayerCard` com total no head + Editar; reactions no rodapé. `AnnouncementCard` com hero image + event date badge.
@@ -497,9 +502,9 @@ Sempre que houver validação no service Go, replicar como microcopy no frontend
 
 ### Navegação por contexto
 
-Sino de notificação navega via `subject_type`:
+Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`):
 - `PRAYER_REQUEST` → `/requests/{id}`
-- `FRIENDSHIP` → `/friends`
+- `FRIENDSHIP` → `/friends` se o pedido está pendente; senão `/u/{actor}`
 - `GROUP` → `/groups/{id}`
 - `VERSE_SHARE` → `/verses/{id}`
 
