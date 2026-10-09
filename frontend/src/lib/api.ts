@@ -64,9 +64,20 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // Conta excluída: o access token ainda é válido por até 1 h, mas o backend
+    // recusa. Não adianta renovar.
+    if (error?.response?.data?.error?.code === 'ACCOUNT_DELETED') {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+      useSessionStore.getState().setAccessToken(null)
+      return Promise.reject(error)
+    }
+
     originalRequest._retry = true
     const { data, error: refreshError } = await supabase.auth.refreshSession()
     if (refreshError || !data.session?.access_token) {
+      // Sem isto a sessão do Supabase continuava no localStorage e o próximo
+      // getSession() devolvia o token morto de novo.
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
       useSessionStore.getState().setAccessToken(null)
       return Promise.reject(error)
     }
