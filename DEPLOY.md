@@ -34,8 +34,8 @@ O domínio de produção é `https://www.creo.com.br` (`https://creo.com.br` red
 
 1. **Auth → URL Configuration**
    - `Site URL` = `https://www.creo.com.br`
-   - `Redirect URLs` = `https://www.creo.com.br/auth` (e `http://localhost:5173/auth` para dev)
-   - Sem isso, magic link e reset de senha falham.
+   - `Redirect URLs` = `https://www.creo.com.br/auth`, `https://www.creo.com.br/auth/reset` e `http://localhost:5173/**` (dev)
+   - Sem isso, magic link e reset de senha falham. Os templates de e-mail montam o link a partir do `Site URL`, então um e-mail pedido em dev abre a produção — o link funciona do mesmo jeito (a sessão nasce lá), é só entrar de novo no localhost.
 
 2. **Backups**: confira a retenção do seu plano. Free tier é curto.
 
@@ -66,12 +66,14 @@ O domínio de produção é `https://www.creo.com.br` (`https://creo.com.br` red
 
 5. **Storage — bucket `group-photos`** (one-time, necessário pra foto do grupo e imagens de anúncio):
    - Supabase Dashboard → Storage → **New bucket** → nome `group-photos`, **Public** = ON.
-   - Em SQL Editor, criar a função helper + policies (escrita restrita a admin/moderator do grupo):
+   - Em SQL Editor, criar a função helper + policies (escrita restrita a admin/moderator do grupo). A migration `000021` recria a função como `SECURITY DEFINER` — com RLS ligado em `group_memberships`, a versão sem isso deixa de enxergar a tabela e o upload quebra:
      ```sql
      create or replace function public.is_group_admin_or_moderator(gid uuid)
      returns boolean
      language sql
      stable
+     security definer
+     set search_path = public
      as $$
        select exists (
          select 1 from public.group_memberships
@@ -101,6 +103,40 @@ O domínio de produção é `https://www.creo.com.br` (`https://creo.com.br` red
      - capa do grupo: `group-photos/{group_id}/cover-{timestamp}.{ext}`
      - imagem de anúncio: `group-photos/{group_id}/announcements/{timestamp}-{rand}.{ext}`
 
+### 1.1 E-mails de conta (Resend, grátis)
+
+O SMTP embutido do Supabase manda ~2 e-mails por hora: confirmação de cadastro e reset de senha falham assim que houver gente de verdade. O plano grátis do Resend dá 100 e-mails/dia e 3 mil/mês, sem cartão.
+
+1. Crie a conta em resend.com → **Domains → Add domain** → `creo.com.br`.
+2. No DNS do domínio, adicione os registros que o Resend mostrar (SPF `TXT`, DKIM `TXT`/`CNAME` e o `MX` de retorno). Acrescente um DMARC simples: `TXT _dmarc` = `v=DMARC1; p=none;`. Espere o domínio ficar **Verified**.
+3. **API Keys → Create** com permissão *Sending access*.
+4. Supabase → **Authentication → Emails → SMTP Settings → Enable custom SMTP**:
+   - Sender email `nao-responda@creo.com.br`, sender name `Creo`
+   - Host `smtp.resend.com`, port `465`, username `resend`, password = a API key
+5. **Authentication → Rate Limits**: *emails sent per hour* = `30` (o padrão com SMTP próprio é baixo).
+6. **Authentication → Email Templates**: cole o HTML de `supabase/templates/` em cada template — `confirm-signup.html` (Confirm signup), `magic-link.html` (Magic Link), `reset-password.html` (Reset Password), `change-email.html` (Change Email Address). O assunto de cada um está no comentário do topo do arquivo. Os links usam `token_hash`, que o front verifica em `/auth` e `/auth/reset` — funcionam em qualquer navegador, diferente do link PKCE padrão.
+
+### 1.2 Política de conta
+
+Em **Authentication → Sign In / Providers → Email**:
+
+- **Confirm email** = ON. Contas antigas não são afetadas: o auto-confirm já gravou `email_confirmed_at` nelas.
+- **Secure email change** = ON (a troca precisa ser confirmada no endereço antigo e no novo).
+- **Minimum password length** = `8` (o mesmo `PASSWORD_MIN` de `frontend/src/lib/password.ts`).
+
+### 1.3 Captcha (Cloudflare Turnstile, grátis e ilimitado)
+
+1. dash.cloudflare.com → **Turnstile → Add widget**: hostnames `www.creo.com.br`, `creo.com.br`, `paroquiaviva.vercel.app` e `localhost`; modo *Managed*.
+2. Copie a **site key** para `VITE_TURNSTILE_SITE_KEY` (Vercel, service frontend; e `frontend/.env` para dev).
+3. **Faça o deploy do front com a site key antes do próximo passo.**
+4. Supabase → **Authentication → Attack Protection → Enable Captcha protection** → provider *Turnstile* → cole a **secret key**.
+
+> A ordem importa: com o captcha ligado no Supabase e um front sem a site key, todo login, cadastro, link mágico e reset é recusado. Para desligar numa emergência, basta desmarcar o captcha no Supabase.
+
+### 1.4 Exclusão de conta
+
+`DELETE /me` remove o usuário do Supabase Auth pela Admin API. Copie a **service_role key** (Project Settings → API) para `SUPABASE_SERVICE_ROLE_KEY` no service **backend** da Vercel. Nunca no frontend. Sem ela, a exclusão responde `503` e nada é apagado.
+
 ---
 
 ## 2. Vercel — deploy do monorepo
@@ -127,6 +163,7 @@ O repo já contém:
 | `VITE_API_BASE_URL` | `/_/backend/api/v1` |
 | `VITE_SUPABASE_URL` | `https://<ref>.supabase.co` |
 | `VITE_SUPABASE_ANON_KEY` | (Supabase → API → anon public) |
+| `VITE_TURNSTILE_SITE_KEY` | site key do Turnstile (seção 1.3) |
 
 > Caminho relativo `/_/backend/api/v1` funciona porque frontend e backend são servidos pelo mesmo domínio. Se quiser deixar absoluto, troque para `https://www.creo.com.br/_/backend/api/v1`.
 
@@ -143,6 +180,8 @@ O repo já contém:
 | `RATE_LIMIT_WINDOW` | `1m` |
 | `PRAYED_WINDOW_HOURS` | `12` |
 | `PRAYED_IP_BURST_PER_HOUR` | `200` |
+| `WRITE_RATE_LIMIT_REQUESTS` | `30` (escritas por usuário por janela) |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role key (seção 1.4) — **segredo** |
 
 > **Não** defina `HTTP_ADDR` — o backend já cai para `:$PORT` (Vercel injeta `PORT` automaticamente em Web Services).
 

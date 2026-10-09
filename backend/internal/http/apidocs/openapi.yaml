@@ -12,9 +12,14 @@ info:
     sem o prefixo `Bearer`.
 
     **Contas de teste.** Crie pelo próprio app em https://www.creo.com.br, na aba
-    **Criar**, com e-mail e senha. A confirmação de e-mail é automática, então a
-    conta funciona na hora. Não é preciso acesso ao Supabase. Vale ter várias
-    contas para os cenários (católica, evangélica, admin de grupo, bloqueada).
+    **Criar**, com e-mail e senha (mínimo de 8 caracteres). A conta só entra
+    depois de confirmar o e-mail pelo link enviado, então use um endereço que você
+    consiga abrir (um alias `+qa1`, `+qa2` do seu e-mail serve). Não é preciso
+    acesso ao Supabase. Vale ter várias contas para os cenários (católica,
+    evangélica, admin de grupo, bloqueada).
+
+    Com o captcha ligado no Supabase, o login direto pela API do Supabase (opção
+    2 abaixo) pede um `captcha_token`; nesse caso, copie o token do app (opção 1).
 
     **Opção 1: copiar do app.** Entre em https://www.creo.com.br, abra o DevTools
     (Application → Local Storage) e copie o valor de `accessToken`.

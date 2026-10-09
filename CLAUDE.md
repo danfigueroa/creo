@@ -351,6 +351,46 @@ O backend serve uma Swagger UI em `/docs`: `http://localhost:8080/docs` no local
 - `servers` usa a URL relativa `../api/v1`, resolvida contra o próprio spec. Isso funciona sem config nos dois ambientes, com e sem `/_/backend`. Não troque por URL absoluta.
 - Para conferir: `npx @redocly/cli lint backend/internal/http/apidocs/openapi.yaml`. Os avisos de `operationId` e de descrição de tag são esperados.
 
+### Segurança
+
+- **RLS em toda tabela de `public`** (migration 000021). O backend fala como
+  `postgres` (dono das tabelas, `BYPASSRLS`), então RLS sem policy não muda nada
+  para ele. Quem perde acesso é o PostgREST, que a anon key do bundle alcança;
+  antes disso qualquer um lia `users.email` direto. **Toda migration que cria
+  tabela precisa de `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`.** Os grants de
+  `anon`/`authenticated` foram revogados, inclusive os padrões futuros.
+- Função usada por policy de Storage precisa ser `SECURITY DEFINER` com
+  `SET search_path = public` (ex.: `is_group_admin_or_moderator`), senão ela
+  roda como `authenticated` e não enxerga mais a tabela.
+- **JWT** (`internal/auth/jwks.go`): exige `aud` e `role` = `authenticated`,
+  `exp`, algoritmo `ES256`/`RS256` e 30 s de leeway. Token sem `kid` só passa
+  com uma chave no JWKS. `kid` desconhecido força refresh no máximo 1 vez a
+  cada 30 s.
+- **Middlewares**: `SecurityHeaders` (nosniff, frame DENY, `no-referrer`, CSP
+  `default-src 'none'` fora de `/docs`), `BodyLimit` de 64 KB no `/api/v1`
+  (estouro vira `INVALID_JSON`), `X-Request-Id` do cliente só no formato
+  `^[A-Za-z0-9-]{1,64}$`, e `WriteRateLimit` (30 escritas/min por usuário →
+  `429 RATE_LIMITED`). O rate limit vive na memória da instância: na Vercel é
+  melhor esforço. O freio de auth e e-mail é o do Supabase.
+- **URLs de imagem** (`validImageURL` no service): avatar, capa e aviso só
+  aceitam `https://<ref>.supabase.co/storage/v1/object/public/...` ou vazio. A
+  origem sai do `JWT_ISSUER` (`cfg.SupabaseURL`). Front que reenvia o formulário
+  inteiro deve mandar a imagem só quando ela mudou, porque URL antiga de fora
+  travaria o salvamento.
+- **Conta excluída** (`DELETE /me`): numa tx, soft delete + texto apagado do
+  conteúdo, remoção de vínculos e anonimização de `users` (o e-mail vira
+  `<id>@deleted.local` para liberar o UNIQUE). O usuário sai do Supabase Auth
+  pela Admin API **antes do commit**: se a API falhar, nada é gravado. Único
+  admin de grupo com membros → `409 LAST_ADMIN` com `details.groups`.
+  `UpsertAuthUser` não revive linha com `deleted_at` (`ErrAccountDeleted` →
+  `401 ACCOUNT_DELETED` via `writeAuthSyncError`), o que cobre o access token
+  que ainda vale por até 1 h. Handler novo usa `writeAuthSyncError(w, err)` no
+  erro de `ensureAuthUser`.
+- **Export** (`GET /me/export`): um statement só (`exportUserDataSQL`, um
+  `json_build_object`). Tabela nova com dado pessoal entra nele.
+- Segredo novo do backend: `SUPABASE_SERVICE_ROLE_KEY`, usado só na exclusão.
+  Sem ele, `503 ACCOUNT_DELETION_UNAVAILABLE`.
+
 ### Soft delete
 
 Tabelas usam `deleted_at TIMESTAMPTZ` (nullable). Toda query de listagem precisa `WHERE deleted_at IS NULL` (e em joins com users, `u.deleted_at IS NULL`). Índices parciais (`WHERE deleted_at IS NULL`) já existem para `group_memberships` e `groups`.
@@ -399,7 +439,15 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 ### Telas e shell
 
 - **`/`** (`pages/landing-page.tsx`) — Welcome screen 2-col com hero editorial à esquerda (brand mark, título serif gigante com itálico, lede, 3 features numeradas, citação Mt 18,20) e auth card à direita (tabs Entrar/Criar com underline animado, magic-link). Sign-in bem-sucedido roteia pra `/feed`. A tradição escolhida antes do login fica em `localStorage.creo-pending-tradition` e é aplicada pós-login via PATCH `/profile/tradition` (a chave só é removida quando o PATCH tem sucesso).
-- **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais. (O onboarding wizard foi **removido** — não existe `/onboarding`.)
+- **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais. (O onboarding wizard foi **removido** — não existe `/onboarding`.) Verifica `?token_hash=&type=` (confirmação de cadastro, link mágico, troca de e-mail) com `verifyOtp`.
+- **Auth e segurança da conta**:
+  - E-mail precisa ser confirmado (painel do Supabase). Login recusado por "Email not confirmed" oferece reenvio na hora, com cooldown de 60 s (`useCooldown`).
+  - Templates de e-mail (`supabase/templates/`) usam `token_hash`, não o `ConfirmationURL` PKCE, para o link abrir em qualquer navegador.
+  - **`/auth/reset` só libera a troca vindo de um link de recuperação**: `token_hash` com `type=recovery`, ou a flag `creo-recovery` em `sessionStorage`, gravada pelo listener de `PASSWORD_RECOVERY` em `lib/supabase.ts` (o evento dispara antes da página montar). Depois de salvar: `signOut({ scope: 'others' })`.
+  - **Senha mínima única**: `PASSWORD_MIN` em `lib/password.ts` (8), igual ao painel do Supabase.
+  - **Captcha**: `useCaptcha()` + `<TurnstileWidget>` + `captchaOption(token)` (`components/turnstile.tsx`) em toda chamada de auth que o Supabase protege (`signUp`, `signInWithPassword`, `signInWithOtp`, `resetPasswordForEmail`, `resend`). O token é de uso único: `captcha.reset()` no `finally`. Sem `VITE_TURNSTILE_SITE_KEY`, o widget não aparece (dev).
+  - **Perfil → Conta** (`components/account-security.tsx`): trocar senha (reconfere a atual com `signInWithPassword`), trocar e-mail (`updateUser`, confirmação dupla), sair deste ou de todos os dispositivos (`signOut({ scope: 'global' })`), exportar dados e excluir conta (senha atual + digitar o `@username`).
+  - `lib/api.ts`: refresh que falha ou `ACCOUNT_DELETED` faz `signOut({ scope: 'local' })`, senão o `getSession()` devolvia o token morto de novo.
 - **`/feed`** (`pages/feed-page.tsx`) — canvas `.feed` 720px, headline serif, tabs com `tabs__ink`, composer quiet (abre modal global), posts.
 - **`/requests/:id`** (`pages/request-detail-page.tsx`) — IntentionDetail editorial: header + body em serif, total de orações destacado, reactions row, "Quem rezou" agrupado, "Atualizações do autor" (**funcional**: `GET/POST /requests/:id/updates`), marcar como atendido com testemunho (`POST/DELETE /requests/:id/answer`), "Compartilhar com" (PATCH /requests/:id — visibilidade por grupo, não é share externo).
 - **`/notifications`** (`pages/notifications-page.tsx`) — pedidos de amizade pendentes fixados no topo (Aceitar/Recusar inline) e o resto em ordem **cronológica**, em faixas Novas / Hoje / Anteriores (não agrupar por tipo: um pedido de amizade ficava enterrado abaixo das orações).
@@ -524,6 +572,8 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 - **Não esqueça `tradition` filter** ao escrever queries de feed.
 - **Não esqueça `deleted_at IS NULL`** em listagens.
 - **Não esqueça o `openapi.yaml`** ao criar ou alterar endpoint.
+- **Não crie tabela sem `ENABLE ROW LEVEL SECURITY`** — a anon key é pública.
+- **Não ligue o captcha no Supabase antes** de o front com `VITE_TURNSTILE_SITE_KEY` estar no ar: todo login quebra.
 - **Quando reiniciar `make dev`**, sempre matar a porta 8080 antes (`go run` deixa zumbi).
 - **Não criar arquivo `.md` novo** sem o usuário pedir explicitamente. Mas `CLAUDE.md`, `README.md` e `DEPLOY.md` podem ser atualizados livremente.
 - **Não crie testes "para parecer profissional"** — o repo ainda não tem suite e adicionar testes é decisão de produto, não cleanup.
@@ -564,6 +614,9 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 | Modelos / enums | `backend/internal/models/models.go` |
 | Documentação da API (Swagger) | `backend/internal/http/apidocs/openapi.yaml` + `docs.go` + `index.html` |
 | Instrumentação de banco | `backend/internal/db/trace.go` + `internal/http/middleware/logging.go` |
+| Segurança da conta (front) | `frontend/src/components/account-security.tsx`, `components/turnstile.tsx`, `lib/password.ts`, `pages/auth-reset-page.tsx` |
+| LGPD (export/exclusão) | `backend/internal/repositories/account.go` + `handlers/account_handler.go` + `internal/supabaseadmin` |
+| Templates de e-mail | `supabase/templates/*.html` (colar no painel do Supabase) |
 | Versículo do dia (backend) | `backend/internal/bible/bible.go` + `verse_handler.go` + seção de versículos em `service.go`/`repository.go` |
 | Versículo do dia (frontend) | `frontend/src/components/daily-verse.tsx`, `share-verse-modal.tsx`, `VerseCard` em `feed-card.tsx` |
 
