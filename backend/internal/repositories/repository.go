@@ -48,6 +48,8 @@ type Repository interface {
 	GetFriendshipState(ctx context.Context, viewerID, ownerID string) (models.PublicFriendshipState, *string, *string, error)
 	GetUserStats(ctx context.Context, userID string) (models.ProfileStats, error)
 	UpsertAuthUser(ctx context.Context, userID, email, preferredUsername, preferredDisplayName, preferredTradition string) error
+	ExportUserData(ctx context.Context, userID string) (json.RawMessage, error)
+	DeleteAccount(ctx context.Context, userID string, beforeCommit func(context.Context) error) error
 	SetUserTradition(ctx context.Context, userID string, tradition models.Tradition) (models.User, error)
 	SetUserLanguage(ctx context.Context, userID string, language models.Language) (models.User, error)
 	UsernameExists(ctx context.Context, username string) (bool, error)

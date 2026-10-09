@@ -61,6 +61,9 @@ info:
       URLs públicas do Storage do próprio projeto
       (`https://<ref>.supabase.co/storage/v1/object/public/...`) ou string vazia.
       Qualquer outra resposta `400 VALIDATION_ERROR`.
+    - **Conta excluída.** Depois de `DELETE /me`, o token antigo ainda é válido
+      por até 1 hora no Supabase, mas as rotas que sincronizam o usuário
+      respondem `401 ACCOUNT_DELETED`.
     - **IDs.** Os IDs são UUID. Um ID mal formado na URL responde
       `400 INVALID_ID`, com o nome do parâmetro em `details.param`. Um UUID
       válido que não existe responde `404`.
@@ -96,6 +99,8 @@ security:
 tags:
   - name: Health
   - name: Perfil
+  - name: Conta
+    description: Direitos do titular (LGPD) — exportar os próprios dados e excluir a conta.
   - name: Feed
   - name: Pedidos
     description: Pedidos de oração, reações, atualizações e graça alcançada.
@@ -282,6 +287,77 @@ paths:
                     items: { $ref: "#/components/schemas/MyPrayerEntry" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "500": { $ref: "#/components/responses/InternalError" }
+
+  /me/export:
+    get:
+      tags: [Conta]
+      summary: Exportar meus dados
+      description: |
+        Devolve, num arquivo JSON (`Content-Disposition: attachment`), tudo o que o
+        Creo guarda sobre o usuário autenticado: perfil (com e-mail), pedidos
+        (com as atualizações do autor), avisos, versículos compartilhados,
+        reações dadas, amizades, grupos, bloqueios e notificações recebidas.
+        Inclui conteúdo já apagado, que continua guardado.
+      responses:
+        "200":
+          description: Arquivo JSON com os dados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exportedAt, profile, prayerRequests, announcements, verseShares, reactions, friends, groups, blockedUsers, notifications]
+                properties:
+                  exportedAt: { type: string, format: date-time }
+                  profile: { type: object }
+                  prayerRequests: { type: array, items: { type: object } }
+                  announcements: { type: array, items: { type: object } }
+                  verseShares: { type: array, items: { type: object } }
+                  reactions: { type: array, items: { type: object } }
+                  friends: { type: array, items: { type: object } }
+                  groups: { type: array, items: { type: object } }
+                  blockedUsers: { type: array, items: { type: object } }
+                  notifications: { type: array, items: { type: object } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /me:
+    delete:
+      tags: [Conta]
+      summary: Excluir minha conta
+      description: |
+        Exclusão permanente, tudo ou nada:
+
+        - pedidos, avisos e versículos recebem soft delete e têm o texto apagado;
+          atualizações de pedido são removidas;
+        - amizades, bloqueios, notificações (recebidas e causadas), solicitações
+          de entrada pendentes e memberships são removidos;
+        - grupos em que o usuário era a única pessoa recebem soft delete;
+        - o perfil é anonimizado (`Conta excluída`, `@excluido_...`), e o e-mail
+          é liberado para um cadastro novo;
+        - o usuário é removido do Supabase Auth, o que revoga os refresh tokens.
+
+        As reações já dadas continuam somadas nos contadores, sem autoria visível.
+        O app confere a senha atual antes de chamar esta rota; a API em si só
+        exige o token.
+      responses:
+        "204": { description: Conta excluída }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: "`LAST_ADMIN`: o usuário é o único admin de grupos que ainda têm outros membros. `details.groups` lista esses grupos."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error:
+                  code: LAST_ADMIN
+                  message: Transfer admin rights before deleting the account
+                  details: { groups: [{ id: "6f1c...", name: "Pastoral da Juventude" }] }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503":
+          description: "`ACCOUNT_DELETION_UNAVAILABLE`: o servidor está sem `SUPABASE_SERVICE_ROLE_KEY`. Nada foi apagado."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /users/{username}:
     get:

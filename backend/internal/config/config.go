@@ -25,13 +25,15 @@ type Config struct {
 	WriteRateLimitRequests int
 	// Origem do projeto Supabase (https://<ref>.supabase.co), derivada do
 	// JWT_ISSUER. Usada para validar URLs de imagem e chamar a Admin API.
-	SupabaseURL          string
-	PrayedWindowHours    int
-	PrayedIPBurstPerHour int
-	CORSAllowedOrigins   []string
-	BibleAPIBaseURL      string
-	BibleTranslation     string
-	BibleAPITimeout      time.Duration
+	SupabaseURL string
+	// Só a exclusão de conta usa; sem ela, DELETE /me responde 503.
+	SupabaseServiceRoleKey string
+	PrayedWindowHours      int
+	PrayedIPBurstPerHour   int
+	CORSAllowedOrigins     []string
+	BibleAPIBaseURL        string
+	BibleTranslation       string
+	BibleAPITimeout        time.Duration
 }
 
 func Load() (Config, error) {
@@ -48,6 +50,7 @@ func Load() (Config, error) {
 		RateLimitRequests:      intOrDefault("RATE_LIMIT_REQUESTS", 120),
 		RateLimitWindow:        durationOrDefault("RATE_LIMIT_WINDOW", time.Minute),
 		WriteRateLimitRequests: intOrDefault("WRITE_RATE_LIMIT_REQUESTS", 30),
+		SupabaseServiceRoleKey: strings.TrimSpace(os.Getenv("SUPABASE_SERVICE_ROLE_KEY")),
 		PrayedWindowHours:      intOrDefault("PRAYED_WINDOW_HOURS", 12),
 		PrayedIPBurstPerHour:   intOrDefault("PRAYED_IP_BURST_PER_HOUR", 200),
 		CORSAllowedOrigins:     csvOrDefault("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"}),

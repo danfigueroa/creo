@@ -18,6 +18,7 @@ import (
 	apphttp "parish-viva/backend/internal/http"
 	"parish-viva/backend/internal/repositories"
 	"parish-viva/backend/internal/services"
+	"parish-viva/backend/internal/supabaseadmin"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -61,7 +62,7 @@ func main() {
 
 	repo := repositories.NewPostgresRepository(dbpool)
 	bibleProvider := bible.NewHTTPProvider(cfg.BibleAPIBaseURL, cfg.BibleAPITimeout)
-	svc := services.NewService(repo, bibleProvider, cfg.SupabaseURL)
+	svc := services.NewService(repo, bibleProvider, cfg.SupabaseURL, supabaseadmin.New(cfg.SupabaseURL, cfg.SupabaseServiceRoleKey))
 	router := apphttp.NewRouter(cfg, logger, svc)
 
 	srv := &http.Server{

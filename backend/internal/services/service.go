@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"hash/fnv"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"parish-viva/backend/internal/bible"
 	"parish-viva/backend/internal/models"
 	"parish-viva/backend/internal/repositories"
+	"parish-viva/backend/internal/supabaseadmin"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -28,6 +30,13 @@ type Service struct {
 	// Prefixo público do Storage do Supabase; toda URL de imagem gravada
 	// (avatar, capa de grupo, aviso) precisa começar com ele.
 	imageURLPrefix string
+	// Remove o usuário do Supabase Auth na exclusão de conta.
+	authAdmin AuthAdmin
+}
+
+// AuthAdmin é o pedaço da Admin API do Supabase que o service usa.
+type AuthAdmin interface {
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 // feedCountTTL limita a frequência dos COUNT(*) de feed, que reexecutam a CTE
@@ -79,6 +88,16 @@ func (t *ttlSeen) seen(key string, ttl time.Duration) bool {
 func (t *ttlSeen) forget(key string) {
 	t.mu.Lock()
 	delete(t.entries, key)
+	t.mu.Unlock()
+}
+
+func (t *ttlSeen) forgetPrefix(prefix string) {
+	t.mu.Lock()
+	for k := range t.entries {
+		if strings.HasPrefix(k, prefix) {
+			delete(t.entries, k)
+		}
+	}
 	t.mu.Unlock()
 }
 
@@ -138,13 +157,14 @@ var ErrAnnouncementInvalidEventAt = errors.New("invalid announcement event date"
 // NewService monta o service. O TextProvider pode ser nil: nesse caso o
 // versículo do dia é servido só com a referência quando o catálogo ainda não
 // tiver texto persistido, sem nunca falhar a requisição.
-func NewService(repo repositories.Repository, bibleProvider bible.TextProvider, supabaseURL string) *Service {
+func NewService(repo repositories.Repository, bibleProvider bible.TextProvider, supabaseURL string, authAdmin AuthAdmin) *Service {
 	return &Service{
 		repo:           repo,
 		bible:          bibleProvider,
 		feedCounts:     &ttlCounts{entries: map[string]ttlCountEntry{}},
 		syncedAuth:     &ttlSeen{entries: map[string]time.Time{}},
 		imageURLPrefix: strings.TrimRight(supabaseURL, "/") + "/storage/v1/object/public/",
+		authAdmin:      authAdmin,
 	}
 }
 
@@ -793,6 +813,30 @@ func (s *Service) EnsureAuthUser(ctx context.Context, userID, email, preferredUs
 		s.syncedAuth.forget(key)
 		return err
 	}
+	return nil
+}
+
+// ExportUserData devolve todos os dados pessoais do titular (LGPD, art. 18).
+func (s *Service) ExportUserData(ctx context.Context, userID string) (json.RawMessage, error) {
+	return s.repo.ExportUserData(ctx, userID)
+}
+
+// DeleteAccount apaga o conteúdo, anonimiza o perfil e remove o usuário do
+// Supabase Auth, tudo ou nada: a remoção no Auth roda antes do commit, e se
+// ela falhar o banco volta atrás.
+func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
+	if s.authAdmin == nil {
+		return supabaseadmin.ErrNotConfigured
+	}
+	err := s.repo.DeleteAccount(ctx, userID, func(ctx context.Context) error {
+		return s.authAdmin.DeleteUser(ctx, userID)
+	})
+	if err != nil {
+		return err
+	}
+	// Nesta instância, a próxima requisição com o token antigo já cai na
+	// guarda de conta excluída em vez de esperar o TTL do cache.
+	s.syncedAuth.forgetPrefix(userID + "|")
 	return nil
 }
 
