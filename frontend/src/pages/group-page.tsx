@@ -628,10 +628,14 @@ function SettingsTab({ details }: { details: GroupDetails }) {
 
   const persistGroup = useMutation({
     mutationFn: async (overrides: { imageUrl?: string | null }) => {
+      const nextImage = overrides.imageUrl !== undefined ? overrides.imageUrl : imageUrl
+      // Só manda a imagem quando ela muda: o backend só aceita URLs do Storage,
+      // e uma capa antiga de fora travaria o salvamento do resto.
+      const imageChanged = nextImage !== (details.imageUrl ?? null)
       await api.patch(`/groups/${details.id}`, {
         name,
         description,
-        imageUrl: overrides.imageUrl !== undefined ? overrides.imageUrl : imageUrl,
+        ...(imageChanged ? { imageUrl: nextImage ?? '' } : {}),
         joinPolicy
       })
     },
