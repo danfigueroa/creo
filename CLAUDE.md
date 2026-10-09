@@ -577,6 +577,7 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 - **Quando reiniciar `make dev`**, sempre matar a porta 8080 antes (`go run` deixa zumbi).
 - **Não criar arquivo `.md` novo** sem o usuário pedir explicitamente. Mas `CLAUDE.md`, `README.md` e `DEPLOY.md` podem ser atualizados livremente.
 - **Não crie testes "para parecer profissional"** — o repo ainda não tem suite e adicionar testes é decisão de produto, não cleanup.
+- **`framework: "go"` no service `backend`** (`vercel.json` da raiz): `backend/` tem `go.mod` **e** um `Dockerfile`, e o Vercel CLI 62+ detecta os dois (Go e Container) e recusa o build com "Multiple frameworks detected". Não remova o pin. A chave `experimentalServices` está depreciada (migrar para `services` + `rewrites` é uma mudança de roteamento à parte).
 - **Região da função**: `experimentalServices.<name>` rejeita `regions`, e o `regions` em `backend/vercel.json` é **ignorado** — a função estava rodando em `iad1`, com ~60 ms por ida ao Supabase. A região vale pelo painel da Vercel (Settings → Functions → Function Region). Para conferir: o header `x-vercel-id` da resposta deve ser `gru1::pdx1::...` (borda::função), e o `Server-Timing` mostra `app`/`db`/idas ao banco por request.
 
 ---
