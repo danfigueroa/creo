@@ -28,7 +28,7 @@ func NewFriendHandler(service *services.Service) *FriendHandler {
 func (h *FriendHandler) ListFriends(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListFriends(r.Context(), userID)
@@ -42,7 +42,7 @@ func (h *FriendHandler) ListFriends(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) ListPendingRequests(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListPendingFriendRequests(r.Context(), userID)
@@ -56,7 +56,7 @@ func (h *FriendHandler) ListPendingRequests(w http.ResponseWriter, r *http.Reque
 func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req sendFriendRequestInput
@@ -97,7 +97,7 @@ func (h *FriendHandler) SendRequest(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) AcceptRequest(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")
@@ -116,7 +116,7 @@ func (h *FriendHandler) AcceptRequest(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) RejectRequest(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")
@@ -135,7 +135,7 @@ func (h *FriendHandler) RejectRequest(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) CancelRequest(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")
@@ -154,7 +154,7 @@ func (h *FriendHandler) CancelRequest(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) RemoveFriend(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	targetUserID := chi.URLParam(r, "userId")
@@ -177,7 +177,7 @@ func (h *FriendHandler) RemoveFriend(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) SuggestFriends(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.SuggestFriends(r.Context(), userID, 10)
@@ -191,7 +191,7 @@ func (h *FriendHandler) SuggestFriends(w http.ResponseWriter, r *http.Request) {
 func (h *FriendHandler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	query := r.URL.Query().Get("q")

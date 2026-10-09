@@ -44,7 +44,7 @@ func NewGroupHandler(service *services.Service) *GroupHandler {
 func (h *GroupHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListUserGroups(r.Context(), userID)
@@ -58,7 +58,7 @@ func (h *GroupHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Search(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	query := r.URL.Query().Get("q")
@@ -73,7 +73,7 @@ func (h *GroupHandler) Search(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req createGroupRequest
@@ -98,7 +98,7 @@ func (h *GroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) RequestJoin(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -121,7 +121,7 @@ func (h *GroupHandler) RequestJoin(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) ListJoinRequests(w http.ResponseWriter, r *http.Request) {
 	actorUserID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -144,7 +144,7 @@ func (h *GroupHandler) ListJoinRequests(w http.ResponseWriter, r *http.Request) 
 func (h *GroupHandler) GetDetails(w http.ResponseWriter, r *http.Request) {
 	viewerID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -163,7 +163,7 @@ func (h *GroupHandler) GetDetails(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	viewerID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -191,7 +191,7 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) ChangeMemberRole(w http.ResponseWriter, r *http.Request) {
 	actorID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -232,7 +232,7 @@ func (h *GroupHandler) ChangeMemberRole(w http.ResponseWriter, r *http.Request) 
 func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	actorID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -268,7 +268,7 @@ func (h *GroupHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Leave(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -295,7 +295,7 @@ func (h *GroupHandler) Leave(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 	actorID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -336,7 +336,7 @@ func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) ListGroupFeed(w http.ResponseWriter, r *http.Request) {
 	viewerID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -360,7 +360,7 @@ func (h *GroupHandler) ListGroupFeed(w http.ResponseWriter, r *http.Request) {
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {
 	actorUserID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -388,7 +388,7 @@ func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request
 func (h *GroupHandler) RejectJoinRequest(w http.ResponseWriter, r *http.Request) {
 	actorUserID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")

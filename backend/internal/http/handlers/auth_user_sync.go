@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"parish-viva/backend/internal/http/middleware"
+	"parish-viva/backend/internal/http/shared"
+	"parish-viva/backend/internal/repositories"
 	"parish-viva/backend/internal/services"
 )
 
@@ -17,6 +19,17 @@ func ensureAuthUser(service *services.Service, r *http.Request) error {
 	displayName := middleware.GetString(r.Context(), middleware.ContextKeyDisplayName)
 	tradition := middleware.GetString(r.Context(), middleware.ContextKeyTradition)
 	return service.EnsureAuthUser(r.Context(), userID, userEmail, username, displayName, tradition)
+}
+
+// writeAuthSyncError responde a falha de ensureAuthUser. Conta excluída vira
+// 401 ACCOUNT_DELETED: o access token do Supabase continua válido por até 1 h
+// depois da exclusão, e o front usa o código para encerrar a sessão.
+func writeAuthSyncError(w http.ResponseWriter, err error) {
+	if errors.Is(err, repositories.ErrAccountDeleted) {
+		shared.WriteError(w, http.StatusUnauthorized, "ACCOUNT_DELETED", "This account was deleted", nil)
+		return
+	}
+	shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
 }
 
 // decodeOptionalJSON lê um corpo JSON que pode vir vazio. Corpo ausente deixa v

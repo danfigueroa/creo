@@ -53,7 +53,7 @@ func parseAnnouncementTime(value string) (time.Time, error) {
 func (h *AnnouncementHandler) Create(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -78,7 +78,7 @@ func (h *AnnouncementHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *AnnouncementHandler) ListByGroup(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	groupID := chi.URLParam(r, "id")
@@ -106,7 +106,7 @@ func (h *AnnouncementHandler) ListByGroup(w http.ResponseWriter, r *http.Request
 func (h *AnnouncementHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	announcementID := chi.URLParam(r, "aid")
@@ -139,7 +139,7 @@ func (h *AnnouncementHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *AnnouncementHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	announcementID := chi.URLParam(r, "aid")

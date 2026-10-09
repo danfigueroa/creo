@@ -41,7 +41,7 @@ func NewProfileHandler(service *services.Service) *ProfileHandler {
 func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	profile, err := h.service.GetProfile(r.Context(), userID)
@@ -55,7 +55,7 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 func (h *ProfileHandler) ListMyPrayers(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListMyPrayers(r.Context(), userID, 30, 0)
@@ -69,7 +69,7 @@ func (h *ProfileHandler) ListMyPrayers(w http.ResponseWriter, r *http.Request) {
 func (h *ProfileHandler) GetProfileStats(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	stats, err := h.service.GetUserStats(r.Context(), userID)
@@ -83,7 +83,7 @@ func (h *ProfileHandler) GetProfileStats(w http.ResponseWriter, r *http.Request)
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	body, err := io.ReadAll(r.Body)
@@ -122,7 +122,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	username := chi.URLParam(r, "username")
@@ -141,7 +141,7 @@ func (h *ProfileHandler) GetPublicProfile(w http.ResponseWriter, r *http.Request
 func (h *ProfileHandler) UpdateTradition(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req updateTraditionRequest
@@ -164,7 +164,7 @@ func (h *ProfileHandler) UpdateTradition(w http.ResponseWriter, r *http.Request)
 func (h *ProfileHandler) UpdateLanguage(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req updateLanguageRequest

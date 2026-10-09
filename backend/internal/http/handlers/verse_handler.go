@@ -44,7 +44,7 @@ type prayVerseShareRequest struct {
 func (h *VerseHandler) Today(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	daily, err := h.service.GetDailyVerse(r.Context(), userID)
@@ -59,7 +59,7 @@ func (h *VerseHandler) Today(w http.ResponseWriter, r *http.Request) {
 func (h *VerseHandler) CreateShare(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req createVerseShareRequest
@@ -87,7 +87,7 @@ func (h *VerseHandler) GetShare(w http.ResponseWriter, r *http.Request) {
 	viewerUserID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if viewerUserID != "" {
 		if err := ensureAuthUser(h.service, r); err != nil {
-			shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+			writeAuthSyncError(w, err)
 			return
 		}
 	}
@@ -103,7 +103,7 @@ func (h *VerseHandler) GetShare(w http.ResponseWriter, r *http.Request) {
 func (h *VerseHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	if err := h.service.DeleteVerseShare(r.Context(), userID, chi.URLParam(r, "id")); err != nil {
@@ -117,7 +117,7 @@ func (h *VerseHandler) DeleteShare(w http.ResponseWriter, r *http.Request) {
 func (h *VerseHandler) PrayShare(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req prayVerseShareRequest
@@ -138,7 +138,7 @@ func (h *VerseHandler) PrayShare(w http.ResponseWriter, r *http.Request) {
 func (h *VerseHandler) ListShareActions(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListVerseShareActions(r.Context(), userID, chi.URLParam(r, "id"))

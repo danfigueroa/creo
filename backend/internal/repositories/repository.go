@@ -26,6 +26,7 @@ var ErrFriendRequestAlreadyExists = errors.New("friend request already exists")
 var ErrFriendRequestNotFound = errors.New("friend request not found")
 var ErrFriendshipNotFound = errors.New("friendship not found")
 var ErrUsernameTaken = errors.New("username already in use")
+var ErrAccountDeleted = errors.New("account deleted")
 var ErrGroupAccessDenied = errors.New("group access denied")
 var ErrPrayerRequestNotFound = errors.New("prayer request not found")
 var ErrPrayerRequestForbidden = errors.New("prayer request forbidden")
@@ -380,7 +381,11 @@ func (r *PostgresRepository) UpsertAuthUser(ctx context.Context, userID, email, 
 	if preferredTradition != string(models.TraditionCatholic) && preferredTradition != string(models.TraditionEvangelical) {
 		preferredTradition = ""
 	}
-	_, err := r.db.Exec(ctx, `
+	// O WHERE no DO UPDATE impede que um token ainda válido de uma conta
+	// excluída reescreva a linha anonimizada; sem linha devolvida, é conta
+	// excluída.
+	var syncedID string
+	err := r.db.QueryRow(ctx, `
 		INSERT INTO users (id, email, username, display_name, tradition)
 		VALUES (
 			$1,
@@ -401,7 +406,12 @@ func (r *PostgresRepository) UpsertAuthUser(ctx context.Context, userID, email, 
 				ELSE users.display_name
 			END,
 			updated_at = NOW()
-	`, userID, email, preferredUsername, preferredDisplayName, preferredTradition)
+		WHERE users.deleted_at IS NULL
+		RETURNING id::text
+	`, userID, email, preferredUsername, preferredDisplayName, preferredTradition).Scan(&syncedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrAccountDeleted
+	}
 	if err != nil {
 		return err
 	}

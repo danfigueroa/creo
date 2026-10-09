@@ -29,7 +29,7 @@ func NewModerationHandler(service *services.Service) *ModerationHandler {
 func (h *ModerationHandler) Queue(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -57,7 +57,7 @@ func (h *ModerationHandler) RequestChanges(w http.ResponseWriter, r *http.Reques
 func (h *ModerationHandler) History(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")
@@ -79,7 +79,7 @@ func (h *ModerationHandler) History(w http.ResponseWriter, r *http.Request) {
 func (h *ModerationHandler) applyAction(w http.ResponseWriter, r *http.Request, action models.ModerationActionType) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	requestID := chi.URLParam(r, "requestId")

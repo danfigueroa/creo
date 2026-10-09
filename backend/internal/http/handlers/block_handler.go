@@ -28,7 +28,7 @@ func NewBlockHandler(service *services.Service) *BlockHandler {
 func (h *BlockHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	items, err := h.service.ListBlockedUsers(r.Context(), userID)
@@ -42,7 +42,7 @@ func (h *BlockHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *BlockHandler) Block(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	var req blockUserInput
@@ -78,7 +78,7 @@ func (h *BlockHandler) Block(w http.ResponseWriter, r *http.Request) {
 func (h *BlockHandler) Unblock(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetString(r.Context(), middleware.ContextKeyUserID)
 	if err := ensureAuthUser(h.service, r); err != nil {
-		shared.WriteError(w, http.StatusInternalServerError, "USER_SYNC_FAILED", "Could not prepare user profile", nil)
+		writeAuthSyncError(w, err)
 		return
 	}
 	targetUserID := chi.URLParam(r, "userId")
