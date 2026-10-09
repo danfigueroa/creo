@@ -26,7 +26,39 @@ export function getSupabaseClient() {
       flowType: 'pkce'
     }
   })
+  // O PASSWORD_RECOVERY do fluxo ?code= dispara na inicialização do client,
+  // antes de /auth/reset montar e assinar. A flag guarda o evento para a tela
+  // saber que a sessão veio de um link de recuperação, e não de um login comum.
+  supabaseClient.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') markRecovery()
+  })
   return supabaseClient
+}
+
+const RECOVERY_FLAG = 'creo-recovery'
+
+function markRecovery() {
+  try {
+    sessionStorage.setItem(RECOVERY_FLAG, '1')
+  } catch {
+    // sessionStorage bloqueado: a tela cai no fluxo de token_hash.
+  }
+}
+
+export function hasRecoveryFlag(): boolean {
+  try {
+    return sessionStorage.getItem(RECOVERY_FLAG) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function clearRecoveryFlag() {
+  try {
+    sessionStorage.removeItem(RECOVERY_FLAG)
+  } catch {
+    // nada a limpar
+  }
 }
 
 export type ImageUploadReason = 'no-client' | 'invalid-type' | 'too-large' | 'upload-failed'

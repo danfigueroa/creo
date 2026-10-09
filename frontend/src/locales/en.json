@@ -7,7 +7,7 @@
     "emailNotConfirmed": "You haven't confirmed your email yet. Open the link we sent.",
     "invalidCredentials": "Incorrect email or password.",
     "alreadyRegistered": "An account with this email already exists. Try signing in.",
-    "passwordTooShort": "The password must be at least 6 characters.",
+    "passwordTooShort": "The password must be at least 8 characters.",
     "rateLimit": "Too many attempts. Please wait a moment.",
     "generic": "Something went wrong. Please try again shortly.",
     "supabaseMissing": "Supabase configuration is missing.",
@@ -565,7 +565,7 @@
   },
   "reset": {
     "title": "Set a new password",
-    "sub": "Choose a password you can comfortably remember — at least 6 characters.",
+    "sub": "Choose a password you can comfortably remember — at least 8 characters.",
     "checking": "Checking your link…",
     "linkInvalid": "This link is no longer valid — it may have expired or already been used.",
     "requestNew": "Request a new reset link",

@@ -7,7 +7,7 @@
     "emailNotConfirmed": "Você ainda não confirmou seu e-mail. Abra o link que enviamos.",
     "invalidCredentials": "E-mail ou senha incorretos.",
     "alreadyRegistered": "Já existe uma conta com este e-mail. Tente entrar.",
-    "passwordTooShort": "A senha precisa ter ao menos 6 caracteres.",
+    "passwordTooShort": "A senha precisa ter ao menos 8 caracteres.",
     "rateLimit": "Muitas tentativas. Aguarde um instante.",
     "generic": "Algo deu errado. Tente novamente em instantes.",
     "supabaseMissing": "Configuração do Supabase ausente.",
@@ -565,7 +565,7 @@
   },
   "reset": {
     "title": "Definir nova senha",
-    "sub": "Escolha uma senha que você consiga lembrar com tranquilidade — pelo menos 6 caracteres.",
+    "sub": "Escolha uma senha que você consiga lembrar com tranquilidade — pelo menos 8 caracteres.",
     "checking": "Verificando seu link…",
     "linkInvalid": "Este link não é mais válido — pode ter expirado ou já ter sido usado.",
     "requestNew": "Pedir novo link de redefinição",

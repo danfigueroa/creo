@@ -7,7 +7,7 @@
     "emailNotConfirmed": "Aún no confirmaste tu correo. Abre el enlace que te enviamos.",
     "invalidCredentials": "Correo o contraseña incorrectos.",
     "alreadyRegistered": "Ya existe una cuenta con este correo. Intenta iniciar sesión.",
-    "passwordTooShort": "La contraseña debe tener al menos 6 caracteres.",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres.",
     "rateLimit": "Demasiados intentos. Espera un momento.",
     "generic": "Algo salió mal. Inténtalo de nuevo en un momento.",
     "supabaseMissing": "Falta la configuración de Supabase.",
@@ -565,7 +565,7 @@
   },
   "reset": {
     "title": "Definir nueva contraseña",
-    "sub": "Elige una contraseña que puedas recordar con tranquilidad — al menos 6 caracteres.",
+    "sub": "Elige una contraseña que puedas recordar con tranquilidad — al menos 8 caracteres.",
     "checking": "Verificando tu enlace…",
     "linkInvalid": "Este enlace ya no es válido — puede haber expirado o ya haber sido usado.",
     "requestNew": "Pedir un nuevo enlace de restablecimiento",

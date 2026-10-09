@@ -1,11 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { getSupabaseClient } from '@/lib/supabase'
+import { clearRecoveryFlag, getSupabaseClient, hasRecoveryFlag } from '@/lib/supabase'
+import { PASSWORD_MIN } from '@/lib/password'
 import { useSessionStore } from '@/state/session-store'
 
 type Status = 'checking' | 'ready' | 'no-session' | 'saving' | 'done'
 
+// Só libera a troca quando a sessão nasceu de um link de recuperação: via
+// ?token_hash=&type=recovery (template de e-mail) ou pelo evento
+// PASSWORD_RECOVERY do fluxo ?code=. Antes qualquer sessão servia, então quem
+// pegasse um navegador logado trocava a senha sem saber a atual.
 export function AuthResetPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -23,26 +28,38 @@ export function AuthResetPage() {
       return
     }
     let active = true
+    const params = new URLSearchParams(window.location.search)
+    const tokenHash = params.get('token_hash')
+    const isRecoveryLink = tokenHash !== null && params.get('type') === 'recovery'
 
-    const evaluate = (token: string | null | undefined) => {
-      if (!active) return
-      if (token) {
-        setAccessToken(token)
-        setStatus('ready')
-      } else {
-        setStatus((prev) => (prev === 'checking' ? 'no-session' : prev))
-      }
+    const markReady = (token: string | null | undefined) => {
+      if (!active || !token) return
+      setAccessToken(token)
+      setStatus('ready')
     }
-
-    supabase.auth.getSession().then(({ data }) => evaluate(data.session?.access_token))
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      evaluate(session?.access_token)
-    })
-
-    const fallback = window.setTimeout(() => {
+    const markInvalid = () => {
       if (!active) return
       setStatus((prev) => (prev === 'checking' ? 'no-session' : prev))
-    }, 4000)
+    }
+
+    if (isRecoveryLink) {
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }).then(({ data, error: verifyError }) => {
+        window.history.replaceState({}, '', window.location.pathname)
+        if (verifyError || !data.session) {
+          markInvalid()
+          return
+        }
+        markReady(data.session.access_token)
+      })
+    } else if (hasRecoveryFlag()) {
+      supabase.auth.getSession().then(({ data }) => markReady(data.session?.access_token))
+    }
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') markReady(session?.access_token)
+    })
+
+    const fallback = window.setTimeout(markInvalid, isRecoveryLink ? 8000 : 4000)
 
     return () => {
       active = false
@@ -58,7 +75,7 @@ export function AuthResetPage() {
       setError(t('authErrors.supabaseMissing'))
       return
     }
-    if (password.length < 6) {
+    if (password.length < PASSWORD_MIN) {
       setError(t('authErrors.passwordTooShort'))
       return
     }
@@ -80,6 +97,10 @@ export function AuthResetPage() {
       }
       return
     }
+    clearRecoveryFlag()
+    // Quem pede recuperação pode estar fugindo de uma sessão roubada: derruba
+    // as outras e mantém só esta.
+    await supabase.auth.signOut({ scope: 'others' }).catch(() => undefined)
     setStatus('done')
     setTimeout(() => navigate('/feed', { replace: true }), 600)
   }
@@ -124,6 +145,7 @@ export function AuthResetPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                minLength={PASSWORD_MIN}
                 disabled={status !== 'ready'}
               />
             </label>
