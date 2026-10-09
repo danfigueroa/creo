@@ -132,7 +132,132 @@
     "createYours": "Crea una"
   },
   "landing": {
+    "navAria": "Navegación principal",
+    "navHow": "Cómo funciona",
+    "navTry": "Pruébalo",
+    "navFeatures": "Funciones",
+    "navFaq": "Preguntas",
+    "dialogAria": "Iniciar sesión o crear cuenta",
+    "close": "Cerrar",
+    "heroAria": "Presentación",
+    "heroEyebrow": "Red de oración para comunidades de fe",
+    "title": "Nadie tiene que<br/>orar <em>solo.</em>",
+    "lede": "Pide oración, ora por quien la pidió y mira a tu comunidad orando contigo. Para católicos y evangélicos, con tu privacidad en primer lugar.",
+    "ctaPrimary": "Crear cuenta gratis",
     "seeHow": "Ver cómo funciona",
+    "trustFree": "Gratis",
+    "trustPrivate": "Privado por defecto",
+    "trustTraditions": "Católico o evangélico",
+    "trustLangs": "Portugués, inglés y español",
+    "demoAria": "Demostración de Creo en funcionamiento",
+    "demoWhen": "hace 2 h",
+    "demoTitle": "Por la cirugía de mi madre el viernes",
+    "demoText": "La operan del corazón el viernes por la mañana. Pido que oren por los médicos y por su tranquilidad.",
+    "demoPrayers": "oraciones",
+    "demoToast1": "<b>Ana</b> oró por tu intención",
+    "demoToast2": "<b>Pedro</b> aceptó tu solicitud de amistad",
+    "demoToast3": "Nuevo aviso en <b>Pastoral Juvenil</b>",
+    "demoToast4": "<b>12 personas</b> oraron por ti hoy",
+    "demoVerseLabel": "Versículo del día",
+    "demoVerseText": "Venid a mí todos los que estáis trabajados y cargados, y yo os haré descansar.",
+    "demoVerseRef": "Mateo 11,28",
+    "pillarsEyebrow": "Qué es Creo",
+    "pillarsTitle": "Un lugar para pedir oración — y para orar de verdad por quien la pidió.",
+    "pillarsSub": "No es una red de opinión. No hay comentarios, ni likes, ni debate: cada reacción es una oración que alguien ofreció por ti.",
+    "pillar1Title": "Pide",
+    "pillar1Text": "Escribe lo que llevas en el corazón y elige quién puede verlo: todos, solo tus grupos o nadie más que tú.",
+    "pillar2Title": "Ora",
+    "pillar2Text": "Ofrece un Ave María, un Rosario, una intercesión o un ayuno. Quien pidió sabrá que estuviste con él.",
+    "pillar3Title": "Caminen juntos",
+    "pillar3Text": "Sigue a amigos y grupos de tu parroquia o iglesia, recibe avisos y celebra cada gracia alcanzada.",
+    "howEyebrow": "Cómo funciona",
+    "howTitle": "De la intención a la gracia alcanzada.",
+    "howSub": "Cuatro pasos sencillos. Empezar toma menos de un minuto.",
+    "step1Title": "Elige tu tradición",
+    "step1Text": "Católica o evangélica. Define las oraciones que ofreces y las peticiones que aparecen en tu muro. Puedes cambiarla después.",
+    "step2Title": "Comparte una intención",
+    "step2Text": "Ponle un título, cuenta lo que necesitas y decide quién la ve. Si es demasiado delicada, publícala sin tu nombre.",
+    "step3Title": "Tu comunidad ora",
+    "step3Text": "Cada persona registra la oración que ofreció. Ves quién oró y cuántas oraciones ha recibido tu intención.",
+    "step4Title": "Cuenta la gracia alcanzada",
+    "step4Text": "Cuando la oración sea respondida, marca la intención como atendida y deja un testimonio para quienes oraron contigo.",
+    "mockNew": "Nueva intención",
+    "mockTitleLabel": "Título",
+    "mockBodyLabel": "Tu intención",
+    "mockVisibility": "Quién la ve",
+    "mockPublish": "Publicar",
+    "mockWhoPrayed": "Quién oró",
+    "mockAnswered": "Gracia alcanzada",
+    "mockTestimony": "La cirugía salió bien y ella ya está en casa. Gracias a cada uno de los que oraron con nosotros.",
+    "tryEyebrow": "Pruébalo",
+    "tryTitle": "Ora por esta intención.",
+    "trySub": "Haz clic en una de las oraciones. Así funciona Creo: en lugar de dar like, registras la oración que ofreciste — y quien pidió se entera.",
+    "tryTradition": "Tu tradición",
+    "tryYou": "Tú",
+    "tryToast": "<b>Helena</b> sabrá que oraste: <b>{{action}}</b>",
+    "tryHint": "Haz clic en una oración para orar",
+    "tryCta": "Empezar con esta tradición",
+    "privacyEyebrow": "Privacidad",
+    "privacyTitle": "Tú decides quién ve cada intención.",
+    "privacySub": "La elección es por petición, no por cuenta. Y puedes publicar de forma anónima cuando la intención sea demasiado delicada para llevar tu nombre.",
+    "privacyAnon": "Publicar de forma anónima",
+    "privacyAnonHint": "Tu nombre y tu foto no aparecen para nadie.",
+    "privacyAnonName": "Anónimo",
+    "ringYou": "Tú",
+    "ringGroups": "Tus grupos",
+    "ringCommunity": "Comunidad",
+    "whoPUBLIC": "Toda la comunidad de tu tradición puede ver y orar.",
+    "whoGROUP_ONLY": "Solo quienes participan en los grupos que elijas.",
+    "whoPRIVATE": "Solo tú. Un diario de oración personal.",
+    "featuresEyebrow": "Funciones",
+    "featuresTitle": "Todo sirve a un propósito: que las personas sigan orando unas por otras.",
+    "f1Title": "Intenciones que cuentan la historia completa",
+    "f1Text": "Publica actualizaciones mientras la oración sigue y márcala como atendida, con testimonio, cuando llegue la gracia.",
+    "f2Title": "Grupos y pastorales",
+    "f2Text": "Células, pastorales y movimientos con muro propio, ingreso por aprobación, moderadores y avisos con fecha e imagen.",
+    "f3Title": "Amigos por @",
+    "f3Text": "Encuentra personas por su @username y sigue de cerca las intenciones de quienes te son cercanos.",
+    "f4Title": "Versículo del día",
+    "f4Text": "Cada día un versículo elegido para ti. Medítalo y compártelo con amigos o grupos.",
+    "f5Title": "Notificaciones",
+    "f5Text": "Entérate cuando alguien oró por ti, aceptó tu amistad o publicó un aviso en tu grupo.",
+    "f6Title": "En tres idiomas",
+    "f6Text": "Portugués, inglés y español. Tu preferencia te acompaña en cualquier dispositivo.",
+    "f2Groups": "Pastoral Juvenil|Célula Esperanza|Rosario de Hombres",
+    "f5Item1": "Ana oró por tu intención",
+    "f5Item2": "Pedro aceptó tu amistad",
+    "f5Item3": "Nuevo aviso: retiro del sábado",
+    "faqEyebrow": "Preguntas frecuentes",
+    "faqTitle": "Antes de empezar.",
+    "q1": "¿Creo es gratis?",
+    "a1": "Sí. Crear una cuenta, pedir oración, orar, participar y crear grupos no cuesta nada.",
+    "q2": "¿Necesito pertenecer a alguna iglesia?",
+    "a2": "No. Eliges tu tradición — católica o evangélica — y puedes orar con la comunidad, con amigos o unirte a grupos de tu parroquia, iglesia o célula.",
+    "q3": "¿Quién ve mis peticiones?",
+    "a3": "Tú decides en cada petición: pública (la comunidad de tu tradición), solo los grupos que elijas, o privada (solo tú). Puedes cambiarlo después.",
+    "q4": "¿Puedo pedir oración sin identificarme?",
+    "a4": "Sí. Marca la opción anónima al crear la intención: aparece sin tu nombre ni tu foto, y las personas oran igual.",
+    "q5": "¿Puedo cambiar de tradición después?",
+    "a5": "Sí, en cualquier momento desde tu perfil. Tu repertorio de oraciones y tu muro pasan a seguir la nueva tradición.",
+    "q6": "¿Cómo traigo a mi grupo o pastoral?",
+    "a6": "Crea un grupo en segundos, elige si el ingreso es abierto o por aprobación y nombra moderadores. El grupo tiene su propio muro y avisos.",
+    "q7": "¿Funciona en el celular?",
+    "a7": "Funciona directamente en el navegador del celular, con una navegación pensada para pantallas pequeñas. No hay que instalar nada.",
+    "q8": "¿Y mis datos?",
+    "a8": "Tus intenciones son privadas por defecto. En Perfil → Cuenta puedes exportar todo lo que guardamos sobre ti o eliminar tu cuenta cuando quieras.",
+    "ctaTitle": "Tu comunidad ya está orando.<br/><em>Ven a orar con ella.</em>",
+    "ctaSub": "Crea tu cuenta en menos de un minuto.",
+    "quote": "\"Donde dos o tres se reúnen en mi nombre, allí estoy yo en medio de ellos.\"",
+    "quoteRef": "Mateo 18,20",
+    "signIn": "Iniciar sesión",
+    "signInDot": "Iniciar sesión.",
+    "signingIn": "Iniciando sesión…",
+    "signUp": "Crear cuenta",
+    "signInTitle": "Bienvenido de nuevo.",
+    "signInSub": "Accede con correo y contraseña — o recibe un enlace único por correo.",
+    "signUpTitle": "Crea tu cuenta.",
+    "signUpSub": "En menos de un minuto. Puedes empezar a orar con la comunidad hoy mismo.",
+    "assure": "Tus intenciones son privadas por defecto.",
     "username": "@username",
     "usernamePlaceholder": "apodo único, sin espacios",
     "usernameHelp": "Así es como las personas te encuentran en Creo.",
@@ -149,61 +274,6 @@
     "resending": "Reenviando…",
     "resent": "Enlace reenviado",
     "useAnotherEmail": "Usar otro correo",
-    "howEyebrow": "Cómo funciona",
-    "howTitle": "Tres pasos hasta la primera oración.",
-    "howSub": "Creo no es una red de opiniones. Es un lugar donde pides oración y alguien, del otro lado, reza de verdad.",
-    "step1Title": "Elige tu tradición",
-    "step1Text": "Católica o evangélica. Define las oraciones que puedes ofrecer y las peticiones que llegan hasta ti.",
-    "step2Title": "Comparte una intención",
-    "step2Text": "Escribe lo que llevas en el corazón y decide quién lo ve: todos, solo tus grupos, o nadie más que tú.",
-    "step3Title": "Tu comunidad reza",
-    "step3Text": "Cada persona registra la oración que ofreció. Sin comentarios, sin debate — solo la presencia de quien estuvo contigo.",
-    "doEyebrow": "Lo que puedes hacer",
-    "doTitle": "Hecho para la vida de oración de una comunidad.",
-    "doSub": "Todo lo que existe aquí sirve a un propósito: mantener a las personas rezando unas por otras.",
-    "do1Title": "Peticiones de oración",
-    "do1Text": "Escribe una intención, elige quién la ve y márcala como respondida — con testimonio — cuando la oración sea atendida.",
-    "do2Title": "Oraciones de tu tradición",
-    "do2Text": "Ave María, Padre Nuestro, Rosario. O Oré, Intercesión, Ayuno, Clamor. Cada tradición tiene su repertorio.",
-    "do3Title": "Grupos",
-    "do3Text": "Pastorales, células y movimientos con muro propio, ingreso por aprobación y roles de administración.",
-    "do4Title": "Amigos por @",
-    "do4Text": "Encuentra personas por su @username y sigue de cerca las intenciones de quienes te son cercanos.",
-    "do5Title": "Avisos del grupo",
-    "do5Text": "Los administradores publican comunicados con imagen y fecha — encuentros, novenas, jornadas — en el muro del grupo.",
-    "do6Title": "Notificaciones",
-    "do6Text": "Entérate cuando alguien rezó por tu intención, aceptó tu solicitud de amistad o publicó un aviso en tu grupo.",
-    "tradsEyebrow": "Dos tradiciones",
-    "tradsTitle": "Las oraciones son las de tu fe.",
-    "tradsSub": "En lugar de me gusta, cada persona registra la oración que ofreció. La tradición que eliges define ese repertorio — y puedes cambiarla cuando quieras, en tu perfil.",
-    "tradCatholicText": "Las devociones de siempre, tal como las reza tu comunidad.",
-    "tradEvangelicalText": "El lenguaje de la intercesión, el ayuno y el clamor.",
-    "privacyEyebrow": "Privacidad",
-    "privacyTitle": "Tú decides quién ve cada intención.",
-    "privacySub": "La elección es por petición, no por cuenta. Y puedes publicar de forma anónima cuando una intención sea demasiado delicada para llevar tu nombre.",
-    "langsEyebrow": "Idiomas",
-    "langsTitle": "Disponible en tres idiomas.",
-    "langsSub": "Portugués, inglés y español. La preferencia te acompaña entre dispositivos y puedes cambiarla en cualquier momento.",
-    "heroAria": "Presentación",
-    "authAria": "Acceso",
-    "title": "Tu comunidad<br/>unida en oración,<br/><em>cada día.</em>",
-    "lede": "Comparte intenciones, sigue las peticiones de amigos y grupos y fortalece tu comunidad de fe — católica o evangélica — en un espacio moderno y acogedor.",
-    "feature1Title": "Peticiones de oración",
-    "feature1Desc": "Comparte intenciones con privacidad granular — público, solo tu grupo o anónimo.",
-    "feature2Title": "Oré por ti",
-    "feature2Desc": "Mira quién oró por tu intención — sin comentarios, solo presencia.",
-    "feature3Title": "Tu comunidad",
-    "feature3Desc": "Pastorales, células y movimientos en un solo espacio acogedor.",
-    "quote": "\"Donde dos o tres se reúnen en mi nombre, allí estoy yo en medio de ellos.\"",
-    "quoteRef": "Mateo 18,20",
-    "signIn": "Entrar",
-    "signInDot": "Entrar.",
-    "signingIn": "Entrando…",
-    "signUp": "Crear cuenta",
-    "signInTitle": "Bienvenido de nuevo.",
-    "signInSub": "Accede con correo y contraseña — o recibe un enlace único por correo.",
-    "signUpTitle": "Crea tu cuenta.",
-    "signUpSub": "En menos de un minuto. Puedes empezar a orar con la comunidad hoy mismo.",
     "email": "Correo",
     "emailPlaceholder": "tu@ejemplo.com",
     "password": "Contraseña",
@@ -220,7 +290,6 @@
     "creating": "Creando…",
     "terms": "Al continuar, aceptas los términos y la política de privacidad.",
     "haveAccount": "¿Ya tienes cuenta?",
-    "assure": "Tus intenciones son privadas por defecto.",
     "namePrompt": "¿Cómo te llamamos? Completa tu nombre.",
     "accountCreated": "Cuenta creada. Enviamos un enlace de confirmación a {{email}}. Ábrelo para activar.",
     "magicEmailPrompt": "Indica tu correo para recibir el enlace de acceso.",
@@ -332,8 +401,16 @@
     "addFriend": "Agregar como amigo"
   },
   "group": {
-    "role": { "ADMIN": "Admin", "MODERATOR": "Moderador", "MEMBER": "Miembro" },
-    "policy": { "OPEN": "Entrada libre", "REQUEST": "Por solicitud", "INVITE_ONLY": "Solo invitación" },
+    "role": {
+      "ADMIN": "Admin",
+      "MODERATOR": "Moderador",
+      "MEMBER": "Miembro"
+    },
+    "policy": {
+      "OPEN": "Entrada libre",
+      "REQUEST": "Por solicitud",
+      "INVITE_ONLY": "Solo invitación"
+    },
     "policyRequestAdmin": "Por solicitud (el admin aprueba)",
     "tabsAria": "Secciones del grupo",
     "tabMembers": "Miembros",
@@ -542,9 +619,18 @@
   },
   "newGroup": {
     "policy": {
-      "OPEN": { "label": "Abierto", "description": "Cualquiera puede entrar directamente sin aprobación." },
-      "REQUEST": { "label": "Por solicitud", "description": "Las personas piden entrar y los admins aprueban." },
-      "INVITE_ONLY": { "label": "Solo invitación", "description": "Solo las personas invitadas por los admins pueden participar." }
+      "OPEN": {
+        "label": "Abierto",
+        "description": "Cualquiera puede entrar directamente sin aprobación."
+      },
+      "REQUEST": {
+        "label": "Por solicitud",
+        "description": "Las personas piden entrar y los admins aprueban."
+      },
+      "INVITE_ONLY": {
+        "label": "Solo invitación",
+        "description": "Solo las personas invitadas por los admins pueden participar."
+      }
     },
     "eyebrow": "Nuevo grupo",
     "title": "Crea una comunidad de oración",
@@ -599,9 +685,18 @@
     "createRequest": "Crear petición"
   },
   "visibility": {
-    "GROUP_ONLY": { "label": "Solo grupo", "description": "Solo los miembros de los grupos seleccionados pueden ver y orar." },
-    "PUBLIC": { "label": "Público", "description": "Visible en el muro público tras pasar por moderación." },
-    "PRIVATE": { "label": "Privado", "description": "Solo tú lo verás. Útil para registrar una intención personal." }
+    "GROUP_ONLY": {
+      "label": "Solo grupo",
+      "description": "Solo los miembros de los grupos seleccionados pueden ver y orar."
+    },
+    "PUBLIC": {
+      "label": "Público",
+      "description": "Visible en el muro público tras pasar por moderación."
+    },
+    "PRIVATE": {
+      "label": "Privado",
+      "description": "Solo tú lo verás. Útil para registrar una intención personal."
+    }
   },
   "request": {
     "intro": "Escribe desde el corazón. Tu comunidad leerá y orará contigo.",
@@ -638,12 +733,30 @@
     "errorCreate": "No se pudo crear la intención."
   },
   "categories": {
-    "HEALTH": { "label": "Salud", "hint": "Enfermedades, tratamientos, recuperación" },
-    "FAMILY": { "label": "Familia", "hint": "Hogar, hijos, relaciones" },
-    "WORK": { "label": "Trabajo", "hint": "Empleo, proyectos, finanzas" },
-    "GRIEF": { "label": "Duelo", "hint": "Pérdidas y despedidas" },
-    "THANKSGIVING": { "label": "Acción de gracias", "hint": "Gratitud por las bendiciones recibidas" },
-    "OTHER": { "label": "Otro", "hint": "Cualquier otra intención" }
+    "HEALTH": {
+      "label": "Salud",
+      "hint": "Enfermedades, tratamientos, recuperación"
+    },
+    "FAMILY": {
+      "label": "Familia",
+      "hint": "Hogar, hijos, relaciones"
+    },
+    "WORK": {
+      "label": "Trabajo",
+      "hint": "Empleo, proyectos, finanzas"
+    },
+    "GRIEF": {
+      "label": "Duelo",
+      "hint": "Pérdidas y despedidas"
+    },
+    "THANKSGIVING": {
+      "label": "Acción de gracias",
+      "hint": "Gratitud por las bendiciones recibidas"
+    },
+    "OTHER": {
+      "label": "Otro",
+      "hint": "Cualquier otra intención"
+    }
   },
   "prayerActions": {
     "HAIL_MARY": "Ave María",
@@ -659,8 +772,14 @@
     "PURPOSE": "Compromiso"
   },
   "traditions": {
-    "CATHOLIC": { "label": "Católico(a)", "description": "Ave María, Padre Nuestro, Gloria, Decena y Rosario" },
-    "EVANGELICAL": { "label": "Evangélico(a)", "description": "Oré, Intercesión, Gratitud, Ayuno, Clamor y Compromiso" }
+    "CATHOLIC": {
+      "label": "Católico(a)",
+      "description": "Ave María, Padre Nuestro, Gloria, Decena y Rosario"
+    },
+    "EVANGELICAL": {
+      "label": "Evangélico(a)",
+      "description": "Oré, Intercesión, Gratitud, Ayuno, Clamor y Compromiso"
+    }
   },
   "nav": {
     "mural": "Muro",
@@ -728,10 +847,26 @@
     "deleteDesc": "El versículo sale del muro de quienes lo veían. Esta acción no se puede deshacer."
   },
   "verseVisibility": {
-    "PUBLIC": { "label": "Público", "description": "Cualquier persona en Creo puede verlo y rezar.", "badge": "Público" },
-    "FRIENDS": { "label": "Amigos", "description": "Solo tus amigos lo ven en su muro.", "badge": "Amigos" },
-    "GROUP_ONLY": { "label": "Grupos", "description": "Solo los miembros de los grupos elegidos.", "badge": "Grupos" },
-    "PRIVATE": { "label": "Solo yo", "description": "Queda en tu muro, nadie más lo ve.", "badge": "Solo yo" }
+    "PUBLIC": {
+      "label": "Público",
+      "description": "Cualquier persona en Creo puede verlo y rezar.",
+      "badge": "Público"
+    },
+    "FRIENDS": {
+      "label": "Amigos",
+      "description": "Solo tus amigos lo ven en su muro.",
+      "badge": "Amigos"
+    },
+    "GROUP_ONLY": {
+      "label": "Grupos",
+      "description": "Solo los miembros de los grupos elegidos.",
+      "badge": "Grupos"
+    },
+    "PRIVATE": {
+      "label": "Solo yo",
+      "description": "Queda en tu muro, nadie más lo ve.",
+      "badge": "Solo yo"
+    }
   },
   "security": {
     "captchaPending": "Espera a que termine la verificación de seguridad e inténtalo de nuevo.",

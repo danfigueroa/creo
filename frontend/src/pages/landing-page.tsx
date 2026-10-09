@@ -1,820 +1,159 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { m, type Variants } from 'motion/react'
-import { getSupabaseClient } from '@/lib/supabase'
-import { useSessionStore } from '@/state/session-store'
-import { translateAuthError } from '@/lib/auth-errors'
-import { PASSWORD_MIN, isEmailNotConfirmed } from '@/lib/password'
-import { useCooldown } from '@/lib/use-cooldown'
-import { TurnstileWidget, captchaOption, useCaptcha } from '@/components/turnstile'
+import { m, useScroll, useTransform, type Variants } from 'motion/react'
 import { LanguageSwitcher } from '@/components/language-switcher'
-import { Glyph } from '@/components/glyph'
-import { api } from '@/lib/api'
-import { baseTransition, ease, fadeUp } from '@/lib/motion'
-import { prayerActionsFor, traditionOptions, type Tradition } from '@/lib/traditions'
+import { Glyph, type GlyphKind } from '@/components/glyph'
+import type { AuthTab } from '@/components/landing/auth-card'
+import { AuthDialog } from '@/components/landing/auth-dialog'
+import { FeatureBento } from '@/components/landing/feature-bento'
+import { Faq } from '@/components/landing/faq'
+import { FinalCta } from '@/components/landing/final-cta'
+import { HeroDemo } from '@/components/landing/hero-demo'
+import { HowItWorks } from '@/components/landing/how-it-works'
+import { LandingNav } from '@/components/landing/landing-nav'
+import { Playground, PrivacyDemo } from '@/components/landing/playground'
+import { scrollToSection } from '@/components/landing/scroll-to'
+import { fadeUp, revealUp } from '@/lib/motion'
+import type { Tradition } from '@/lib/traditions'
 
 // Hero: os blocos entram em cascata no mount. Filhos usam `fadeUp`, e o
 // staggerChildren daqui define o ritmo.
 const heroStagger: Variants = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } }
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } }
 }
 
-// Seções abaixo da dobra: revelam uma vez ao entrar na tela, e os cards de
-// dentro (m.article com `fadeUp`) seguem em cascata.
-const sectionReveal: Variants = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease, staggerChildren: 0.06, delayChildren: 0.12 } }
-}
+const PILLARS: { n: number; glyph: GlyphKind }[] = [
+  { n: 1, glyph: 'rose' },
+  { n: 2, glyph: 'beads' },
+  { n: 3, glyph: 'ring' }
+]
 
-const revealProps = {
-  variants: sectionReveal,
-  initial: 'hidden',
-  whileInView: 'show',
-  viewport: { once: true, margin: '0px 0px -80px 0px' }
-} as const
-
-type AuthTab = 'entrar' | 'criar'
-type UsernameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
-
-const USERNAME_RE = /^[a-z0-9_]{3,30}$/
-const RESEND_COOLDOWN_S = 60
-
-// Checagem de disponibilidade do @username com debounce. É só um aviso: o
-// servidor revalida na hora de aplicar, então uma falha aqui não trava nada.
-function useUsernameAvailability(username: string): UsernameState {
-  const [state, setState] = useState<UsernameState>('idle')
-
-  useEffect(() => {
-    if (username === '') {
-      setState('idle')
-      return
-    }
-    if (!USERNAME_RE.test(username)) {
-      setState('invalid')
-      return
-    }
-    setState('checking')
-    let active = true
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await api.get<{ available: boolean }>('/username-availability', {
-          params: { username }
-        })
-        if (active) setState(res.data.available ? 'available' : 'taken')
-      } catch {
-        if (active) setState('idle')
-      }
-    }, 400)
-
-    return () => {
-      active = false
-      window.clearTimeout(timer)
-    }
-  }, [username])
-
-  return state
+function readAuthParam(value: string | null): AuthTab | null {
+  return value === 'entrar' || value === 'criar' ? value : null
 }
 
 export function LandingPage() {
-  const navigate = useNavigate()
   const { t } = useTranslation()
-  const setAccessToken = useSessionStore((s) => s.setAccessToken)
-  const FEATURES = [
-    { n: '01', title: t('landing.feature1Title'), desc: t('landing.feature1Desc') },
-    { n: '02', title: t('landing.feature2Title'), desc: t('landing.feature2Desc') },
-    { n: '03', title: t('landing.feature3Title'), desc: t('landing.feature3Desc') }
-  ]
-  const [tab, setTab] = useState<AuthTab>('entrar')
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [name, setName] = useState('')
-  const [username, setUsername] = useState('')
-  // Sem pré-seleção de propósito: com CATHOLIC marcado por padrão, quem passava
-  // batido pelo campo saía católico sem nunca ter escolhido.
-  const [tradition, setTradition] = useState<Tradition | null>(null)
-  const [magic, setMagic] = useState(false)
-  const [info, setInfo] = useState('')
-  const [error, setError] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [pendingEmail, setPendingEmail] = useState<string | null>(null)
-  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
-  // Login recusado por e-mail não confirmado: guarda o endereço para oferecer
-  // o reenvio ali mesmo, sem mandar a pessoa procurar a opção em outra tela.
-  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null)
-  const captcha = useCaptcha()
-  const resendCooldown = useCooldown(RESEND_COOLDOWN_S)
+  const [params, setParams] = useSearchParams()
+  // `/?auth=entrar|criar` abre o painel direto — serve para links de fora.
+  const [authTab, setAuthTab] = useState<AuthTab | null>(() => readAuthParam(params.get('auth')))
+  // Tradição da demo. `picked` só vira true quando o visitante clica: só então
+  // ela pré-seleciona o cadastro, para ninguém sair católico sem ter escolhido.
+  const [tradition, setTradition] = useState<Tradition>('CATHOLIC')
+  const [picked, setPicked] = useState(false)
 
-  // Com o captcha ligado, a chamada sem token seria recusada pelo Supabase;
-  // melhor avisar aqui do que mostrar o erro cru de verificação.
-  function captchaReady(): boolean {
-    if (captcha.enabled && !captcha.token) {
-      setError(t('security.captchaPending'))
-      return false
+  const closeAuth = useCallback(() => {
+    setAuthTab(null)
+    if (params.has('auth')) {
+      const next = new URLSearchParams(params)
+      next.delete('auth')
+      setParams(next, { replace: true })
     }
-    return true
-  }
+  }, [params, setParams])
 
-  const usernameState = useUsernameAvailability(username)
-  const howRef = useRef<HTMLElement | null>(null)
-  const authRef = useRef<HTMLElement | null>(null)
+  const startSignUp = useCallback(() => setAuthTab('criar'), [])
 
-  // O CTA do rodapé fica muito abaixo do card: trocar a aba sem subir a página
-  // não teria efeito visível nenhum.
-  function startSignUp() {
-    setTab('criar')
-    authRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const tabsRef = useRef<HTMLDivElement | null>(null)
-  const [ink, setInk] = useState({ x: 0, w: 0 })
-  useEffect(() => {
-    const el = tabsRef.current?.querySelector(`[data-tab="${tab}"]`) as HTMLElement | null
-    if (!el || !tabsRef.current) return
-    const tr = tabsRef.current.getBoundingClientRect()
-    const er = el.getBoundingClientRect()
-    setInk({ x: er.left - tr.left, w: er.width })
-  }, [tab])
-
-  async function onSignIn(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setInfo('')
-    const supabase = getSupabaseClient()
-    if (!supabase) {
-      setError(t('authErrors.supabaseMissing'))
-      return
-    }
-    if (!captchaReady()) return
-    setUnconfirmedEmail(null)
-    setIsLoading(true)
-    try {
-      const { data, error: signErr } = await supabase.auth.signInWithPassword({
-        email,
-        password: pass,
-        options: captchaOption(captcha.token)
-      })
-      if (signErr) {
-        if (isEmailNotConfirmed(signErr.message)) setUnconfirmedEmail(email.trim())
-        setError(translateAuthError(signErr.message))
-        return
-      }
-      const token = (data.session as any)?.access_token as string | undefined
-      if (!token) {
-        setError(t('authErrors.cannotStartSession'))
-        return
-      }
-      setAccessToken(token)
-      navigate('/feed', { replace: true })
-    } finally {
-      captcha.reset()
-      setIsLoading(false)
-    }
-  }
-
-  async function onSignUp(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    setInfo('')
-    const supabase = getSupabaseClient()
-    if (!supabase) {
-      setError(t('authErrors.supabaseMissing'))
-      return
-    }
-    if (!name.trim()) {
-      setError(t('landing.namePrompt'))
-      return
-    }
-    if (!USERNAME_RE.test(username)) {
-      setError(t('landing.usernameInvalid'))
-      return
-    }
-    if (usernameState === 'taken') {
-      setError(t('landing.usernameTaken'))
-      return
-    }
-    if (pass.length < PASSWORD_MIN) {
-      setError(t('landing.passwordMin', { min: PASSWORD_MIN }))
-      return
-    }
-    if (!tradition) {
-      setError(t('landing.traditionPrompt'))
-      return
-    }
-    if (!captchaReady()) return
-    setIsLoading(true)
-    try {
-      // E-mail já cadastrado também cai aqui sem erro (o Supabase devolve um
-      // usuário falso para não revelar quem tem conta), então a tela seguinte
-      // é a mesma nos dois casos de propósito.
-      const { error: signErr } = await supabase.auth.signUp({
-        email,
-        password: pass,
-        options: {
-          ...captchaOption(captcha.token),
-          emailRedirectTo: `${window.location.origin}/auth`,
-          // O backend aplica esta metadata na primeira requisição autenticada
-          // (migration 000018), então a escolha vale em qualquer dispositivo.
-          data: { display_name: name.trim(), username, tradition }
-        }
-      })
-      if (signErr) {
-        setError(translateAuthError(signErr.message))
-        return
-      }
-      setResendState('idle')
-      setPendingEmail(email.trim())
-      resendCooldown.start()
-    } finally {
-      captcha.reset()
-      setIsLoading(false)
-    }
-  }
-
-  async function onResend() {
-    const target = pendingEmail || unconfirmedEmail
-    if (!target || resendCooldown.active) return
-    const supabase = getSupabaseClient()
-    if (!supabase) return
-    setError('')
-    setInfo('')
-    if (!captchaReady()) return
-    setResendState('sending')
-    try {
-      const { error: resendErr } = await supabase.auth.resend({
-        type: 'signup',
-        email: target,
-        options: { ...captchaOption(captcha.token), emailRedirectTo: `${window.location.origin}/auth` }
-      })
-      if (resendErr) {
-        setError(translateAuthError(resendErr.message))
-        setResendState('idle')
-        return
-      }
-      setResendState('sent')
-      resendCooldown.start()
-      if (!pendingEmail) setInfo(t('authPage.resendSent', { email: target }))
-    } catch {
-      setResendState('idle')
-    } finally {
-      captcha.reset()
-    }
-  }
-
-  async function onMagicLink() {
-    setError('')
-    setInfo('')
-    if (!email) {
-      setError(t('landing.magicEmailPrompt'))
-      return
-    }
-    const supabase = getSupabaseClient()
-    if (!supabase) {
-      setError(t('authErrors.supabaseMissing'))
-      return
-    }
-    if (!captchaReady()) return
-    setIsLoading(true)
-    try {
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email,
-        // Só acesso: sem isto, um e-mail digitado errado criava uma conta nova
-        // com username e tradição padrão.
-        options: {
-          ...captchaOption(captcha.token),
-          emailRedirectTo: `${window.location.origin}/auth`,
-          shouldCreateUser: false
-        }
-      })
-      if (otpErr) {
-        setError(translateAuthError(otpErr.message))
-        return
-      }
-      setMagic(true)
-      setInfo(t('landing.magicSent', { email: email.trim() }))
-    } finally {
-      captcha.reset()
-      setIsLoading(false)
-    }
-  }
+  // Parallax leve do mockup ao rolar o hero.
+  const { scrollY } = useScroll()
+  const demoY = useTransform(scrollY, [0, 700], [0, -60])
 
   return (
-    <div className="app app--welcome" data-screen-label="Welcome">
-      <div className="welcome">
-        <m.section
-          className="welcome__hero"
-          aria-label={t('landing.heroAria')}
-          variants={heroStagger}
-          initial="hidden"
-          animate="show"
-        >
-          <m.div className="welcome__brand" variants={fadeUp}>
-            <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
-            <span className="brand-word">Creo</span>
-            <LanguageSwitcher className="welcome__lang" />
+    <div className="lp" id="top">
+      <LandingNav onAuth={setAuthTab} />
+
+      <main>
+        <section className="lp-hero" aria-label={t('landing.heroAria')}>
+          <span className="lp-hero__glow lp-hero__glow--a" aria-hidden />
+          <span className="lp-hero__glow lp-hero__glow--b" aria-hidden />
+
+          <m.div className="lp-hero__copy" variants={heroStagger} initial="hidden" animate="show">
+            <m.p className="lp-pill" variants={fadeUp}>
+              <span className="lp-pill__dot" aria-hidden />
+              {t('landing.heroEyebrow')}
+            </m.p>
+            <m.h1 className="lp-hero__title" variants={fadeUp} dangerouslySetInnerHTML={{ __html: t('landing.title') }} />
+            <m.p className="lp-hero__lede" variants={fadeUp}>
+              {t('landing.lede')}
+            </m.p>
+            <m.div className="lp-hero__actions" variants={fadeUp}>
+              <button type="button" className="btn btn--primary lp-btn-lg" onClick={startSignUp}>
+                {t('landing.ctaPrimary')}
+              </button>
+              <button type="button" className="btn btn--ghost-out lp-btn-lg" onClick={() => scrollToSection('como-funciona')}>
+                {t('landing.seeHow')} <span aria-hidden>↓</span>
+              </button>
+            </m.div>
+            <m.ul className="lp-trust" variants={fadeUp}>
+              {(['trustFree', 'trustPrivate', 'trustTraditions', 'trustLangs'] as const).map((k) => (
+                <li key={k}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                    <path d="M3 7.2l2.6 2.6L11 4.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {t(`landing.${k}`)}
+                </li>
+              ))}
+            </m.ul>
           </m.div>
 
-          <m.h1 className="welcome__title" variants={fadeUp}>
-            <span dangerouslySetInnerHTML={{ __html: t('landing.title') }} />
-          </m.h1>
-
-          <m.p className="welcome__lede" variants={fadeUp}>
-            {t('landing.lede')}
-          </m.p>
-
-          <m.ul className="welcome__features" variants={heroStagger}>
-            {FEATURES.map((f) => (
-              <m.li key={f.n} className="welcome__feature" variants={fadeUp}>
-                <span className="welcome__feature-n">{f.n}</span>
-                <div className="welcome__feature-text">
-                  <h3>{f.title}</h3>
-                  <p>{f.desc}</p>
-                </div>
-              </m.li>
-            ))}
-          </m.ul>
-
-          <m.button
-            type="button"
-            variants={fadeUp}
-            className="welcome__more"
-            onClick={() => howRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          >
-            {t('landing.seeHow')}
-            <span aria-hidden>↓</span>
-          </m.button>
-
-          <m.figure className="welcome__quote" variants={fadeUp}>
-            <blockquote>
-              {t('landing.quote')}
-            </blockquote>
-            <figcaption>{t('landing.quoteRef')}</figcaption>
-          </m.figure>
-        </m.section>
-
-        <section className="welcome__auth" aria-label={t('landing.authAria')} ref={authRef}>
-          <m.div
-            className="welcome__auth-card"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0, transition: { ...baseTransition, duration: 0.4, delay: 0.18 } }}
-          >
-            <div className="welcome__tabs" ref={tabsRef} role="tablist">
-              <button
-                type="button"
-                data-tab="entrar"
-                className={`welcome__tab ${tab === 'entrar' ? 'is-on' : ''}`}
-                onClick={() => setTab('entrar')}
-                role="tab"
-                aria-selected={tab === 'entrar'}
-              >
-                {t('landing.signIn')}
-              </button>
-              <button
-                type="button"
-                data-tab="criar"
-                className={`welcome__tab ${tab === 'criar' ? 'is-on' : ''}`}
-                onClick={() => setTab('criar')}
-                role="tab"
-                aria-selected={tab === 'criar'}
-              >
-                {t('landing.signUp')}
-              </button>
-              <span
-                className="welcome__tab-ink"
-                style={{ transform: `translateX(${ink.x}px)`, width: ink.w }}
-              />
-            </div>
-
-            {tab === 'entrar' ? (
-              <>
-                <h2 className="welcome__auth-title">{t('landing.signInTitle')}</h2>
-                <p className="welcome__auth-sub">
-                  {t('landing.signInSub')}
-                </p>
-
-                <form className="welcome__form" onSubmit={onSignIn}>
-                  <label className="welcome__field">
-                    <span className="welcome__label">{t('landing.email')}</span>
-                    <input
-                      type="email"
-                      placeholder={t('landing.emailPlaceholder')}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <label className="welcome__field">
-                    <div className="welcome__label-row">
-                      <span className="welcome__label">{t('landing.password')}</span>
-                      <Link className="welcome__link-quiet" to="/auth?reset=1">
-                        {t('landing.forgotPassword')}
-                      </Link>
-                    </div>
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={pass}
-                      onChange={(e) => setPass(e.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <TurnstileWidget captcha={captcha} />
-
-                  <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
-                    {isLoading ? t('landing.signingIn') : t('landing.signIn')}
-                  </button>
-
-                  <div className="welcome__or">
-                    <span>{t('landing.or')}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={onMagicLink}
-                    disabled={isLoading}
-                    className={`welcome__magic ${magic ? 'is-sent' : ''}`}
-                  >
-                    <span className="welcome__magic-icon" aria-hidden>
-                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                        <path
-                          d="M2 4.5l5 3 5-3M2 4.5v5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-5M2 4.5l4.4-2.2a1 1 0 0 1 1.2 0L12 4.5"
-                          stroke="currentColor"
-                          strokeWidth="1.2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                    {magic ? t('landing.magicSentShort') : t('landing.magicCta')}
-                  </button>
-                </form>
-
-                {error && (
-                  <p role="alert" style={alertStyle()}>
-                    {error}
-                  </p>
-                )}
-                {unconfirmedEmail && (
-                  <button
-                    type="button"
-                    className="welcome__link-quiet"
-                    style={{ marginTop: 10 }}
-                    disabled={resendState === 'sending' || resendCooldown.active}
-                    onClick={onResend}
-                  >
-                    {resendCooldown.active
-                      ? t('security.resendIn', { seconds: resendCooldown.left })
-                      : t('authPage.resendConfirmation')}
-                  </button>
-                )}
-                {info && (
-                  <p role="status" style={alertStyle()}>
-                    {info}
-                  </p>
-                )}
-
-                <p className="welcome__foot">
-                  {t('landing.noAccount')}{' '}
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setTab('criar')
-                    }}
-                  >
-                    {t('landing.createOne')}
-                  </a>
-                </p>
-              </>
-            ) : pendingEmail ? (
-              <>
-                <h2 className="welcome__auth-title">{t('landing.checkInboxTitle')}</h2>
-                <p className="welcome__auth-sub">{t('landing.checkInboxText', { email: pendingEmail })}</p>
-
-                <div className="welcome__form">
-                  <TurnstileWidget captcha={captcha} />
-                  <button
-                    type="button"
-                    className="welcome__magic"
-                    disabled={resendState === 'sending' || resendCooldown.active}
-                    onClick={onResend}
-                  >
-                    {resendState === 'sending'
-                      ? t('landing.resending')
-                      : resendCooldown.active
-                        ? resendState === 'sent'
-                          ? `${t('landing.resent')} · ${t('security.resendIn', { seconds: resendCooldown.left })}`
-                          : t('security.resendIn', { seconds: resendCooldown.left })
-                        : t('landing.resend')}
-                  </button>
-                </div>
-
-                {error && (
-                  <p role="alert" style={alertStyle()}>
-                    {error}
-                  </p>
-                )}
-
-                <p className="welcome__foot">
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setPendingEmail(null)
-                      setResendState('idle')
-                      setError('')
-                    }}
-                  >
-                    {t('landing.useAnotherEmail')}
-                  </a>
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="welcome__auth-title">{t('landing.signUpTitle')}</h2>
-                <p className="welcome__auth-sub">
-                  {t('landing.signUpSub')}
-                </p>
-
-                <form className="welcome__form" onSubmit={onSignUp}>
-                  <label className="welcome__field">
-                    <span className="welcome__label">{t('landing.name')}</span>
-                    <input
-                      type="text"
-                      placeholder={t('landing.namePlaceholder')}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <label className="welcome__field">
-                    <div className="welcome__label-row">
-                      <span className="welcome__label">{t('landing.username')}</span>
-                      <span className="welcome__link-quiet" style={{ cursor: 'default' }}>
-                        {usernameState === 'checking' && t('landing.usernameChecking')}
-                        {usernameState === 'available' && t('landing.usernameAvailable')}
-                        {usernameState === 'taken' && t('landing.usernameTaken')}
-                        {usernameState === 'invalid' && t('landing.usernameInvalid')}
-                      </span>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder={t('landing.usernamePlaceholder')}
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value.replace(/^@+/, '').replace(/\s/g, '').toLowerCase())}
-                      required
-                    />
-                    <span className="welcome__hint">{t('landing.usernameHelp')}</span>
-                  </label>
-
-                  <label className="welcome__field">
-                    <span className="welcome__label">{t('landing.email')}</span>
-                    <input
-                      type="email"
-                      placeholder={t('landing.emailPlaceholder')}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <label className="welcome__field">
-                    <span className="welcome__label">{t('landing.password')}</span>
-                    <input
-                      type="password"
-                      placeholder={t('landing.passwordPlaceholder')}
-                      value={pass}
-                      onChange={(e) => setPass(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={PASSWORD_MIN}
-                      required
-                    />
-                    <span className="welcome__hint">{t('landing.passwordMin', { min: PASSWORD_MIN })}</span>
-                  </label>
-
-                  <div className="welcome__field">
-                    <span className="welcome__label">{t('landing.tradition')}</span>
-                    <div className="optgrid" style={{ marginTop: 4 }}>
-                      {traditionOptions().map((option) => {
-                        const active = tradition === option.value
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setTradition(option.value)}
-                            aria-pressed={active}
-                            className={`opt ${active ? 'is-on' : ''}`}
-                          >
-                            <span className="opt__mark" aria-hidden>{option.emoji}</span>
-                            <span className="min-w-0">
-                              <span className="opt__label">{option.label}</span>
-                              <span className="opt__desc">{option.description}</span>
-                            </span>
-                            {active && <span className="opt__check" aria-hidden>✓</span>}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <span className="welcome__hint">{t('landing.traditionHelp')}</span>
-                  </div>
-
-                  <TurnstileWidget captcha={captcha} />
-
-                  <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
-                    {isLoading ? t('landing.creating') : t('landing.signUp')}
-                  </button>
-
-                  <p className="welcome__terms">
-                    {t('landing.terms')}
-                  </p>
-                </form>
-
-                {error && (
-                  <p role="alert" style={alertStyle()}>
-                    {error}
-                  </p>
-                )}
-                {info && (
-                  <p role="status" style={alertStyle()}>
-                    {info}
-                  </p>
-                )}
-
-                <p className="welcome__foot">
-                  {t('landing.haveAccount')}{' '}
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      setTab('entrar')
-                    }}
-                  >
-                    {t('landing.signInDot')}
-                  </a>
-                </p>
-              </>
-            )}
+          <m.div className="lp-hero__demo" style={{ y: demoY }}>
+            <HeroDemo tradition={tradition} />
           </m.div>
-
-          <div className="welcome__assure">
-            <span className="welcome__assure-dot" aria-hidden />
-            {t('landing.assure')}
-          </div>
         </section>
-      </div>
 
-      <LandingSections howRef={howRef} onStart={startSignUp} />
-    </div>
-  )
-}
+        <section className="lp-section lp-pillars">
+          <m.header className="lp-head lp-head--center" variants={revealUp} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-80px' }}>
+            <m.p className="lp-eyebrow" variants={fadeUp}>{t('landing.pillarsEyebrow')}</m.p>
+            <m.h2 className="lp-h2" variants={fadeUp}>{t('landing.pillarsTitle')}</m.h2>
+            <m.p className="lp-sub" variants={fadeUp}>{t('landing.pillarsSub')}</m.p>
+          </m.header>
+          <m.div className="lp-pillars__grid" variants={revealUp} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-80px' }}>
+            {PILLARS.map((p) => (
+              <m.article key={p.n} className="lp-pillar" variants={fadeUp}>
+                <span className="lp-pillar__mark" aria-hidden>
+                  <Glyph kind={p.glyph} size={20} color="var(--ink-2)" />
+                </span>
+                <h3 className="lp-pillar__title">{t(`landing.pillar${p.n}Title`)}</h3>
+                <p className="lp-pillar__text">{t(`landing.pillar${p.n}Text`)}</p>
+              </m.article>
+            ))}
+          </m.div>
+        </section>
 
-function LandingSections({
-  howRef,
-  onStart
-}: {
-  howRef: React.MutableRefObject<HTMLElement | null>
-  onStart: () => void
-}) {
-  const { t } = useTranslation()
+        <HowItWorks />
 
-  const steps = [
-    { n: '01', title: t('landing.step1Title'), text: t('landing.step1Text') },
-    { n: '02', title: t('landing.step2Title'), text: t('landing.step2Text') },
-    { n: '03', title: t('landing.step3Title'), text: t('landing.step3Text') }
-  ]
+        <Playground
+          tradition={tradition}
+          onTradition={(next) => {
+            setTradition(next)
+            setPicked(true)
+          }}
+          onStart={() => {
+            setPicked(true)
+            setAuthTab('criar')
+          }}
+        />
 
-  const cards = [
-    { mark: '🕯️', title: t('landing.do1Title'), text: t('landing.do1Text') },
-    { mark: '📿', title: t('landing.do2Title'), text: t('landing.do2Text') },
-    { mark: '⛪', title: t('landing.do3Title'), text: t('landing.do3Text') },
-    { mark: '🤝', title: t('landing.do4Title'), text: t('landing.do4Text') },
-    { mark: '📣', title: t('landing.do5Title'), text: t('landing.do5Text') },
-    { mark: '🔔', title: t('landing.do6Title'), text: t('landing.do6Text') }
-  ]
+        <PrivacyDemo />
 
-  const visibilities = ['PUBLIC', 'GROUP_ONLY', 'PRIVATE'] as const
+        <FeatureBento />
 
-  return (
-    <div className="lp">
-      <m.section className="lp-section" ref={howRef} {...revealProps}>
-        <p className="lp-section__eyebrow">{t('landing.howEyebrow')}</p>
-        <h2 className="lp-section__title">{t('landing.howTitle')}</h2>
-        <p className="lp-section__sub">{t('landing.howSub')}</p>
+        <Faq />
 
-        <div className="lp-section__body lp-steps">
-          {steps.map((step) => (
-            <m.article key={step.n} className="lp-step" variants={fadeUp}>
-              <span className="lp-step__n">{step.n}</span>
-              <h3 className="lp-step__title">{step.title}</h3>
-              <p className="lp-step__text">{step.text}</p>
-            </m.article>
-          ))}
-        </div>
-      </m.section>
-
-      <m.section className="lp-section" {...revealProps}>
-        <p className="lp-section__eyebrow">{t('landing.doEyebrow')}</p>
-        <h2 className="lp-section__title">{t('landing.doTitle')}</h2>
-        <p className="lp-section__sub">{t('landing.doSub')}</p>
-
-        <div className="lp-section__body lp-grid">
-          {cards.map((card) => (
-            <m.article key={card.title} className="lp-card" variants={fadeUp}>
-              <span className="lp-card__mark" aria-hidden>{card.mark}</span>
-              <h3 className="lp-card__title">{card.title}</h3>
-              <p className="lp-card__text">{card.text}</p>
-            </m.article>
-          ))}
-        </div>
-      </m.section>
-
-      <m.section className="lp-section" {...revealProps}>
-        <p className="lp-section__eyebrow">{t('landing.tradsEyebrow')}</p>
-        <h2 className="lp-section__title">{t('landing.tradsTitle')}</h2>
-        <p className="lp-section__sub">{t('landing.tradsSub')}</p>
-
-        <div className="lp-section__body lp-trads">
-          {traditionOptions().map((option) => (
-            <m.article key={option.value} className="lp-trad" variants={fadeUp}>
-              <div className="lp-trad__head">
-                <span className="lp-trad__mark" aria-hidden>{option.emoji}</span>
-                <h3 className="lp-trad__title">{option.label}</h3>
-              </div>
-              <p className="lp-trad__text">{t(`landing.trad${option.value === 'CATHOLIC' ? 'Catholic' : 'Evangelical'}Text`)}</p>
-              <div className="lp-trad__actions">
-                {/* As mesmas ações que o feed oferece — vêm de lib/traditions.ts,
-                    então esta vitrine não desatualiza sozinha. */}
-                {prayerActionsFor(option.value).map((action) => (
-                  <span
-                    key={action.type}
-                    className="lp-rx"
-                    style={{
-                      ['--rx-bg' as any]: action.bg,
-                      ['--rx-border' as any]: action.border,
-                      ['--rx-fg' as any]: action.fg
-                    }}
-                  >
-                    <Glyph kind={action.glyph} size={12} color={action.dot} />
-                    {action.label}
-                  </span>
-                ))}
-              </div>
-            </m.article>
-          ))}
-        </div>
-      </m.section>
-
-      <m.section className="lp-section" {...revealProps}>
-        <p className="lp-section__eyebrow">{t('landing.privacyEyebrow')}</p>
-        <h2 className="lp-section__title">{t('landing.privacyTitle')}</h2>
-        <p className="lp-section__sub">{t('landing.privacySub')}</p>
-
-        <div className="lp-section__body lp-privacy">
-          {visibilities.map((level) => (
-            <m.article key={level} className="lp-card" variants={fadeUp}>
-              <h3 className="lp-card__title">{t(`visibility.${level}.label`)}</h3>
-              <p className="lp-card__text">{t(`visibility.${level}.description`)}</p>
-            </m.article>
-          ))}
-        </div>
-      </m.section>
-
-      <m.section className="lp-section" {...revealProps}>
-        <p className="lp-section__eyebrow">{t('landing.langsEyebrow')}</p>
-        <h2 className="lp-section__title">{t('landing.langsTitle')}</h2>
-        <p className="lp-section__sub">{t('landing.langsSub')}</p>
-
-        <div className="lp-section__body lp-langs">
-          <LanguageSwitcher />
-          <button type="button" className="btn btn--primary" onClick={onStart}>
-            {t('landing.signUp')}
-          </button>
-        </div>
-      </m.section>
+        <FinalCta onStart={startSignUp} onSignIn={() => setAuthTab('entrar')} />
+      </main>
 
       <footer className="lp-foot">
-        <span className="lp-foot__brand">
+        <span className="lp-brand">
           <img src="/creo-app-icon.svg" alt="" aria-hidden className="brand-mark" />
           <span className="brand-word">Creo</span>
         </span>
+        <LanguageSwitcher />
         <p className="lp-foot__note">{t('landing.terms')}</p>
       </footer>
+
+      <AuthDialog tab={authTab} tradition={picked ? tradition : null} onClose={closeAuth} />
     </div>
   )
-}
-
-function alertStyle(): React.CSSProperties {
-  return {
-    marginTop: 12,
-    fontSize: 13,
-    color: 'var(--ink-2)',
-    background: 'var(--card-2)',
-    border: '1px solid var(--line-2)',
-    borderRadius: 'var(--r-2)',
-    padding: '8px 12px'
-  }
 }

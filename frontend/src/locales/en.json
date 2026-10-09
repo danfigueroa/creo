@@ -132,7 +132,132 @@
     "createYours": "Create one"
   },
   "landing": {
+    "navAria": "Main navigation",
+    "navHow": "How it works",
+    "navTry": "Try it",
+    "navFeatures": "Features",
+    "navFaq": "FAQ",
+    "dialogAria": "Sign in or create an account",
+    "close": "Close",
+    "heroAria": "Introduction",
+    "heroEyebrow": "A prayer network for faith communities",
+    "title": "No one has to<br/>pray <em>alone.</em>",
+    "lede": "Ask for prayer, pray for those who asked, and see your community praying with you. For Catholics and Evangelicals, with your privacy first.",
+    "ctaPrimary": "Create a free account",
     "seeHow": "See how it works",
+    "trustFree": "Free",
+    "trustPrivate": "Private by default",
+    "trustTraditions": "Catholic or Evangelical",
+    "trustLangs": "Portuguese, English and Spanish",
+    "demoAria": "A demo of Creo in action",
+    "demoWhen": "2 h ago",
+    "demoTitle": "For my mother's surgery on Friday",
+    "demoText": "She has heart surgery Friday morning. Please pray for the doctors and for her peace of mind.",
+    "demoPrayers": "prayers",
+    "demoToast1": "<b>Ana</b> prayed for your intention",
+    "demoToast2": "<b>Pedro</b> accepted your friend request",
+    "demoToast3": "New announcement in <b>Youth Ministry</b>",
+    "demoToast4": "<b>12 people</b> prayed for you today",
+    "demoVerseLabel": "Verse of the day",
+    "demoVerseText": "Come to me, all you who are weary and burdened, and I will give you rest.",
+    "demoVerseRef": "Matthew 11:28",
+    "pillarsEyebrow": "What Creo is",
+    "pillarsTitle": "A place to ask for prayer — and to truly pray for those who asked.",
+    "pillarsSub": "It isn't an opinion network. No comments, no likes, no debate: every reaction is a prayer someone offered for you.",
+    "pillar1Title": "Ask",
+    "pillar1Text": "Write what's on your heart and choose who can see it — everyone, only your groups, or no one but you.",
+    "pillar2Title": "Pray",
+    "pillar2Text": "Offer a Hail Mary, a Rosary decade, an intercession or a fast. Whoever asked will know you were with them.",
+    "pillar3Title": "Walk together",
+    "pillar3Text": "Follow friends and groups from your parish or church, get announcements and celebrate every answered prayer.",
+    "howEyebrow": "How it works",
+    "howTitle": "From intention to answered prayer.",
+    "howSub": "Four simple steps. It takes less than a minute to start.",
+    "step1Title": "Choose your tradition",
+    "step1Text": "Catholic or Evangelical. It defines the prayers you offer and the requests that show up in your feed. You can change it later.",
+    "step2Title": "Share an intention",
+    "step2Text": "Give it a title, tell what you need and decide who sees it. If it's too sensitive, post it without your name.",
+    "step3Title": "Your community prays",
+    "step3Text": "Each person records the prayer they offered. You see who prayed and how many prayers your intention has received.",
+    "step4Title": "Share the answered prayer",
+    "step4Text": "When the prayer is answered, mark the intention as answered and leave a testimony for those who prayed with you.",
+    "mockNew": "New intention",
+    "mockTitleLabel": "Title",
+    "mockBodyLabel": "Your intention",
+    "mockVisibility": "Who sees it",
+    "mockPublish": "Post",
+    "mockWhoPrayed": "Who prayed",
+    "mockAnswered": "Prayer answered",
+    "mockTestimony": "The surgery went well and she's already home. Thank you to everyone who prayed with us.",
+    "tryEyebrow": "Try it",
+    "tryTitle": "Pray for this intention.",
+    "trySub": "Click one of the prayers. That's how Creo works: instead of liking, you record the prayer you offered — and whoever asked will know.",
+    "tryTradition": "Your tradition",
+    "tryYou": "You",
+    "tryToast": "<b>Helena</b> will know you prayed: <b>{{action}}</b>",
+    "tryHint": "Click a prayer to pray",
+    "tryCta": "Start with this tradition",
+    "privacyEyebrow": "Privacy",
+    "privacyTitle": "You decide who sees each intention.",
+    "privacySub": "The choice is per request, not per account. And you can post anonymously when an intention is too sensitive to carry your name.",
+    "privacyAnon": "Post anonymously",
+    "privacyAnonHint": "Your name and photo aren't shown to anyone.",
+    "privacyAnonName": "Anonymous",
+    "ringYou": "You",
+    "ringGroups": "Your groups",
+    "ringCommunity": "Community",
+    "whoPUBLIC": "The whole community of your tradition can see and pray.",
+    "whoGROUP_ONLY": "Only members of the groups you choose.",
+    "whoPRIVATE": "Only you. A personal prayer journal.",
+    "featuresEyebrow": "Features",
+    "featuresTitle": "Everything serves one purpose: keeping people praying for one another.",
+    "f1Title": "Intentions that tell the whole story",
+    "f1Text": "Post updates while the prayer goes on and mark it as answered, with a testimony, when grace arrives.",
+    "f2Title": "Groups and ministries",
+    "f2Text": "Cell groups, ministries and movements with their own feed, approval to join, moderators and announcements with date and image.",
+    "f3Title": "Friends by @",
+    "f3Text": "Find people by @username and closely follow the intentions of those near you.",
+    "f4Title": "Verse of the day",
+    "f4Text": "A verse chosen for you every day. Reflect on it and share it with friends or groups.",
+    "f5Title": "Notifications",
+    "f5Text": "Know when someone prayed for you, accepted your friend request or posted an announcement in your group.",
+    "f6Title": "In three languages",
+    "f6Text": "Portuguese, English and Spanish. Your preference follows you on every device.",
+    "f2Groups": "Youth Ministry|Hope Cell Group|Men's Rosary",
+    "f5Item1": "Ana prayed for your intention",
+    "f5Item2": "Pedro accepted your friend request",
+    "f5Item3": "New announcement: Saturday retreat",
+    "faqEyebrow": "Frequently asked questions",
+    "faqTitle": "Before you start.",
+    "q1": "Is Creo free?",
+    "a1": "Yes. Creating an account, asking for prayer, praying, joining and creating groups cost nothing.",
+    "q2": "Do I need to belong to a church?",
+    "a2": "No. You choose your tradition — Catholic or Evangelical — and can pray with the community, with friends, or join groups from your parish, church or cell group.",
+    "q3": "Who sees my requests?",
+    "a3": "You decide on each request: public (the community of your tradition), only the groups you choose, or private (just you). You can change it later.",
+    "q4": "Can I ask for prayer without identifying myself?",
+    "a4": "Yes. Check the anonymous option when creating the intention: it appears without your name or photo, and people pray just the same.",
+    "q5": "Can I change my tradition later?",
+    "a5": "Yes, anytime in your profile. Your prayer repertoire and feed will follow the new tradition.",
+    "q6": "How do I bring my group or ministry?",
+    "a6": "Create a group in seconds, choose whether joining is open or by approval, and appoint moderators. The group gets its own feed and announcements.",
+    "q7": "Does it work on my phone?",
+    "a7": "It works right in your phone's browser, with navigation designed for small screens. Nothing to install.",
+    "q8": "What about my data?",
+    "a8": "Your intentions are private by default. In Profile → Account you can export everything we store about you or delete your account whenever you want.",
+    "ctaTitle": "Your community is already praying.<br/><em>Come pray with them.</em>",
+    "ctaSub": "Create your account in less than a minute.",
+    "quote": "\"For where two or three gather in my name, there am I with them.\"",
+    "quoteRef": "Matthew 18:20",
+    "signIn": "Sign in",
+    "signInDot": "Sign in.",
+    "signingIn": "Signing in…",
+    "signUp": "Create account",
+    "signInTitle": "Welcome back.",
+    "signInSub": "Sign in with email and password — or get a one-time link by email.",
+    "signUpTitle": "Create your account.",
+    "signUpSub": "In under a minute. You can start praying with the community today.",
+    "assure": "Your intentions are private by default.",
     "username": "@username",
     "usernamePlaceholder": "unique handle, no spaces",
     "usernameHelp": "This is how people find you on Creo.",
@@ -149,61 +274,6 @@
     "resending": "Resending…",
     "resent": "Link resent",
     "useAnotherEmail": "Use another email",
-    "howEyebrow": "How it works",
-    "howTitle": "Three steps to your first prayer.",
-    "howSub": "Creo isn't a network for opinions. It's a place where you ask for prayer and someone, on the other side, actually prays.",
-    "step1Title": "Choose your tradition",
-    "step1Text": "Catholic or evangelical. It sets the prayers you can offer and the requests that reach you.",
-    "step2Title": "Share an intention",
-    "step2Text": "Write what's on your heart and decide who sees it: everyone, only your groups, or no one but you.",
-    "step3Title": "Your community prays",
-    "step3Text": "Each person records the prayer they offered. No comments, no debate — just the presence of those who stood with you.",
-    "doEyebrow": "What you can do",
-    "doTitle": "Built for a community's life of prayer.",
-    "doSub": "Everything here serves one purpose: keeping people praying for one another.",
-    "do1Title": "Prayer requests",
-    "do1Text": "Write an intention, choose who sees it, and mark it answered — with a testimony — when the prayer is answered.",
-    "do2Title": "Prayers from your tradition",
-    "do2Text": "Hail Mary, Our Father, Rosary. Or I prayed, Intercession, Fasting, Crying out. Each tradition has its own repertoire.",
-    "do3Title": "Groups",
-    "do3Text": "Ministries, cells and movements with their own wall, approval-based entry and admin roles.",
-    "do4Title": "Friends by @",
-    "do4Text": "Find people by @username and follow the intentions of those closest to you.",
-    "do5Title": "Group announcements",
-    "do5Text": "Admins post announcements with an image and a date — gatherings, novenas, service days — on the group wall.",
-    "do6Title": "Notifications",
-    "do6Text": "Know when someone prayed for your intention, accepted your friend request or posted an announcement in your group.",
-    "tradsEyebrow": "Two traditions",
-    "tradsTitle": "The prayers are the ones from your faith.",
-    "tradsSub": "Instead of likes, each person records the prayer they offered. The tradition you choose defines that repertoire — and you can switch whenever you like, in your profile.",
-    "tradCatholicText": "The familiar devotions, the way your community prays them.",
-    "tradEvangelicalText": "The language of intercession, fasting and crying out.",
-    "privacyEyebrow": "Privacy",
-    "privacyTitle": "You decide who sees each intention.",
-    "privacySub": "The choice is per request, not per account. And you can post anonymously when an intention is too delicate to carry your name.",
-    "langsEyebrow": "Languages",
-    "langsTitle": "Available in three languages.",
-    "langsSub": "Portuguese, English and Spanish. The preference follows you across devices, and you can switch at any time.",
-    "heroAria": "Introduction",
-    "authAria": "Access",
-    "title": "Your community<br/>united in prayer,<br/><em>every day.</em>",
-    "lede": "Share intentions, follow requests from friends and groups, and strengthen your faith community — Catholic or Evangelical — in a modern, welcoming space.",
-    "feature1Title": "Prayer requests",
-    "feature1Desc": "Share intentions with granular privacy — public, group only, or anonymous.",
-    "feature2Title": "Prayed for you",
-    "feature2Desc": "See who prayed for your intention — no comments, just presence.",
-    "feature3Title": "Your community",
-    "feature3Desc": "Ministries, small groups and movements in one welcoming space.",
-    "quote": "\"For where two or three gather in my name, there am I with them.\"",
-    "quoteRef": "Matthew 18:20",
-    "signIn": "Sign in",
-    "signInDot": "Sign in.",
-    "signingIn": "Signing in…",
-    "signUp": "Create account",
-    "signInTitle": "Welcome back.",
-    "signInSub": "Sign in with email and password — or get a one-time link by email.",
-    "signUpTitle": "Create your account.",
-    "signUpSub": "In under a minute. You can start praying with the community today.",
     "email": "Email",
     "emailPlaceholder": "you@example.com",
     "password": "Password",
@@ -220,7 +290,6 @@
     "creating": "Creating…",
     "terms": "By continuing, you agree to the terms and privacy policy.",
     "haveAccount": "Already have an account?",
-    "assure": "Your intentions are private by default.",
     "namePrompt": "What should we call you? Please enter your name.",
     "accountCreated": "Account created. We sent a confirmation link to {{email}}. Open it to activate.",
     "magicEmailPrompt": "Enter your email to receive the access link.",
@@ -332,8 +401,16 @@
     "addFriend": "Add as friend"
   },
   "group": {
-    "role": { "ADMIN": "Admin", "MODERATOR": "Moderator", "MEMBER": "Member" },
-    "policy": { "OPEN": "Open", "REQUEST": "By request", "INVITE_ONLY": "Invite only" },
+    "role": {
+      "ADMIN": "Admin",
+      "MODERATOR": "Moderator",
+      "MEMBER": "Member"
+    },
+    "policy": {
+      "OPEN": "Open",
+      "REQUEST": "By request",
+      "INVITE_ONLY": "Invite only"
+    },
     "policyRequestAdmin": "By request (admin approves)",
     "tabsAria": "Group sections",
     "tabMembers": "Members",
@@ -542,9 +619,18 @@
   },
   "newGroup": {
     "policy": {
-      "OPEN": { "label": "Open", "description": "Anyone can join directly without approval." },
-      "REQUEST": { "label": "By request", "description": "People ask to join and admins approve." },
-      "INVITE_ONLY": { "label": "Invite only", "description": "Only people invited by admins can take part." }
+      "OPEN": {
+        "label": "Open",
+        "description": "Anyone can join directly without approval."
+      },
+      "REQUEST": {
+        "label": "By request",
+        "description": "People ask to join and admins approve."
+      },
+      "INVITE_ONLY": {
+        "label": "Invite only",
+        "description": "Only people invited by admins can take part."
+      }
     },
     "eyebrow": "New group",
     "title": "Create a prayer community",
@@ -599,9 +685,18 @@
     "createRequest": "Create request"
   },
   "visibility": {
-    "GROUP_ONLY": { "label": "Group only", "description": "Only members of the selected groups can see and pray." },
-    "PUBLIC": { "label": "Public", "description": "Visible on the public feed after moderation." },
-    "PRIVATE": { "label": "Private", "description": "Only you will see it. Useful to record a personal intention." }
+    "GROUP_ONLY": {
+      "label": "Group only",
+      "description": "Only members of the selected groups can see and pray."
+    },
+    "PUBLIC": {
+      "label": "Public",
+      "description": "Visible on the public feed after moderation."
+    },
+    "PRIVATE": {
+      "label": "Private",
+      "description": "Only you will see it. Useful to record a personal intention."
+    }
   },
   "request": {
     "intro": "Write from the heart. Your community will read and pray with you.",
@@ -638,12 +733,30 @@
     "errorCreate": "Couldn't create the request."
   },
   "categories": {
-    "HEALTH": { "label": "Health", "hint": "Illness, treatment, recovery" },
-    "FAMILY": { "label": "Family", "hint": "Home, children, relationships" },
-    "WORK": { "label": "Work", "hint": "Job, projects, finances" },
-    "GRIEF": { "label": "Grief", "hint": "Loss and farewells" },
-    "THANKSGIVING": { "label": "Thanksgiving", "hint": "Gratitude for blessings received" },
-    "OTHER": { "label": "Other", "hint": "Any other intention" }
+    "HEALTH": {
+      "label": "Health",
+      "hint": "Illness, treatment, recovery"
+    },
+    "FAMILY": {
+      "label": "Family",
+      "hint": "Home, children, relationships"
+    },
+    "WORK": {
+      "label": "Work",
+      "hint": "Job, projects, finances"
+    },
+    "GRIEF": {
+      "label": "Grief",
+      "hint": "Loss and farewells"
+    },
+    "THANKSGIVING": {
+      "label": "Thanksgiving",
+      "hint": "Gratitude for blessings received"
+    },
+    "OTHER": {
+      "label": "Other",
+      "hint": "Any other intention"
+    }
   },
   "prayerActions": {
     "HAIL_MARY": "Hail Mary",
@@ -659,8 +772,14 @@
     "PURPOSE": "Commitment"
   },
   "traditions": {
-    "CATHOLIC": { "label": "Catholic", "description": "Hail Mary, Our Father, Glory Be, Rosary decade and Rosary" },
-    "EVANGELICAL": { "label": "Evangelical", "description": "I prayed, Intercession, Gratitude, Fasting, Crying out and Commitment" }
+    "CATHOLIC": {
+      "label": "Catholic",
+      "description": "Hail Mary, Our Father, Glory Be, Rosary decade and Rosary"
+    },
+    "EVANGELICAL": {
+      "label": "Evangelical",
+      "description": "I prayed, Intercession, Gratitude, Fasting, Crying out and Commitment"
+    }
   },
   "nav": {
     "mural": "Feed",
@@ -728,10 +847,26 @@
     "deleteDesc": "The verse leaves the feed of everyone who could see it. This cannot be undone."
   },
   "verseVisibility": {
-    "PUBLIC": { "label": "Public", "description": "Anyone on Creo can see it and pray.", "badge": "Public" },
-    "FRIENDS": { "label": "Friends", "description": "Only your friends see it on their feed.", "badge": "Friends" },
-    "GROUP_ONLY": { "label": "Groups", "description": "Only members of the groups you choose.", "badge": "Groups" },
-    "PRIVATE": { "label": "Only me", "description": "Stays on your feed, nobody else sees it.", "badge": "Only me" }
+    "PUBLIC": {
+      "label": "Public",
+      "description": "Anyone on Creo can see it and pray.",
+      "badge": "Public"
+    },
+    "FRIENDS": {
+      "label": "Friends",
+      "description": "Only your friends see it on their feed.",
+      "badge": "Friends"
+    },
+    "GROUP_ONLY": {
+      "label": "Groups",
+      "description": "Only members of the groups you choose.",
+      "badge": "Groups"
+    },
+    "PRIVATE": {
+      "label": "Only me",
+      "description": "Stays on your feed, nobody else sees it.",
+      "badge": "Only me"
+    }
   },
   "security": {
     "captchaPending": "Wait for the security check to finish and try again.",
