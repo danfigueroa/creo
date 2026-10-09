@@ -24,7 +24,7 @@ Idioma da UI/copy: **português brasileiro**. Identificadores no código (variá
 - **Frontend**: React 18 + TypeScript, Vite, React Router, TanStack Query, Tailwind CSS, Zustand
 - **Banco / Auth**: Supabase Postgres (pooler `:6543`) + Supabase Auth (JWT validado via JWKS no backend)
 - **Migrations**: `golang-migrate`
-- **Deploy**: Vercel (`experimentalServices` — frontend `vite` + backend Go) com `regions: ["pdx1"]` no `backend/vercel.json` (perto do Supabase em `us-west-2`)
+- **Deploy**: Vercel (`experimentalServices` — frontend `vite` + backend Go) com a função em `pdx1` (perto do Supabase em `us-west-2`), configurada no **painel da Vercel** (Settings → Functions → Function Region)
 
 ---
 
@@ -47,7 +47,7 @@ backend/
     services/service.go     # 1 arquivo monolítico, validações + Err* sentinels
   Dockerfile                # backup local; Vercel não usa
   fly.toml                  # legado de Fly; não em uso
-  vercel.json               # só com regions
+  vercel.json               # regions (ignorado pelo experimentalServices; vale o painel)
   .env / .env.example
 frontend/
   src/
@@ -527,7 +527,7 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 - **Quando reiniciar `make dev`**, sempre matar a porta 8080 antes (`go run` deixa zumbi).
 - **Não criar arquivo `.md` novo** sem o usuário pedir explicitamente. Mas `CLAUDE.md`, `README.md` e `DEPLOY.md` podem ser atualizados livremente.
 - **Não crie testes "para parecer profissional"** — o repo ainda não tem suite e adicionar testes é decisão de produto, não cleanup.
-- **`vercel.json` na raiz**: `experimentalServices.<name>` rejeita `regions`. Pin de região vai em `backend/vercel.json` ou `frontend/vercel.json`.
+- **Região da função**: `experimentalServices.<name>` rejeita `regions`, e o `regions` em `backend/vercel.json` é **ignorado** — a função estava rodando em `iad1`, com ~60 ms por ida ao Supabase. A região vale pelo painel da Vercel (Settings → Functions → Function Region). Para conferir: o header `x-vercel-id` da resposta deve ser `gru1::pdx1::...` (borda::função), e o `Server-Timing` mostra `app`/`db`/idas ao banco por request.
 
 ---
 
