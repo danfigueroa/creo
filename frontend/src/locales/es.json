@@ -732,5 +732,11 @@
     "FRIENDS": { "label": "Amigos", "description": "Solo tus amigos lo ven en su muro.", "badge": "Amigos" },
     "GROUP_ONLY": { "label": "Grupos", "description": "Solo los miembros de los grupos elegidos.", "badge": "Grupos" },
     "PRIVATE": { "label": "Solo yo", "description": "Queda en tu muro, nadie más lo ve.", "badge": "Solo yo" }
+  },
+  "security": {
+    "captchaPending": "Espera a que termine la verificación de seguridad e inténtalo de nuevo.",
+    "resendIn": "Reenviar en {{seconds}}s",
+    "linkConfirmed": "Correo confirmado. Ya puedes entrar.",
+    "emailChangeHalf": "Enlace aceptado. Confirma también con el enlace enviado a la otra dirección para completar el cambio."
   }
 }

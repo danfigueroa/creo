@@ -5,6 +5,9 @@ import { m, type Variants } from 'motion/react'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { translateAuthError } from '@/lib/auth-errors'
+import { PASSWORD_MIN, isEmailNotConfirmed } from '@/lib/password'
+import { useCooldown } from '@/lib/use-cooldown'
+import { TurnstileWidget, captchaOption, useCaptcha } from '@/components/turnstile'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { Glyph } from '@/components/glyph'
 import { api } from '@/lib/api'
@@ -36,7 +39,7 @@ type AuthTab = 'entrar' | 'criar'
 type UsernameState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 
 const USERNAME_RE = /^[a-z0-9_]{3,30}$/
-const PASSWORD_MIN = 8
+const RESEND_COOLDOWN_S = 60
 
 // Checagem de disponibilidade do @username com debounce. É só um aviso: o
 // servidor revalida na hora de aplicar, então uma falha aqui não trava nada.
@@ -97,6 +100,21 @@ export function LandingPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [pendingEmail, setPendingEmail] = useState<string | null>(null)
   const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  // Login recusado por e-mail não confirmado: guarda o endereço para oferecer
+  // o reenvio ali mesmo, sem mandar a pessoa procurar a opção em outra tela.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null)
+  const captcha = useCaptcha()
+  const resendCooldown = useCooldown(RESEND_COOLDOWN_S)
+
+  // Com o captcha ligado, a chamada sem token seria recusada pelo Supabase;
+  // melhor avisar aqui do que mostrar o erro cru de verificação.
+  function captchaReady(): boolean {
+    if (captcha.enabled && !captcha.token) {
+      setError(t('security.captchaPending'))
+      return false
+    }
+    return true
+  }
 
   const usernameState = useUsernameAvailability(username)
   const howRef = useRef<HTMLElement | null>(null)
@@ -128,10 +146,17 @@ export function LandingPage() {
       setError(t('authErrors.supabaseMissing'))
       return
     }
+    if (!captchaReady()) return
+    setUnconfirmedEmail(null)
     setIsLoading(true)
     try {
-      const { data, error: signErr } = await supabase.auth.signInWithPassword({ email, password: pass })
+      const { data, error: signErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: pass,
+        options: captchaOption(captcha.token)
+      })
       if (signErr) {
+        if (isEmailNotConfirmed(signErr.message)) setUnconfirmedEmail(email.trim())
         setError(translateAuthError(signErr.message))
         return
       }
@@ -143,6 +168,7 @@ export function LandingPage() {
       setAccessToken(token)
       navigate('/feed', { replace: true })
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -176,12 +202,17 @@ export function LandingPage() {
       setError(t('landing.traditionPrompt'))
       return
     }
+    if (!captchaReady()) return
     setIsLoading(true)
     try {
+      // E-mail já cadastrado também cai aqui sem erro (o Supabase devolve um
+      // usuário falso para não revelar quem tem conta), então a tela seguinte
+      // é a mesma nos dois casos de propósito.
       const { error: signErr } = await supabase.auth.signUp({
         email,
         password: pass,
         options: {
+          ...captchaOption(captcha.token),
           emailRedirectTo: `${window.location.origin}/auth`,
           // O backend aplica esta metadata na primeira requisição autenticada
           // (migration 000018), então a escolha vale em qualquer dispositivo.
@@ -194,27 +225,40 @@ export function LandingPage() {
       }
       setResendState('idle')
       setPendingEmail(email.trim())
+      resendCooldown.start()
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
 
   async function onResend() {
-    if (!pendingEmail) return
+    const target = pendingEmail || unconfirmedEmail
+    if (!target || resendCooldown.active) return
     const supabase = getSupabaseClient()
     if (!supabase) return
     setError('')
+    setInfo('')
+    if (!captchaReady()) return
     setResendState('sending')
     try {
-      const { error: resendErr } = await supabase.auth.resend({ type: 'signup', email: pendingEmail })
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: target,
+        options: { ...captchaOption(captcha.token), emailRedirectTo: `${window.location.origin}/auth` }
+      })
       if (resendErr) {
         setError(translateAuthError(resendErr.message))
         setResendState('idle')
         return
       }
       setResendState('sent')
+      resendCooldown.start()
+      if (!pendingEmail) setInfo(t('authPage.resendSent', { email: target }))
     } catch {
       setResendState('idle')
+    } finally {
+      captcha.reset()
     }
   }
 
@@ -230,13 +274,18 @@ export function LandingPage() {
       setError(t('authErrors.supabaseMissing'))
       return
     }
+    if (!captchaReady()) return
     setIsLoading(true)
     try {
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
         // Só acesso: sem isto, um e-mail digitado errado criava uma conta nova
         // com username e tradição padrão.
-        options: { emailRedirectTo: `${window.location.origin}/auth`, shouldCreateUser: false }
+        options: {
+          ...captchaOption(captcha.token),
+          emailRedirectTo: `${window.location.origin}/auth`,
+          shouldCreateUser: false
+        }
       })
       if (otpErr) {
         setError(translateAuthError(otpErr.message))
@@ -245,6 +294,7 @@ export function LandingPage() {
       setMagic(true)
       setInfo(t('landing.magicSent', { email: email.trim() }))
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -371,6 +421,8 @@ export function LandingPage() {
                     />
                   </label>
 
+                  <TurnstileWidget captcha={captcha} />
+
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
                     {isLoading ? t('landing.signingIn') : t('landing.signIn')}
                   </button>
@@ -405,6 +457,19 @@ export function LandingPage() {
                     {error}
                   </p>
                 )}
+                {unconfirmedEmail && (
+                  <button
+                    type="button"
+                    className="welcome__link-quiet"
+                    style={{ marginTop: 10 }}
+                    disabled={resendState === 'sending' || resendCooldown.active}
+                    onClick={onResend}
+                  >
+                    {resendCooldown.active
+                      ? t('security.resendIn', { seconds: resendCooldown.left })
+                      : t('authPage.resendConfirmation')}
+                  </button>
+                )}
                 {info && (
                   <p role="status" style={alertStyle()}>
                     {info}
@@ -430,16 +495,19 @@ export function LandingPage() {
                 <p className="welcome__auth-sub">{t('landing.checkInboxText', { email: pendingEmail })}</p>
 
                 <div className="welcome__form">
+                  <TurnstileWidget captcha={captcha} />
                   <button
                     type="button"
                     className="welcome__magic"
-                    disabled={resendState !== 'idle'}
+                    disabled={resendState === 'sending' || resendCooldown.active}
                     onClick={onResend}
                   >
                     {resendState === 'sending'
                       ? t('landing.resending')
-                      : resendState === 'sent'
-                        ? t('landing.resent')
+                      : resendCooldown.active
+                        ? resendState === 'sent'
+                          ? `${t('landing.resent')} · ${t('security.resendIn', { seconds: resendCooldown.left })}`
+                          : t('security.resendIn', { seconds: resendCooldown.left })
                         : t('landing.resend')}
                   </button>
                 </div>
@@ -521,8 +589,11 @@ export function LandingPage() {
                       placeholder={t('landing.passwordPlaceholder')}
                       value={pass}
                       onChange={(e) => setPass(e.target.value)}
+                      autoComplete="new-password"
+                      minLength={PASSWORD_MIN}
                       required
                     />
+                    <span className="welcome__hint">{t('landing.passwordMin', { min: PASSWORD_MIN })}</span>
                   </label>
 
                   <div className="welcome__field">
@@ -550,6 +621,8 @@ export function LandingPage() {
                     </div>
                     <span className="welcome__hint">{t('landing.traditionHelp')}</span>
                   </div>
+
+                  <TurnstileWidget captcha={captcha} />
 
                   <button type="submit" disabled={isLoading} className="btn btn--primary welcome__cta">
                     {isLoading ? t('landing.creating') : t('landing.signUp')}

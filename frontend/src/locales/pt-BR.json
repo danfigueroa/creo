@@ -732,5 +732,11 @@
     "FRIENDS": { "label": "Amigos", "description": "Somente seus amigos veem no mural deles.", "badge": "Amigos" },
     "GROUP_ONLY": { "label": "Grupos", "description": "Somente os membros dos grupos escolhidos.", "badge": "Grupos" },
     "PRIVATE": { "label": "Só eu", "description": "Fica no seu mural, ninguém mais vê.", "badge": "Só eu" }
+  },
+  "security": {
+    "captchaPending": "Aguarde a verificação de segurança terminar e tente de novo.",
+    "resendIn": "Reenviar em {{seconds}}s",
+    "linkConfirmed": "E-mail confirmado. Agora é só entrar.",
+    "emailChangeHalf": "Link aceito. Confirme também pelo link enviado ao outro endereço para concluir a troca."
   }
 }

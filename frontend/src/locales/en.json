@@ -732,5 +732,11 @@
     "FRIENDS": { "label": "Friends", "description": "Only your friends see it on their feed.", "badge": "Friends" },
     "GROUP_ONLY": { "label": "Groups", "description": "Only members of the groups you choose.", "badge": "Groups" },
     "PRIVATE": { "label": "Only me", "description": "Stays on your feed, nobody else sees it.", "badge": "Only me" }
+  },
+  "security": {
+    "captchaPending": "Wait for the security check to finish and try again.",
+    "resendIn": "Resend in {{seconds}}s",
+    "linkConfirmed": "Email confirmed. You can sign in now.",
+    "emailChangeHalf": "Link accepted. Also confirm through the link sent to the other address to finish the change."
   }
 }

@@ -1958,6 +1958,10 @@ textarea::placeholder {
   flex-wrap: wrap;
 }
 
+/* Widget do Turnstile: reserva a altura para o formulário não pular quando o
+   iframe carrega. */
+.captcha { width: 100%; min-height: 65px; }
+
 /* Grade de escolha única (tradição, idioma). Botões com aria-pressed, não
    <input type=radio> — é o padrão que o resto do app já usa. */
 .optgrid {

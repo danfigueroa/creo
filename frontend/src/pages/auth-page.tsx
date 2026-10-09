@@ -1,10 +1,22 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { getSupabaseClient } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { translateAuthError, translateCallbackError } from '@/lib/auth-errors'
+import { isEmailNotConfirmed } from '@/lib/password'
+import { useCooldown } from '@/lib/use-cooldown'
+import { TurnstileWidget, captchaOption, useCaptcha } from '@/components/turnstile'
+
+// Tipos que os templates de e-mail mandam para cá via ?token_hash=&type=.
+// `recovery` vai direto para /auth/reset.
+const VERIFY_TYPES: EmailOtpType[] = ['email', 'signup', 'magiclink', 'email_change', 'invite']
+
+function verifyTypeFrom(raw: string | null): EmailOtpType | null {
+  return VERIFY_TYPES.find((v) => v === raw) ?? null
+}
 
 export function AuthPage() {
   const navigate = useNavigate()
@@ -23,8 +35,21 @@ export function AuthPage() {
   const [pendingConfirmEmail, setPendingConfirmEmail] = useState<string | null>(null)
   const [linkExpired, setLinkExpired] = useState(false)
   const supabase = getSupabaseClient()
+  const captcha = useCaptcha()
+  const resendCooldown = useCooldown(60)
 
   const nextPath = searchParams.get('next') || '/feed'
+  const tokenHash = searchParams.get('token_hash')
+  const verifyType = verifyTypeFrom(searchParams.get('type'))
+  const [verifying, setVerifying] = useState(Boolean(tokenHash && verifyType))
+
+  function captchaReady(): boolean {
+    if (captcha.enabled && !captcha.token) {
+      setError(t('security.captchaPending'))
+      return false
+    }
+    return true
+  }
 
   useEffect(() => {
     const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
@@ -53,7 +78,11 @@ export function AuthPage() {
       navigate(nextPath, { replace: true })
     }
 
-    supabase.auth.getSession().then(({ data }) => redirectIfSession(data.session?.access_token))
+    // Com um link de e-mail pendente, a sessão que já existir não pode
+    // redirecionar antes da verificação terminar.
+    if (!verifying) {
+      supabase.auth.getSession().then(({ data }) => redirectIfSession(data.session?.access_token))
+    }
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       redirectIfSession(session?.access_token)
     })
@@ -62,7 +91,35 @@ export function AuthPage() {
       active = false
       sub.subscription.unsubscribe()
     }
-  }, [navigate, nextPath, setAccessToken, supabase])
+  }, [navigate, nextPath, setAccessToken, supabase, verifying])
+
+  // Links de confirmação de cadastro, link mágico e troca de e-mail chegam com
+  // token_hash. Diferente do ?code= do PKCE, funcionam em qualquer navegador,
+  // não só no que pediu o e-mail.
+  useEffect(() => {
+    if (!supabase || !tokenHash || !verifyType) return
+    let active = true
+    supabase.auth.verifyOtp({ token_hash: tokenHash, type: verifyType }).then(({ data, error: verifyError }) => {
+      if (!active) return
+      window.history.replaceState({}, '', window.location.pathname)
+      if (verifyError) {
+        setError(translateCallbackError('', verifyError.message))
+        setLinkExpired(verifyType !== 'email_change')
+        setVerifying(false)
+        return
+      }
+      if (!data.session) {
+        // Troca de e-mail segura: o primeiro dos dois links confirma só metade.
+        setInfo(t(verifyType === 'email_change' ? 'security.emailChangeHalf' : 'security.linkConfirmed'))
+        setVerifying(false)
+        return
+      }
+      setVerifying(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [supabase, t, tokenHash, verifyType])
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -75,11 +132,15 @@ export function AuthPage() {
         setError(t('authPage.supabaseMissingEnv'))
         return
       }
+      if (!captchaReady()) return
+      setPendingConfirmEmail(null)
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
+        options: captchaOption(captcha.token)
       })
       if (signInError) {
+        if (isEmailNotConfirmed(signInError.message)) setPendingConfirmEmail(email.trim())
         setError(translateAuthError(signInError.message))
         return
       }
@@ -100,6 +161,7 @@ export function AuthPage() {
         setError(t('authErrors.generic'))
       }
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -116,11 +178,13 @@ export function AuthPage() {
       return
     }
 
+    if (!captchaReady()) return
     setIsLoading(true)
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email,
         options: {
+          ...captchaOption(captcha.token),
           emailRedirectTo: `${window.location.origin}/auth`,
           // Só acesso: sem isto, um e-mail digitado errado criava uma conta nova
           // com username e tradição padrão.
@@ -133,6 +197,7 @@ export function AuthPage() {
       }
       setInfo(t('authPage.magicSent'))
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -149,9 +214,11 @@ export function AuthPage() {
       return
     }
 
+    if (!captchaReady()) return
     setIsLoading(true)
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        ...captchaOption(captcha.token),
         redirectTo: `${window.location.origin}/auth/reset`
       })
       if (resetError) {
@@ -161,6 +228,7 @@ export function AuthPage() {
       setInfo(t('authPage.resetSent'))
       setShowReset(false)
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -176,19 +244,22 @@ export function AuthPage() {
       setError(t('authPage.emailForResend'))
       return
     }
+    if (resendCooldown.active || !captchaReady()) return
     setIsLoading(true)
     try {
       const { error: resendError } = await supabase.auth.resend({
         type: 'signup',
         email: target,
-        options: { emailRedirectTo: `${window.location.origin}/auth` }
+        options: { ...captchaOption(captcha.token), emailRedirectTo: `${window.location.origin}/auth` }
       })
       if (resendError) {
         setError(translateAuthError(resendError.message))
         return
       }
       setInfo(t('authPage.resendSent', { email: target }))
+      resendCooldown.start()
     } finally {
+      captcha.reset()
       setIsLoading(false)
     }
   }
@@ -217,6 +288,7 @@ export function AuthPage() {
               <span className="welcome__label">{t('landing.email')}</span>
               <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('landing.emailPlaceholder')} type="email" autoComplete="email" />
             </label>
+            <TurnstileWidget captcha={captcha} />
             <button type="button" className="btn btn--primary welcome__cta" disabled={isLoading} onClick={onResetPassword}>
               {isLoading ? t('common.loading') : t('authPage.resetCta')}
             </button>
@@ -245,8 +317,10 @@ export function AuthPage() {
               <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" type="password" autoComplete="current-password" />
             </label>
 
-            <button type="submit" className="btn btn--primary welcome__cta" disabled={isLoading}>
-              {isLoading ? t('common.loading') : t('landing.signIn')}
+            <TurnstileWidget captcha={captcha} />
+
+            <button type="submit" className="btn btn--primary welcome__cta" disabled={isLoading || verifying}>
+              {isLoading || verifying ? t('common.loading') : t('landing.signIn')}
             </button>
 
             <div className="welcome__or">
@@ -268,9 +342,11 @@ export function AuthPage() {
             className="welcome__link-quiet"
             style={{ marginTop: 12 }}
             onClick={onResendConfirmation}
-            disabled={isLoading}
+            disabled={isLoading || resendCooldown.active}
           >
-            {t('authPage.resendConfirmation')}
+            {resendCooldown.active
+              ? t('security.resendIn', { seconds: resendCooldown.left })
+              : t('authPage.resendConfirmation')}
           </button>
         )}
 
