@@ -1708,7 +1708,7 @@ components:
 
   responses:
     Unauthorized:
-      description: "`UNAUTHORIZED`: token ausente, inválido ou expirado"
+      description: "`UNAUTHORIZED` (token ausente, inválido, expirado, com `aud`/`role` diferente de `authenticated`)"
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
