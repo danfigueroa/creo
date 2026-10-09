@@ -1,0 +1,45 @@
+<!-- Supabase → Authentication → Email Templates → Change Email Address
+     Assunto: Confirme a troca de e-mail no Creo
+     O link usa token_hash (e não o ConfirmationURL padrão) para funcionar em
+     qualquer navegador: o fluxo PKCE padrão só abre no navegador que pediu. -->
+<!doctype html>
+<html lang="pt-BR">
+  <body style="margin:0;padding:0;background:#F0E6D0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F0E6D0;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FBF6EA;border:1px solid #DCCFB4;border-radius:14px;">
+            <tr>
+              <td style="padding:32px 32px 8px;font-family:Georgia,'Times New Roman',serif;color:#0E4A53;font-size:22px;letter-spacing:-0.01em;">
+                Creo
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 32px 0;font-family:Georgia,'Times New Roman',serif;color:#0E4A53;font-size:26px;line-height:1.25;">
+                Confirme a troca de e-mail
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px 0;font-family:Helvetica,Arial,sans-serif;color:#2C4F55;font-size:15px;line-height:1.6;">
+                Pediram para trocar o e-mail da sua conta de <strong>{{ .Email }}</strong> para <strong>{{ .NewEmail }}</strong>. Para concluir, confirme pelo link enviado a cada um dos dois endereços.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 32px 8px;">
+                <a href="{{ .SiteURL }}/auth?token_hash={{ .TokenHash }}&amp;type=email_change" style="display:inline-block;background:#0E4A53;color:#F0E6D0;text-decoration:none;font-family:Helvetica,Arial,sans-serif;font-size:15px;font-weight:600;padding:12px 24px;border-radius:999px;">Confirmar troca</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px 32px;font-family:Helvetica,Arial,sans-serif;color:#6B7F82;font-size:12.5px;line-height:1.6;">
+                Se não foi você, não confirme: alguém pode ter acesso à sua conta. Entre no Creo, troque sua senha e use “Sair de todos os dispositivos” em Perfil → Conta.
+              </td>
+            </tr>
+          </table>
+          <p style="margin:16px 0 0;font-family:Helvetica,Arial,sans-serif;color:#8A8F86;font-size:12px;">
+            Creo · www.creo.com.br
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
