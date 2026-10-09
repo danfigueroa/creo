@@ -1958,6 +1958,35 @@ textarea::placeholder {
   flex-wrap: wrap;
 }
 
+/* Zona de risco do perfil (excluir conta). Reusa o vermelho do formnote--err
+   — é o único lugar do app em que a ação não tem volta. */
+.pcard--danger { border-color: oklch(0.84 0.07 25); }
+.pcard__list-plain {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.btn--danger { color: oklch(0.46 0.14 25); border-color: oklch(0.84 0.07 25); }
+.btn--danger:hover { background: oklch(0.96 0.02 25); }
+.btn.btn--danger-solid,
+.btn--danger-solid {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: var(--r-pill);
+  border: 0;
+  font-size: 14px;
+  font-weight: 600;
+  background: oklch(0.52 0.16 25);
+  color: #fff;
+  cursor: pointer;
+}
+.btn--danger-solid:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* Widget do Turnstile: reserva a altura para o formulário não pular quando o
    iframe carrega. */
 .captcha { width: 100%; min-height: 65px; }

@@ -16,6 +16,7 @@ import { LANGUAGES, type BackendLanguage } from '@/lib/i18n'
 import { useLanguage } from '@/lib/use-language'
 import { AvatarUploadError, AVATAR_MAX_BYTES, AVATAR_ACCEPTED_MIMES, getSupabaseClient, uploadAvatar } from '@/lib/supabase'
 import { useSessionStore } from '@/state/session-store'
+import { ChangeEmailSection, ChangePasswordSection, DataExportSection, DeleteAccountSection } from '@/components/account-security'
 
 const BIO_MAX = 280
 
@@ -419,8 +420,12 @@ export function ProfilePage() {
 
         {section === 'conta' && (
           <>
-            <BlockedUsersSection />
+            <ChangePasswordSection />
+            <ChangeEmailSection />
             <SessionSection />
+            <BlockedUsersSection />
+            <DataExportSection />
+            <DeleteAccountSection username={profile.data?.username} />
           </>
         )}
       </main>
@@ -753,30 +758,44 @@ function BlockedUsersSection() {
 function SessionSection() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const setAccessToken = useSessionStore((s) => s.setAccessToken)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'local' | 'global' | null>(null)
 
-  async function onLogout() {
-    setBusy(true)
+  // global encerra também os outros dispositivos (revoga os refresh tokens no
+  // Supabase); os access tokens já emitidos morrem no vencimento, em até 1 h.
+  async function onLogout(scope: 'local' | 'global') {
+    if (scope === 'global') {
+      const ok = await confirm({
+        title: t('security.signOutAllTitle'),
+        description: t('security.signOutAllConfirm'),
+        confirmLabel: t('security.signOutAll')
+      })
+      if (!ok) return
+    }
+    setBusy(scope)
     try {
       const supabase = getSupabaseClient()
       if (supabase) {
-        await supabase.auth.signOut()
+        await supabase.auth.signOut({ scope }).catch(() => undefined)
       }
       setAccessToken(null)
       navigate('/', { replace: true })
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
   return (
     <section className="pcard">
       <h2 className="pcard__title">{t('profile.sessionTitle')}</h2>
-      <p className="pcard__sub">{t('profile.sessionSub')}</p>
-      <div className="pcard__body">
-        <button type="button" onClick={onLogout} disabled={busy} className="btn btn--ghost-out">
-          {busy ? t('profile.signingOut') : t('shell.logout')}
+      <p className="pcard__sub">{t('security.sessionSub')}</p>
+      <div className="pcard__body pcard__btns">
+        <button type="button" onClick={() => onLogout('local')} disabled={busy !== null} className="btn btn--ghost-out">
+          {busy === 'local' ? t('profile.signingOut') : t('shell.logout')}
+        </button>
+        <button type="button" onClick={() => onLogout('global')} disabled={busy !== null} className="btn btn--ghost-out">
+          {busy === 'global' ? t('profile.signingOut') : t('security.signOutAll')}
         </button>
       </div>
     </section>

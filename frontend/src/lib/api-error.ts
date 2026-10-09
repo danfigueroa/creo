@@ -26,7 +26,10 @@ const PT_MESSAGES: Record<string, string> = {
   INTERNAL_ERROR: 'Algo deu errado do nosso lado. Tente novamente.',
   USER_BLOCKED: 'Você bloqueou este usuário ou foi bloqueado por ele.',
   ALREADY_BLOCKED: 'Este usuário já está bloqueado.',
-  BLOCK_NOT_FOUND: 'Você não tinha esse usuário bloqueado.'
+  BLOCK_NOT_FOUND: 'Você não tinha esse usuário bloqueado.',
+  RATE_LIMITED: 'Muitas ações em pouco tempo. Espere um instante e tente de novo.',
+  ACCOUNT_DELETED: 'Esta conta foi excluída.',
+  ACCOUNT_DELETION_UNAVAILABLE: 'A exclusão de conta está indisponível no momento. Tente mais tarde.'
 }
 
 const FALLBACK = 'Algo deu errado. Tente novamente.'
