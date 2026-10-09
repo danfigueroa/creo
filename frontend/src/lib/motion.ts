@@ -41,3 +41,10 @@ export const fade: Variants = {
 export function stagger(index: number, step = 0.04, max = 6): number {
   return Math.min(index, max) * step
 }
+
+// Seção da landing entrando na tela: deslocamento maior que o `fadeUp` porque
+// o bloco é grande, e os filhos (com `fadeUp`) seguem em cascata.
+export const revealUp: Variants = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease, staggerChildren: 0.07, delayChildren: 0.1 } }
+}
