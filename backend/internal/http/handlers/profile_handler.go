@@ -109,7 +109,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, http.StatusConflict, "USERNAME_TAKEN", "This username is already in use", nil)
 			return
 		}
-		if errors.Is(err, services.ErrInvalidDisplayName) || errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidBio) {
+		if errors.Is(err, services.ErrInvalidDisplayName) || errors.Is(err, services.ErrInvalidUsername) || errors.Is(err, services.ErrInvalidBio) || errors.Is(err, services.ErrInvalidImageURL) {
 			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 			return
 		}

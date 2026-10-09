@@ -84,7 +84,7 @@ func (h *GroupHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	group, err := h.service.CreateGroup(r.Context(), userID, req.Name, req.Description, req.ImageURL, models.GroupJoinPolicy(req.JoinPolicy))
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidGroupName) || errors.Is(err, services.ErrInvalidGroupDescription) || errors.Is(err, services.ErrInvalidJoinPolicy) {
+		if errors.Is(err, services.ErrInvalidGroupName) || errors.Is(err, services.ErrInvalidGroupDescription) || errors.Is(err, services.ErrInvalidJoinPolicy) || errors.Is(err, services.ErrInvalidImageURL) {
 			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 			return
 		}
@@ -319,7 +319,7 @@ func (h *GroupHandler) Update(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "Only group admins can edit the group", nil)
 			return
 		}
-		if errors.Is(err, services.ErrInvalidGroupName) || errors.Is(err, services.ErrInvalidGroupDescription) || errors.Is(err, services.ErrInvalidJoinPolicy) {
+		if errors.Is(err, services.ErrInvalidGroupName) || errors.Is(err, services.ErrInvalidGroupDescription) || errors.Is(err, services.ErrInvalidJoinPolicy) || errors.Is(err, services.ErrInvalidImageURL) {
 			shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 			return
 		}

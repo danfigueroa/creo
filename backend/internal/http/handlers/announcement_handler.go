@@ -160,7 +160,8 @@ func writeAnnouncementError(w http.ResponseWriter, err error) {
 		shared.WriteError(w, http.StatusForbidden, "FORBIDDEN", "You do not have permission to perform this action", nil)
 	case errors.Is(err, services.ErrAnnouncementInvalidTitle),
 		errors.Is(err, services.ErrAnnouncementInvalidBody),
-		errors.Is(err, services.ErrAnnouncementInvalidEventAt):
+		errors.Is(err, services.ErrAnnouncementInvalidEventAt),
+		errors.Is(err, services.ErrInvalidImageURL):
 		shared.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 	default:
 		shared.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected error", nil)

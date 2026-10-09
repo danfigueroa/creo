@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -22,12 +23,15 @@ type Config struct {
 	RateLimitWindow   time.Duration
 	// Escritas por usuário por janela, além do limite global por IP.
 	WriteRateLimitRequests int
-	PrayedWindowHours      int
-	PrayedIPBurstPerHour   int
-	CORSAllowedOrigins     []string
-	BibleAPIBaseURL        string
-	BibleTranslation       string
-	BibleAPITimeout        time.Duration
+	// Origem do projeto Supabase (https://<ref>.supabase.co), derivada do
+	// JWT_ISSUER. Usada para validar URLs de imagem e chamar a Admin API.
+	SupabaseURL          string
+	PrayedWindowHours    int
+	PrayedIPBurstPerHour int
+	CORSAllowedOrigins   []string
+	BibleAPIBaseURL      string
+	BibleTranslation     string
+	BibleAPITimeout      time.Duration
 }
 
 func Load() (Config, error) {
@@ -60,7 +64,17 @@ func Load() (Config, error) {
 	if cfg.JWKSURL == "" {
 		return Config{}, errors.New("JWKS_URL is required")
 	}
+	cfg.SupabaseURL = supabaseOrigin(cfg.JWTIssuer)
 	return cfg, nil
+}
+
+// supabaseOrigin tira o caminho de "https://<ref>.supabase.co/auth/v1".
+func supabaseOrigin(issuer string) string {
+	u, err := url.Parse(strings.TrimSpace(issuer))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 func resolveHTTPAddr() string {

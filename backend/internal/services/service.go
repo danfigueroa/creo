@@ -25,6 +25,9 @@ type Service struct {
 	bible      bible.TextProvider
 	feedCounts *ttlCounts
 	syncedAuth *ttlSeen
+	// Prefixo público do Storage do Supabase; toda URL de imagem gravada
+	// (avatar, capa de grupo, aviso) precisa começar com ele.
+	imageURLPrefix string
 }
 
 // feedCountTTL limita a frequência dos COUNT(*) de feed, que reexecutam a CTE
@@ -125,6 +128,7 @@ var ErrLastAdmin = errors.New("cannot remove the last admin")
 var ErrCannotTargetSelf = errors.New("cannot target self for this action")
 var ErrInvalidGroupRole = errors.New("invalid group role")
 var ErrInvalidBio = errors.New("invalid bio")
+var ErrInvalidImageURL = errors.New("invalid image url")
 var ErrInvalidModerationAction = errors.New("invalid moderation action")
 var ErrModerationReasonRequired = errors.New("moderation reason required")
 var ErrAnnouncementInvalidTitle = errors.New("invalid announcement title")
@@ -134,13 +138,31 @@ var ErrAnnouncementInvalidEventAt = errors.New("invalid announcement event date"
 // NewService monta o service. O TextProvider pode ser nil: nesse caso o
 // versículo do dia é servido só com a referência quando o catálogo ainda não
 // tiver texto persistido, sem nunca falhar a requisição.
-func NewService(repo repositories.Repository, bibleProvider bible.TextProvider) *Service {
+func NewService(repo repositories.Repository, bibleProvider bible.TextProvider, supabaseURL string) *Service {
 	return &Service{
-		repo:       repo,
-		bible:      bibleProvider,
-		feedCounts: &ttlCounts{entries: map[string]ttlCountEntry{}},
-		syncedAuth: &ttlSeen{entries: map[string]time.Time{}},
+		repo:           repo,
+		bible:          bibleProvider,
+		feedCounts:     &ttlCounts{entries: map[string]ttlCountEntry{}},
+		syncedAuth:     &ttlSeen{entries: map[string]time.Time{}},
+		imageURLPrefix: strings.TrimRight(supabaseURL, "/") + "/storage/v1/object/public/",
 	}
+}
+
+// validImageURL aceita vazio (limpar a imagem) ou uma URL pública do Storage
+// do próprio projeto. Sem isso o cliente gravava qualquer URL, inclusive
+// javascript: ou um pixel de rastreio que todo leitor do feed carregaria.
+func (s *Service) validImageURL(raw *string) error {
+	if raw == nil {
+		return nil
+	}
+	v := strings.TrimSpace(*raw)
+	if v == "" {
+		return nil
+	}
+	if !strings.HasPrefix(v, s.imageURLPrefix) || strings.ContainsAny(v, ` "'<>`) || strings.Contains(v, "..") {
+		return ErrInvalidImageURL
+	}
+	return nil
 }
 
 func (s *Service) GetProfile(ctx context.Context, userID string) (models.User, error) {
@@ -165,6 +187,11 @@ func (s *Service) UpdateProfile(ctx context.Context, userID, displayName, userna
 	matched, _ := regexp.MatchString(`^[a-z0-9_]+$`, username)
 	if !matched {
 		return models.User{}, ErrInvalidUsername
+	}
+	if setAvatar {
+		if err := s.validImageURL(avatarURL); err != nil {
+			return models.User{}, err
+		}
 	}
 	if setBio && bio != nil {
 		trimmed := strings.TrimSpace(*bio)
@@ -507,6 +534,9 @@ func (s *Service) CreateGroup(ctx context.Context, userID, name, description str
 	default:
 		return models.Group{}, ErrInvalidJoinPolicy
 	}
+	if err := s.validImageURL(imageURL); err != nil {
+		return models.Group{}, err
+	}
 	return s.repo.CreateGroup(ctx, userID, name, description, imageURL, joinPolicy)
 }
 
@@ -655,6 +685,9 @@ func (s *Service) UpdateGroup(ctx context.Context, actorUserID, groupID string, 
 		default:
 			return models.Group{}, ErrInvalidJoinPolicy
 		}
+	}
+	if err := s.validImageURL(in.ImageURL); err != nil {
+		return models.Group{}, err
 	}
 	return s.repo.UpdateGroup(ctx, groupID, in)
 }
@@ -856,6 +889,9 @@ func (s *Service) CreateAnnouncement(ctx context.Context, actorUserID, groupID, 
 	if err != nil {
 		return models.GroupAnnouncement{}, err
 	}
+	if err := s.validImageURL(imageURL); err != nil {
+		return models.GroupAnnouncement{}, err
+	}
 	if imageURL != nil {
 		trimmed := strings.TrimSpace(*imageURL)
 		if trimmed == "" {
@@ -937,6 +973,9 @@ func (s *Service) UpdateAnnouncement(ctx context.Context, actorUserID, groupID, 
 	}
 	if in.Body != nil {
 		in.Body = &cleanBody
+	}
+	if err := s.validImageURL(in.ImageURL); err != nil {
+		return models.GroupAnnouncement{}, err
 	}
 	if in.ImageURL != nil {
 		trimmed := strings.TrimSpace(*in.ImageURL)

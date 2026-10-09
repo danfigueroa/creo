@@ -57,6 +57,10 @@ info:
       servidor, então em produção o limite real pode ser um pouco maior.
     - **Tamanho do corpo.** O corpo das requisições é limitado a 64 KB. Acima
       disso a resposta é `400 INVALID_JSON`.
+    - **URLs de imagem.** `avatarUrl` e `imageUrl` (grupo e aviso) só aceitam
+      URLs públicas do Storage do próprio projeto
+      (`https://<ref>.supabase.co/storage/v1/object/public/...`) ou string vazia.
+      Qualquer outra resposta `400 VALIDATION_ERROR`.
     - **IDs.** Os IDs são UUID. Um ID mal formado na URL responde
       `400 INVALID_ID`, com o nome do parâmetro em `details.param`. Um UUID
       válido que não existe responde `404`.
@@ -642,7 +646,7 @@ paths:
               properties:
                 name: { type: string, minLength: 3, maxLength: 80 }
                 description: { type: string, maxLength: 500 }
-                imageUrl: { type: [string, "null"] }
+                imageUrl: { type: [string, "null"], description: "URL pública do Storage do projeto, ou vazio para remover" }
                 joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
       responses:
         "201":
@@ -707,7 +711,7 @@ paths:
               properties:
                 name: { type: string, minLength: 3, maxLength: 80 }
                 description: { type: string, maxLength: 500 }
-                imageUrl: { type: string }
+                imageUrl: { type: string, description: "URL pública do Storage do projeto, ou vazio para remover" }
                 joinPolicy: { $ref: "#/components/schemas/GroupJoinPolicy" }
       responses:
         "200":
@@ -949,7 +953,7 @@ paths:
                 title: { type: string, minLength: 3, maxLength: 120 }
                 body: { type: string, minLength: 10, maxLength: 2000 }
                 eventAt: { type: string, examples: ["2026-10-01T19:30:00-03:00"] }
-                imageUrl: { type: [string, "null"] }
+                imageUrl: { type: [string, "null"], description: "URL pública do Storage do projeto, ou vazio para remover" }
       responses:
         "201":
           description: Aviso criado
@@ -1010,7 +1014,7 @@ paths:
                 title: { type: string, minLength: 3, maxLength: 120 }
                 body: { type: string, minLength: 10, maxLength: 2000 }
                 eventAt: { type: string }
-                imageUrl: { type: string }
+                imageUrl: { type: string, description: "URL pública do Storage do projeto, ou vazio para remover" }
       responses:
         "200":
           description: Aviso atualizado
@@ -1978,7 +1982,7 @@ components:
       properties:
         displayName: { type: string, minLength: 2, maxLength: 80, description: "Vazio mantém o atual" }
         username: { type: string, minLength: 3, maxLength: 30, pattern: "^[a-z0-9_]+$" }
-        avatarUrl: { type: [string, "null"] }
+        avatarUrl: { type: [string, "null"], description: "URL pública do Storage do projeto, ou vazio para remover" }
         bio: { type: [string, "null"], maxLength: 280 }
     PrayerRequestInput:
       type: object

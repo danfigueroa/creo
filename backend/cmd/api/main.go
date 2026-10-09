@@ -61,7 +61,7 @@ func main() {
 
 	repo := repositories.NewPostgresRepository(dbpool)
 	bibleProvider := bible.NewHTTPProvider(cfg.BibleAPIBaseURL, cfg.BibleAPITimeout)
-	svc := services.NewService(repo, bibleProvider)
+	svc := services.NewService(repo, bibleProvider, cfg.SupabaseURL)
 	router := apphttp.NewRouter(cfg, logger, svc)
 
 	srv := &http.Server{
