@@ -43,7 +43,12 @@ func (c *Client) DeleteUser(ctx context.Context, userID string) error {
 		return err
 	}
 	req.Header.Set("apikey", c.serviceKey)
-	req.Header.Set("Authorization", "Bearer "+c.serviceKey)
+	// A service_role legada é um JWT e também vai no Authorization. As chaves
+	// novas (sb_secret_...) não são JWT: no Authorization elas falham na
+	// verificação, então vão só no apikey.
+	if strings.HasPrefix(c.serviceKey, "eyJ") {
+		req.Header.Set("Authorization", "Bearer "+c.serviceKey)
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return err
