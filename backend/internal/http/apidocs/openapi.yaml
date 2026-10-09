@@ -51,6 +51,10 @@ info:
       repetição responde `429 PRAYED_RATE_LIMITED`.
     - **Rate limit global.** 120 requisições por minuto por IP. Acima disso
       a resposta é `429`, com corpo em texto puro.
+    - **Rate limit de escrita.** Além do global, 30 requisições `POST`/`PATCH`/
+      `DELETE` por minuto por usuário (`WRITE_RATE_LIMIT_REQUESTS`). Acima disso
+      a resposta é `429 RATE_LIMITED`, em JSON. O contador é por instância do
+      servidor, então em produção o limite real pode ser um pouco maior.
     - **Tamanho do corpo.** O corpo das requisições é limitado a 64 KB. Acima
       disso a resposta é `400 INVALID_JSON`.
     - **IDs.** Os IDs são UUID. Um ID mal formado na URL responde

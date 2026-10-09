@@ -9,44 +9,47 @@ import (
 )
 
 type Config struct {
-	HTTPAddr             string
-	DatabaseURL          string
-	DBMaxConns           int
-	DBMinConns           int
-	DBMaxConnLifetime    time.Duration
-	DBMaxConnIdleTime    time.Duration
-	JWTIssuer            string
-	JWKSURL              string
-	JWKSCacheTTL         time.Duration
-	RateLimitRequests    int
-	RateLimitWindow      time.Duration
-	PrayedWindowHours    int
-	PrayedIPBurstPerHour int
-	CORSAllowedOrigins   []string
-	BibleAPIBaseURL      string
-	BibleTranslation     string
-	BibleAPITimeout      time.Duration
+	HTTPAddr          string
+	DatabaseURL       string
+	DBMaxConns        int
+	DBMinConns        int
+	DBMaxConnLifetime time.Duration
+	DBMaxConnIdleTime time.Duration
+	JWTIssuer         string
+	JWKSURL           string
+	JWKSCacheTTL      time.Duration
+	RateLimitRequests int
+	RateLimitWindow   time.Duration
+	// Escritas por usuário por janela, além do limite global por IP.
+	WriteRateLimitRequests int
+	PrayedWindowHours      int
+	PrayedIPBurstPerHour   int
+	CORSAllowedOrigins     []string
+	BibleAPIBaseURL        string
+	BibleTranslation       string
+	BibleAPITimeout        time.Duration
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		HTTPAddr:             resolveHTTPAddr(),
-		DatabaseURL:          os.Getenv("DATABASE_URL"),
-		DBMaxConns:           intOrDefault("DB_MAX_CONNS", 8),
-		DBMinConns:           intOrDefault("DB_MIN_CONNS", 0),
-		DBMaxConnLifetime:    durationOrDefault("DB_MAX_CONN_LIFETIME", 30*time.Minute),
-		DBMaxConnIdleTime:    durationOrDefault("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
-		JWTIssuer:            os.Getenv("JWT_ISSUER"),
-		JWKSURL:              os.Getenv("JWKS_URL"),
-		JWKSCacheTTL:         durationOrDefault("JWKS_CACHE_TTL", 10*time.Minute),
-		RateLimitRequests:    intOrDefault("RATE_LIMIT_REQUESTS", 120),
-		RateLimitWindow:      durationOrDefault("RATE_LIMIT_WINDOW", time.Minute),
-		PrayedWindowHours:    intOrDefault("PRAYED_WINDOW_HOURS", 12),
-		PrayedIPBurstPerHour: intOrDefault("PRAYED_IP_BURST_PER_HOUR", 200),
-		CORSAllowedOrigins:   csvOrDefault("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"}),
-		BibleAPIBaseURL:      envOrDefault("BIBLE_API_BASE_URL", "https://bible-api.com"),
-		BibleTranslation:     envOrDefault("BIBLE_TRANSLATION", "almeida"),
-		BibleAPITimeout:      durationOrDefault("BIBLE_API_TIMEOUT", 3*time.Second),
+		HTTPAddr:               resolveHTTPAddr(),
+		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		DBMaxConns:             intOrDefault("DB_MAX_CONNS", 8),
+		DBMinConns:             intOrDefault("DB_MIN_CONNS", 0),
+		DBMaxConnLifetime:      durationOrDefault("DB_MAX_CONN_LIFETIME", 30*time.Minute),
+		DBMaxConnIdleTime:      durationOrDefault("DB_MAX_CONN_IDLE_TIME", 5*time.Minute),
+		JWTIssuer:              os.Getenv("JWT_ISSUER"),
+		JWKSURL:                os.Getenv("JWKS_URL"),
+		JWKSCacheTTL:           durationOrDefault("JWKS_CACHE_TTL", 10*time.Minute),
+		RateLimitRequests:      intOrDefault("RATE_LIMIT_REQUESTS", 120),
+		RateLimitWindow:        durationOrDefault("RATE_LIMIT_WINDOW", time.Minute),
+		WriteRateLimitRequests: intOrDefault("WRITE_RATE_LIMIT_REQUESTS", 30),
+		PrayedWindowHours:      intOrDefault("PRAYED_WINDOW_HOURS", 12),
+		PrayedIPBurstPerHour:   intOrDefault("PRAYED_IP_BURST_PER_HOUR", 200),
+		CORSAllowedOrigins:     csvOrDefault("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"}),
+		BibleAPIBaseURL:        envOrDefault("BIBLE_API_BASE_URL", "https://bible-api.com"),
+		BibleTranslation:       envOrDefault("BIBLE_TRANSLATION", "almeida"),
+		BibleAPITimeout:        durationOrDefault("BIBLE_API_TIMEOUT", 3*time.Second),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("DATABASE_URL is required")
