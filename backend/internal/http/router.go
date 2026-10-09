@@ -36,6 +36,7 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 	// X-Forwarded-For/X-Real-IP para o rate-limit por IP funcionar de verdade.
 	r.Use(chimiddleware.RealIP)
 	r.Use(middleware.RequestID)
+	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.Logging(logger))
 	r.Use(middleware.CORS(cfg.CORSAllowedOrigins))
 	r.Use(httprate.LimitByIP(cfg.RateLimitRequests, cfg.RateLimitWindow))
@@ -46,6 +47,7 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 	r.Get("/docs/openapi.yaml", apidocs.Spec)
 
 	r.Route("/api/v1", func(api chi.Router) {
+		api.Use(middleware.BodyLimit)
 		api.Use(middleware.BodyLimit)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed", prayerHandler.ListPublic)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed/public", prayerHandler.ListPublic)
