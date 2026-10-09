@@ -438,7 +438,7 @@ Regra de remoção de membro: actor precisa **outrank** target (admin > moderato
 
 ### Telas e shell
 
-- **`/`** (`pages/landing-page.tsx`) — Welcome screen 2-col com hero editorial à esquerda (brand mark, título serif gigante com itálico, lede, 3 features numeradas, citação Mt 18,20) e auth card à direita (tabs Entrar/Criar com underline animado, magic-link). Sign-in bem-sucedido roteia pra `/feed`. A tradição escolhida antes do login fica em `localStorage.creo-pending-tradition` e é aplicada pós-login via PATCH `/profile/tradition` (a chave só é removida quando o PATCH tem sucesso).
+- **`/`** (`pages/landing-page.tsx` + `components/landing/`) — landing de marketing que **mostra** o produto: nav sticky com âncoras, hero com mockup vivo (`hero-demo.tsx`: pedido recebendo orações, notificações, versículo; pausa fora da tela e com reduced motion), pilares, "Como funciona" com mockup sticky trocado pelo scroll (`how-it-works.tsx`), playground de reações/tradição e diagrama de privacidade (`playground.tsx`), bento de recursos, FAQ e CTA final. Tudo fictício (`demo-data.ts`), sem API; as pílulas usam `prayerActionsFor` e a marcação `.rx` do feed, então a vitrine não desatualiza. **Auth não fica na página**: `Entrar`/`Criar conta` abrem `<AuthDialog>` (gaveta à direita, tela cheia ≤640px) com o `<AuthCard>`, que concentra todo o fluxo (senha, link mágico, cadastro, reenvio, captcha). `/?auth=entrar|criar` abre o painel direto. A tradição clicada no playground pré-seleciona o cadastro (só se o visitante clicou). Sign-in bem-sucedido roteia pra `/feed`. A landing está no bundle inicial: não importar `feed-card` ou outras peças pesadas nela. Classes `.lp-*`; `.welcome__auth-card` e cia. seguem servindo também `/auth` e `/auth/reset`.
 - **`/auth`** (`pages/auth-page.tsx`) — usado por callbacks de email/reset; não é a entrada principal mais. (O onboarding wizard foi **removido** — não existe `/onboarding`.) Verifica `?token_hash=&type=` (confirmação de cadastro, link mágico, troca de e-mail) com `verifyOtp`.
 - **Auth e segurança da conta**:
   - E-mail precisa ser confirmado (painel do Supabase). Login recusado por "Email not confirmed" oferece reenvio na hora, com cooldown de 60 s (`useCooldown`).
@@ -530,7 +530,7 @@ O breakpoint do shell é **900px** (`max-width: 900px`), não os `sm:`/`lg:` do 
 
 ### Animação (`motion`)
 
-- Lib **`motion`** (import de `motion/react`), carregada via `<LazyMotion features={domMax} strict>` em `app/providers.tsx`. **Use sempre `m.*`, nunca `motion.*`** — o `strict` quebra em dev se alguém usar. `domMax` (e não `domAnimation`) porque toasts e listas usam animação de `layout`. Vai num chunk próprio `motion` (`vite.config.ts`), ~43 KB gzip.
+- Lib **`motion`** (import de `motion/react`), carregada via `<LazyMotion features={domMax} strict>` em `app/providers.tsx`. **Use sempre `m.*`, nunca `motion.*`** — o `strict` quebra em dev se alguém usar. `domMax` (e não `domAnimation`) porque toasts e listas usam animação de `layout`. Vai num chunk próprio `motion` (`vite.config.ts`), ~48 KB gzip (a landing usa `useScroll`/`useInView`/`useSpring`).
 - Presets em `lib/motion.ts`: `ease` (a mesma curva `.2,.7,.2,1` do CSS), `duration`, `fadeUp`, `popIn`, `fade`, `springSoft`, `stagger(i)`. Movimento sóbrio: 120–400 ms, sem bounce forte e sem loop decorativo.
 - **Reduced motion**: `<MotionConfig reducedMotion="user">` cobre o JS; o bloco `@media (prefers-reduced-motion: reduce)` no fim do `index.css` cobre os keyframes CSS. Animação nova em CSS já herda; em JS, via `m.*`, também.
 - Padrões prontos:
@@ -599,7 +599,7 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 | Quero mexer em… | Arquivos |
 |---|---|
 | Layout autenticado (header + nav) | `frontend/src/components/page-shell.tsx` |
-| Landing pública | `frontend/src/pages/landing-page.tsx` + `app/route-guards.tsx` |
+| Landing pública | `frontend/src/pages/landing-page.tsx` + `components/landing/*` + `app/route-guards.tsx` |
 | Auth (signin/signup/passwordless/reset) | `frontend/src/pages/auth-page.tsx` |
 | Tema/tokens | `frontend/src/index.css` |
 | Detalhe de grupo (mural/membros/solicitações/settings) | `frontend/src/pages/group-page.tsx` |
