@@ -46,6 +46,7 @@ func NewRouter(cfg config.Config, logger *zap.Logger, service *services.Service)
 	r.Get("/docs/openapi.yaml", apidocs.Spec)
 
 	r.Route("/api/v1", func(api chi.Router) {
+		api.Use(middleware.BodyLimit)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed", prayerHandler.ListPublic)
 		api.With(middleware.OptionalAuth(validator)).Get("/feed/public", prayerHandler.ListPublic)
 		api.Get("/username-availability", profileHandler.UsernameAvailability)

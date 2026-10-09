@@ -51,6 +51,8 @@ info:
       repetição responde `429 PRAYED_RATE_LIMITED`.
     - **Rate limit global.** 120 requisições por minuto por IP. Acima disso
       a resposta é `429`, com corpo em texto puro.
+    - **Tamanho do corpo.** O corpo das requisições é limitado a 64 KB. Acima
+      disso a resposta é `400 INVALID_JSON`.
     - **IDs.** Os IDs são UUID. Um ID mal formado na URL responde
       `400 INVALID_ID`, com o nome do parâmetro em `details.param`. Um UUID
       válido que não existe responde `404`.
