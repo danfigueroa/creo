@@ -614,6 +614,7 @@ Notificação navega via `subject_type` (`targetPath` em `lib/notifications.ts`)
 | Schema | `backend/internal/db/migrations/*.sql` |
 | Modelos / enums | `backend/internal/models/models.go` |
 | Documentação da API (Swagger) | `backend/internal/http/apidocs/openapi.yaml` + `docs.go` + `index.html` |
+| Documentação técnica para devs (em inglês: arquitetura, banco, decisões) | `docs/technical/` (índice em `docs/technical/README.md`) |
 | Instrumentação de banco | `backend/internal/db/trace.go` + `internal/http/middleware/logging.go` |
 | Segurança da conta (front) | `frontend/src/components/account-security.tsx`, `components/turnstile.tsx`, `lib/password.ts`, `pages/auth-reset-page.tsx` |
 | LGPD (export/exclusão) | `backend/internal/repositories/account.go` + `handlers/account_handler.go` + `internal/supabaseadmin` |
