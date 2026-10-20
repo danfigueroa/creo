@@ -41,6 +41,7 @@ Thumbs.db
 .idea/
 .vscode/
 
-docs/
+docs/*
+!docs/technical/
 backend/README.md
 frontend/README.md
