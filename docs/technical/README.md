@@ -13,14 +13,15 @@ every commit.
 | 1 | [Overview](01-overview.md) | First contact: the product, the domain vocabulary, the repository map |
 | 2 | [Architecture](02-architecture.md) | How the pieces connect: deploy, layers, request path, authentication |
 | 3 | [Database](03-database.md) | Data model, enums, indexes, RLS and the story behind each migration |
-| 4 | [Backend](04-backend.md) | Go code patterns and the performance rules (round-trip budget) |
+| 4 | [Backend](04-backend.md) | Go code patterns: layers, errors, transactions, notifications, visibility |
 | 5 | [Frontend](05-frontend.md) | React structure, state, design system, motion, mobile |
 | 6 | [Domains](06-domains.md) | Business rules per area: requests, groups, friends, notifications, verse, account |
 | 7 | [Security and privacy](07-security-privacy.md) | Defenses at each layer, data export and account deletion (LGPD) |
 | 8 | [Decisions](08-decisions.md) | Architecture decision log, with context and consequences |
 | 9 | [Development](09-development.md) | Running locally, environment variables, migrations, build, common problems |
+| 10 | [Performance](10-performance.md) | Round-trip budget, how to measure, feed optimizations, caches, before/after numbers |
 
-If you are going to touch a feed or any query, read at least 3, 4 and 6 first.
+If you are going to touch a feed or any query, read at least 3, 4, 6 and 10 first.
 
 ## How this relates to the other docs
 
