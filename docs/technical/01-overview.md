@@ -20,7 +20,7 @@ i18next. Code identifiers, JSON keys, enums and error codes are in English.
 Current scale: dozens of users and a few dozen rows per table (in October 2026,
 `users` had 24 rows and `prayer_requests` had 6). This explains several
 performance decisions: today the cost is in the network, not in the database
-(see [04-backend.md](04-backend.md#round-trip-budget)).
+(see [10-performance.md](10-performance.md)).
 
 ## Glossary
 

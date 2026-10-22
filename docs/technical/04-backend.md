@@ -95,123 +95,24 @@ Best-effort: a failed notification never fails the action that caused it.
   single statement (`notificationSummarySQL`) returning `{ count,
   friendRequests }`.
 
-## Round-trip budget
+## Performance
 
-**This backend's bottleneck is the number of trips to the database, not query
-duration.** Measured against Supabase, one round trip costs ~200 ms from a
-machine in Brazil (a few ms from `pdx1`), and 50 statements in one message cost
-the same as one. At the current data volume execution time is negligible; the
-trip is what you pay for.
+The backend is limited by the number of database trips, not by query time.
+The full story (how to measure, the three tools, merged feeds, side effects
+without background work, caches, results and what was not done) is in
+[10-performance.md](10-performance.md). The rules you need while writing code:
 
-So: **count trips before optimizing anything.** Every request log has
-`dbRoundTrips` and `dbStatements`, and the response has `Server-Timing`. The
-tracer (`internal/db/trace.go`) counts a batch as **one** trip on purpose,
-because that is the difference that matters.
-
-Three tools, each with its place:
-
-### 1. `pgx.Batch` when the queries are in the same repository method
-
-Collapses N trips into 1 on a single connection. First choice. Results are read
-in queue order with `nextBatchRows(br, scan)`.
-
-Used in `EnrichPrayerRequests` (authors, answered state, groups, per-type
-counts, viewer's own reactions), `EnrichVerseShares`, `GetUserStats`,
-`ListModerationHistory`, `ListPrayerActionsByRequest`,
-`ListPrayerRequestUpdates`, `ListVerseShareActions` (access check + list in the
-same batch, list discarded if access is denied), the reaction side effects and
-`DeleteAccount`.
-
-### 2. Writable CTEs when a write depends on reads
-
-`reactionSQL` builds one statement that, in order:
-
-1. `viewer`: reads the user's tradition, resolves the default reaction type and
-   the allowed list;
-2. `target`: applies the canonical visibility predicate to the request or
-   verse share;
-3. `inserted`: inserts only if the type is allowed, the target is visible and
-   there is no identical reaction within the window (`PRAYED_WINDOW_HOURS`,
-   default 12);
-4. optional `afterInsert`: bumps `prayer_requests.prayed_count`;
-5. returns four booleans/values so Go can pick the right error
-   (`ErrPrayerActionNotAllowed`, not found, `ErrDuplicatePrayedAction`)
-   without another query.
-
-### 3. `errgroup` when calls cross repository methods
-
-Merged feeds call several repository methods (requests, announcements, verse
-shares, and their counts). They run in parallel through `runBounded`,
-**never** a raw `errgroup`. `maxParallelQueries = 3` because
-`DB_MAX_CONNS = 8` for the whole process: an unbounded fan-out of six in one
-request would take most of the pool and make latency worse under load. The
-errgroup context cancels sibling tasks on the first error.
-
-### Side effects without background work
-
-Tempting: respond immediately and send notifications/milestones from a
-goroutine. Not possible here: the Vercel function freezes after the response
-and the work would die halfway. So the tail is **batched**, not deferred.
-Reactions are two fixed trips:
-
-1. the statement that decides and writes (`recordPrayerActionSQL` /
-   `recordVerseShareActionSQL`);
-2. one best-effort batch (`emitReactionSideEffects`) with the author
-   notification plus the `MILESTONE_PRAYED` (`prayedMilestoneSQL`) and
-   `MILESTONE_STREAK` (`streakMilestoneSQL`) checks, all resolved in SQL.
-
-They cannot be merged: the side effect needs the reaction committed, and a
-failure in it must not undo the reaction.
-
-### Results of the optimization pass (September 2026)
-
-Measured with ~200 ms per round trip:
-
-| Path | Before | After |
-|---|---|---|
-| `ListFriendsFeed` | 4189 ms | 430 ms |
-| `ListGroupsFeed` | 2920 ms | 415 ms |
-| `ListHomeFeed` | 2502 ms | 421 ms |
-| `ListPublicFeed` | 2256 ms | 411 ms |
-| `ListGroupFeed` | 1839 ms | 617 ms |
-| `GetUserStats` | 1164 ms | 207 ms |
-| `RecordPrayerAction` | 5–7 trips | 2 trips |
-| `RecordVerseShareAction` | 7–9 trips | 2 trips |
-
-## Merged feeds
-
-Home, groups, friends, public and the group wall mix three item types (prayer
-requests, announcements, verse shares) into one list ordered by `created_at`.
-
-```mermaid
-flowchart LR
-    A["ListHomePrayerRequests<br/>limit+offset raw rows"] --> M
-    B["ListAnnouncementsForUser<br/>limit+offset raw rows"] --> M
-    C["ListHomeVerseShares<br/>limit+offset raw rows"] --> M
-    D["3 counts via cachedCount"] --> T[total]
-    M["mergeFeedItems<br/>sort by created_at desc"] --> S["sliceFeed<br/>offset, limit"]
-    S --> E["enrichFeedPage<br/>2 batches, page items only"]
-```
-
-Rules:
-
-- Each stream fetches `limit + offset` **raw** rows (no enrich). The service
-  merges, slices the page and only then enriches the final page with
-  `enrichFeedPage`. Enriching inside `List*` doubled the cost of the feed for a
-  while; do not reintroduce it.
-- `mergeFeedItems(streams ...[]models.FeedItem)` is variadic. A new item type
-  is one more stream, not one more positional parameter. Wrap rows with
-  `models.WrapPrayerRequests`, `WrapAnnouncements`, `WrapVerseShares`.
-- Feed `COUNT`s go through `Service.cachedCount` (in-process, 30 s TTL,
-  `feedCountTTL`). The total only feeds the numbered pager, so being up to
-  30 s stale is fine. New feed counts must use the same helper.
-- Pagination is offset-based with a numbered pager. Fetching `limit + offset`
-  per stream degrades with deep pages; keyset pagination was considered and
-  deferred (see [08-decisions.md](08-decisions.md)).
-- The group wall checks access first (`ensureGroupFeedAccess`, sequential on
-  purpose so nothing is read before access is granted). `INVITE_ONLY` groups
-  are visible only to members.
-- **Preserve the tradition filter** and `deleted_at IS NULL` in every stream.
+- Count `dbRoundTrips` in the log (or `Server-Timing`) before and after any
+  change to a query path.
+- Same repository method: `pgx.Batch` (`nextBatchRows`). A write that depends on
+  reads: one writable CTE returning flags. Calls across methods: `runBounded`,
+  never a raw `errgroup`.
+- Merged feeds fetch `limit + offset` **raw** rows per stream and enrich only
+  the final page with `enrichFeedPage`. Do not enrich inside `List*`.
+- `mergeFeedItems` is variadic: a new item type is one more stream.
+- Feed `COUNT`s go through `Service.cachedCount`.
+- No background goroutines: the Vercel function freezes after the response.
+- Preserve the tradition filter and `deleted_at IS NULL` in every feed stream.
 
 ## Canonical visibility predicates
 
@@ -256,16 +157,9 @@ that finds the role, so handlers under `/groups/{id}/...` must map
 
 ## In-process caches
 
-| Cache | Where | TTL | Purpose |
-|---|---|---|---|
-| `feedCounts` (`cachedCount`) | `service.go` | 30 s | Feed totals and verse pool size |
-| `syncedAuth` (`ttlSeen`) | `service.go` | 60 s | Skip the user upsert on every request |
-| JWKS keys | `auth/jwks.go` | 10 min | Avoid fetching keys per request |
-| `singleflight` | `bible/bible.go` | per call | Collapse concurrent fetches of the same verse |
-
-All are per instance. On Vercel each instance has its own copy and starts cold.
-Both service maps clean expired entries opportunistically once they pass 4096
-keys.
+Feed counts, the user-sync marker and the JWKS keys are cached per instance. The
+table, TTLs and what each one saves are in
+[10-performance.md](10-performance.md#caches).
 
 ## Verse of the day
 

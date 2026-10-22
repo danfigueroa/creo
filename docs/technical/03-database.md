@@ -270,7 +270,7 @@ Grouped by the access pattern they serve:
 dozen rows, a sequential scan is cheaper than any index. The indexes are there
 for when data grows; index tuning only makes sense after seeding a
 representative dataset. Until then, optimize round trips (see
-[04-backend.md](04-backend.md#round-trip-budget)).
+[10-performance.md](10-performance.md)).
 
 There are a few redundant indexes: `idx_bans_group_user` duplicates the
 `UNIQUE (group_id, user_id)` on `bans`, and `idx_groups_active` on `(id)`

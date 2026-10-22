@@ -42,7 +42,7 @@ Things that are not obvious:
 - **A serverless function freezes after it responds.** There is no background
   work: everything that must happen (notification, milestone) happens before
   the response. This shapes how writes are designed (see
-  [04-backend.md](04-backend.md#side-effects-without-background-work)).
+  [10-performance.md](10-performance.md#side-effects-without-background-work)).
 
 In development the topology is the same minus Vercel: Vite on `:5173`, Go on
 `:8080`, and the same Supabase project (no local Postgres is set up). CORS does

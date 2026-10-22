@@ -99,7 +99,7 @@ Instrumentation (`internal/db/trace.go`) counts trips per request, batches
 count as one, and every log line and response carries the count.
 **Why**: measurements showed ~200 ms per trip from Brazil and negligible
 execution time at the current volume. Feeds went from 2–4 s to ~0.4 s by
-batching and parallelizing (table in [04-backend.md](04-backend.md#results-of-the-optimization-pass-september-2026)).
+batching and parallelizing (table in [10-performance.md](10-performance.md#results)).
 **Cost**: some code is less obvious (writable CTEs, batches read in order).
 **Revisit if**: the data grows enough that query execution starts to show in
 `dbDuration`.
